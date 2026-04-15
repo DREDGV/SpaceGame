@@ -20,9 +20,11 @@ Space is a later layer of the game, not an early MVP goal.
 
 Read these files before making changes:
 
-- `cosmic_economic_strategy_gdd_mvp_roadmap.md`
 - `mvp_content_primitive_to_industrial.md`
-- `ROADMAP.md` if present
+- `TASK_01_PROTOTYPE.md`
+- `TASK_02_CORE_LOOP.md`
+- `TASK_03_GOALS_NARRATIVE.md`
+- `TASK_04_ONBOARDING.md`
 
 ## Current goal
 

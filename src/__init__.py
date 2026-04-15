@@ -1,3 +1,0 @@
-"""
-Пакет Space Economy
-"""
