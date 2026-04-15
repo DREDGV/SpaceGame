@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Space Economy — v0.4 Onboarding</title>
+    <link rel="stylesheet" href="prototype/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header id="game-header">
+        <h1>🌌 Primitive Stage</h1>
+        <div id="progress-panel"></div>
+        <span id="version-badge" class="version-badge">v0.4 — Onboarding</span>
+      </header>
+
+      <!-- Onboarding intro (first launch) -->
+      <div id="onboarding-intro-panel" class="panel panel-onboarding-intro" style="display:none"></div>
+
+      <!-- Onboarding step-by-step -->
+      <div id="onboarding-step-panel" class="panel panel-onboarding-step" style="display:none"></div>
+
+      <main id="game-main">
+        <section id="goals-panel" class="panel panel-goals" style="display:none"></section>
+
+        <section id="energy-panel" class="panel panel-energy"></section>
+
+        <section id="resources-panel" class="panel"></section>
+
+        <section id="gather-panel" class="panel"></section>
+
+        <section id="craft-panel" class="panel"></section>
+
+        <section id="buildings-panel" class="panel"></section>
+
+        <section id="automation-panel" class="panel"></section>
+
+        <section id="research-panel" class="panel"></section>
+
+        <section id="log-panel" class="panel"></section>
+      </main>
+    </div>
+
+    <!-- Data & Logic -->
+    <script src="prototype/data/game-data.js"></script>
+    <script src="prototype/game-state.js"></script>
+    <script src="prototype/ui.js"></script>
+    <script src="prototype/app.js"></script>
+  </body>
+</html>

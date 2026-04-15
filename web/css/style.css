@@ -1,0 +1,176 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background: #000;
+    overflow: hidden;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #fff;
+}
+
+#gameContainer {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+}
+
+#gameCanvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+#ui {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+#hud {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 15px;
+    border-radius: 10px;
+    border: 2px solid #0ff;
+}
+
+.hud-item {
+    margin: 8px 0;
+    font-size: 16px;
+    display: flex;
+    justify-content: space-between;
+    gap: 15px;
+}
+
+.hud-item span:first-child {
+    color: #aaa;
+}
+
+.hud-item span:last-child {
+    color: #0ff;
+    font-weight: bold;
+}
+
+#controls {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    background: rgba(0, 0, 0, 0.5);
+    padding: 15px;
+    border-radius: 10px;
+}
+
+.control-hint {
+    margin: 5px 0;
+    font-size: 14px;
+    color: #888;
+}
+
+kbd {
+    background: #333;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid #555;
+    color: #fff;
+    font-family: monospace;
+}
+
+.hidden {
+    display: none !important;
+}
+
+#pauseScreen {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.9);
+    padding: 40px;
+    border-radius: 15px;
+    border: 3px solid #ff0;
+    text-align: center;
+    pointer-events: auto;
+}
+
+#pauseScreen h2 {
+    font-size: 48px;
+    margin-bottom: 20px;
+    color: #ff0;
+}
+
+#planetInteraction {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.95);
+    padding: 30px;
+    border-radius: 15px;
+    border: 3px solid #0f0;
+    text-align: center;
+    pointer-events: auto;
+    min-width: 300px;
+}
+
+#planetInteraction h2 {
+    font-size: 36px;
+    margin-bottom: 20px;
+    color: #0f0;
+}
+
+#tradeButtons {
+    margin-top: 20px;
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+
+.trade-btn {
+    padding: 10px 20px;
+    font-size: 16px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    pointer-events: auto;
+    background: #0ff;
+    color: #000;
+    font-weight: bold;
+    transition: all 0.3s;
+}
+
+.trade-btn:hover {
+    background: #0aa;
+    transform: scale(1.05);
+}
+
+#buyButton {
+    background: #0f0;
+}
+
+#buyButton:hover {
+    background: #0a0;
+}
+
+#sellButton {
+    background: #f00;
+}
+
+#sellButton:hover {
+    background: #a00;
+}
+
+#closeButton {
+    background: #888;
+}
+
+#closeButton:hover {
+    background: #666;
+}

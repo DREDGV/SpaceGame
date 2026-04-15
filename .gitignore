@@ -1,0 +1,12 @@
+.qwen/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.pytest_cache/
+dist/
+build/
