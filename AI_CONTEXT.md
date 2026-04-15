@@ -26,10 +26,13 @@ Read these files before making changes:
 - `TASK_03_GOALS_NARRATIVE.md`
 - `TASK_04_ONBOARDING.md`
 - `TASK_05_PRODUCTION_DEPTH.md`
+- `TASK_06_GAME_FEEL_AND_DECISIONS.md`
+- `TASK_07_SAVE_SYSTEM.md`
+- `TASK_09_STORAGE_REWORK.md`
 
 ## Current goal
 
-Build the first playable local prototype of the primitive-to-early-production stage and deepen the production system without widening the game.
+Build the first playable local prototype of the primitive-to-early-production stage, deepen the production system without widening the game, improve decisions and planning, keep progress between sessions with a simple local save system, and prepare the storage UI/data for future growth without changing core storage rules.
 
 ## Non-goals for now
 

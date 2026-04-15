@@ -3,15 +3,26 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Space Economy — v0.4 Onboarding</title>
+    <title>Примитивная эпоха — v0.4 Обучение</title>
     <link rel="stylesheet" href="prototype/style.css" />
   </head>
   <body>
     <div id="app">
       <header id="game-header">
-        <h1>🌌 Primitive Stage</h1>
-        <div id="progress-panel"></div>
-        <span id="version-badge" class="version-badge">v0.4 — Onboarding</span>
+        <div class="header-top">
+          <div class="header-title-block">
+            <h1>🌌 Примитивная эпоха</h1>
+            <span id="version-badge" class="version-badge">v0.4 — Onboarding</span>
+          </div>
+          <div class="header-actions">
+            <span id="save-status" class="save-status">Новая игра</span>
+            <button id="reset-progress-btn" class="header-reset-btn" type="button">Новая игра</button>
+          </div>
+        </div>
+        <div class="header-status">
+          <section id="energy-panel" class="panel panel-energy panel-compact"></section>
+          <div id="progress-panel" class="panel panel-progress panel-compact"></div>
+        </div>
       </header>
 
       <!-- Onboarding intro (first launch) -->
@@ -22,8 +33,6 @@
 
       <main id="game-main">
         <section id="goals-panel" class="panel panel-goals" style="display:none"></section>
-
-        <section id="energy-panel" class="panel panel-energy"></section>
 
         <section id="resources-panel" class="panel"></section>
 

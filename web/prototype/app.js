@@ -18,8 +18,12 @@
   // Tick intervals
   const UI_TICK = 200; // UI refresh every 200ms
   const AUTO_TICK = 500; // Automation check every 500ms
+  const CRAFT_TICK = 200; // Craft queue check every 200ms
+  const SAVE_TICK = 5000; // Periodic autosave
   let lastUiTick = 0;
   let lastAutoTick = 0;
+  let lastCraftTick = 0;
+  let lastSaveTick = 0;
 
   function tick(timestamp) {
     // Energy regen check
@@ -29,6 +33,16 @@
     if (timestamp - lastAutoTick >= AUTO_TICK) {
       game.tickAutomation();
       lastAutoTick = timestamp;
+    }
+
+    if (timestamp - lastCraftTick >= CRAFT_TICK) {
+      game.tickCraftQueue();
+      lastCraftTick = timestamp;
+    }
+
+    if (timestamp - lastSaveTick >= SAVE_TICK) {
+      game.autoSaveIfNeeded();
+      lastSaveTick = timestamp;
     }
 
     // UI refresh
@@ -42,15 +56,22 @@
 
   requestAnimationFrame(tick);
 
-  // Welcome log
-  game.addLog("🌍 Добро пожаловать на заре цивилизации!");
-  game.addLog("💡 Собирайте ресурсы, создавайте предметы, стройте здания!");
-  game.addLog("⚡ Ваша энергия ограничена — планируйте действия!");
+  if (!game.loadedFromSave) {
+    game.addLog("🌍 Добро пожаловать на заре цивилизации!");
+    game.addLog("💡 Собирайте ресурсы, создавайте предметы, стройте здания!");
+    game.addLog("⚡ Ваша энергия ограничена — планируйте действия!");
+    game.markDirty();
+    game.saveGame(true);
+  }
   ui.render();
 
-  // Dev helper: reset onboarding in console
-  window.resetOnboarding = function () {
-    localStorage.removeItem("spacegame_onboarding_v1");
+  window.addEventListener("beforeunload", () => {
+    game.autoSaveIfNeeded(true);
+  });
+
+  // Dev helper: reset save in console
+  window.resetGameProgress = function () {
+    game.resetProgress();
     location.reload();
   };
 })();
