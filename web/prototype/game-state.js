@@ -54,6 +54,7 @@ class GameState {
     this.hasUnsavedChanges = false;
     this.loadedFromSave = false;
     this.loadErrorMessage = "";
+    this.isResettingProgress = false;
     this.saveMeta = {
       state: "idle",
       savedAt: 0,
@@ -381,6 +382,7 @@ class GameState {
   }
 
   saveGame(force = false) {
+    if (this.isResettingProgress) return false;
     if (!force && !this.hasUnsavedChanges) return false;
 
     try {
@@ -404,6 +406,8 @@ class GameState {
   }
 
   autoSaveIfNeeded(force = false) {
+    if (this.isResettingProgress) return false;
+
     const shouldSave =
       force ||
       this.hasUnsavedChanges ||
@@ -445,9 +449,11 @@ class GameState {
 
   resetProgress() {
     try {
+      this.isResettingProgress = true;
       this._clearSaveStorage();
       return true;
     } catch (error) {
+      this.isResettingProgress = false;
       return false;
     }
   }
