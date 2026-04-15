@@ -28,7 +28,7 @@ class GameState {
     this.buildings = {};
     this.researched = {};
     this.unlockedRecipes = new Set();
-    this.maxResourceCap = 100;
+    this.maxResourceCap = 50;
     this.craftDiscount = 0;
     this.totalResourcesCollected = 0;
     this.log = [];
@@ -37,9 +37,13 @@ class GameState {
     // Energy
     const energyConf = data.energy;
     this.energy = energyConf.max;
+    this.baseEnergyMax = energyConf.max;
     this.maxEnergy = energyConf.max;
     this.energyRegenPerTick = energyConf.regenPerTick;
+    this.baseEnergyRegenInterval = energyConf.regenIntervalMs;
     this.energyRegenInterval = energyConf.regenIntervalMs;
+    this.energyMaxBonus = 0;
+    this.energyRegenIntervalBonusMs = 0;
     this.lastEnergyRegen = Date.now();
 
     // Automation
@@ -65,6 +69,8 @@ class GameState {
         this.unlockedRecipes.add(id);
       }
     }
+
+    this._recalculateEnergyStats();
   }
 
   // ─── Onboarding persistence ───
@@ -209,6 +215,43 @@ class GameState {
     return true;
   }
 
+  _recalculateEnergyStats() {
+    let maxBonus = 0;
+    let regenBonusMs = 0;
+
+    for (const techId of Object.keys(this.researched)) {
+      const energyEffect = this.data.tech[techId]?.effect?.energy;
+      if (!energyEffect) continue;
+      maxBonus += energyEffect.maxBonus || 0;
+      regenBonusMs += energyEffect.regenIntervalBonusMs || 0;
+    }
+
+    for (const buildingId of Object.keys(this.buildings)) {
+      const energyEffect = this.data.buildings[buildingId]?.effect?.energy;
+      if (!energyEffect) continue;
+      maxBonus += energyEffect.maxBonus || 0;
+      regenBonusMs += energyEffect.regenIntervalBonusMs || 0;
+    }
+
+    this.energyMaxBonus = maxBonus;
+    this.energyRegenIntervalBonusMs = regenBonusMs;
+    this.maxEnergy = this.baseEnergyMax + maxBonus;
+    this.energyRegenInterval = Math.max(
+      1000,
+      this.baseEnergyRegenInterval - regenBonusMs,
+    );
+    this.energy = Math.min(this.energy, this.maxEnergy);
+  }
+
+  getEnergyModifiers() {
+    return {
+      maxBonus: this.energyMaxBonus,
+      regenIntervalBonusMs: this.energyRegenIntervalBonusMs,
+      maxEnergy: this.maxEnergy,
+      regenIntervalMs: this.energyRegenInterval,
+    };
+  }
+
   getEnergyRegenRemaining() {
     const elapsed = Date.now() - this.lastEnergyRegen;
     return Math.max(0, this.energyRegenInterval - elapsed);
@@ -261,9 +304,11 @@ class GameState {
 
   _getGatherBonus() {
     let bonus = 0;
-    if ((this.resources.crude_tools || 0) > 0) bonus += 1;
-    if (this.researched.basic_tools)
+    if ((this.resources.crude_tools || 0) > 0) bonus = Math.max(bonus, 1);
+    if ((this.resources.improved_tools || 0) > 0) bonus = Math.max(bonus, 2);
+    if (this.researched.basic_tools) {
       bonus += this.data.tech.basic_tools?.effect.gatherBonus || 0;
+    }
     return bonus;
   }
 
@@ -325,6 +370,9 @@ class GameState {
     if (building.effect.automation) {
       const autoId = building.effect.automation.id;
       this.automation[autoId] = { lastRun: 0, state: AUTO_STATE.WAITING };
+    }
+    if (building.effect.energy) {
+      this._recalculateEnergyStats();
     }
     for (const [id, recipe] of Object.entries(this.data.recipes)) {
       if (recipe.requires === buildingId) {
@@ -430,6 +478,15 @@ class GameState {
     return 0;
   }
 
+  getMissingResources(costObj) {
+    return Object.entries(costObj)
+      .filter(([id, amount]) => (this.resources[id] || 0) < amount)
+      .map(([id, amount]) => ({
+        id,
+        missing: amount - (this.resources[id] || 0),
+      }));
+  }
+
   // ─── Onboarding check ───
 
   _checkOnboarding() {
@@ -522,6 +579,9 @@ class GameState {
     this.researched[techId] = true;
     if (tech.effect.craftDiscount) {
       this.craftDiscount = tech.effect.craftDiscount;
+    }
+    if (tech.effect.energy) {
+      this._recalculateEnergyStats();
     }
 
     this.addLog(`🔬 Изучено: ${tech.icon} ${tech.name}`);

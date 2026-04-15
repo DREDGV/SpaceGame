@@ -25,10 +25,11 @@ Read these files before making changes:
 - `TASK_02_CORE_LOOP.md`
 - `TASK_03_GOALS_NARRATIVE.md`
 - `TASK_04_ONBOARDING.md`
+- `TASK_05_PRODUCTION_DEPTH.md`
 
 ## Current goal
 
-Build the first playable local prototype of the primitive-to-early-production stage.
+Build the first playable local prototype of the primitive-to-early-production stage and deepen the production system without widening the game.
 
 ## Non-goals for now
 

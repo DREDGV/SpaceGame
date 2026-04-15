@@ -160,6 +160,8 @@ class UI {
         <span class="goal-number">${progress.done + 1}</span>
         <span class="goal-text">${goal.text}</span>
       </div>
+      ${goal.description ? `<div class="goal-description">${goal.description}</div>` : ""}
+      ${goal.hint ? `<div class="goal-hint">Как выполнить: ${goal.hint}</div>` : ""}
       <div class="goal-progress-bar">
         <div class="goal-progress-fill" style="width:${progress.currentPct}%"></div>
       </div>
@@ -180,7 +182,8 @@ class UI {
 
     const pct = (this.game.energy / this.game.maxEnergy) * 100;
     const regenSec = (this.game.getEnergyRegenRemaining() / 1000).toFixed(1);
-    const bonus = this.game._getGatherBonus();
+    const modifiers = this.game.getEnergyModifiers();
+    const regenDeltaSec = (modifiers.regenIntervalBonusMs / 1000).toFixed(1);
 
     container.innerHTML = `
       <h3>⚡ Энергия</h3>
@@ -190,7 +193,8 @@ class UI {
       </div>
       <div class="energy-info">
         <span>🔄 +${this.game.energyRegenPerTick} через ${regenSec}с</span>
-        ${bonus > 0 ? `<span class="energy-bonus">🔧 Бонус: +${bonus}</span>` : ""}
+        ${modifiers.maxBonus > 0 ? `<span class="energy-bonus">🔋 Запас: +${modifiers.maxBonus}</span>` : ""}
+        ${modifiers.regenIntervalBonusMs > 0 ? `<span class="energy-bonus">⏱️ Восстановление: -${regenDeltaSec}с</span>` : ""}
       </div>
     `;
   }
@@ -207,6 +211,14 @@ class UI {
     const grid = document.createElement("div");
     grid.className = "resource-grid";
 
+    const bonus = this.game._getGatherBonus();
+    if (bonus > 0) {
+      const note = document.createElement("p");
+      note.className = "hint";
+      note.textContent = `Бонус ручного сбора от инструментов: +${bonus}`;
+      container.appendChild(note);
+    }
+
     for (const [id, def] of Object.entries(this.data.resources)) {
       const count = this.game.resources[id] || 0;
 
@@ -214,7 +226,10 @@ class UI {
       el.className = "resource-item";
       el.innerHTML = `
         <span class="resource-icon" style="color:${def.color}">${def.icon}</span>
-        <span class="resource-name">${def.name}</span>
+        <div class="resource-text">
+          <span class="resource-name">${def.name}</span>
+          ${def.description ? `<span class="resource-desc">${def.description}</span>` : ""}
+        </div>
         <span class="resource-count">${count}</span>
       `;
       grid.appendChild(el);
@@ -237,6 +252,7 @@ class UI {
     for (const [id, action] of Object.entries(this.data.gatherActions)) {
       const btn = document.createElement("button");
       btn.className = "action-btn";
+      btn.type = "button";
       const cooldown = this.game.getCooldownRemaining(id);
       const disabled = cooldown > 0 || !this.game.hasEnergy(action.energyCost);
 
@@ -254,13 +270,15 @@ class UI {
       btn.innerHTML = `
         <span class="btn-icon">${action.icon}</span>
         <span class="btn-label">${action.name}</span>
+        ${action.description ? `<span class="btn-desc">${action.description}</span>` : ""}
         <span class="btn-output">${outStr}</span>
         <span class="btn-cost">⚡ -${action.energyCost}</span>
         ${cooldown > 0 ? `<span class="btn-cooldown">⏳ ${(cooldown / 1000).toFixed(1)}s</span>` : ""}
         ${!this.game.hasEnergy(action.energyCost) && cooldown === 0 ? '<span class="btn-cooldown">⚡ Нет энергии</span>' : ""}
       `;
-      btn.disabled = disabled;
-      if (disabled) btn.classList.add("cooldown");
+      btn.classList.toggle("cooldown", disabled);
+      btn.classList.toggle("busy", cooldown > 0);
+      btn.setAttribute("aria-disabled", disabled ? "true" : "false");
 
       btn.addEventListener("click", () => {
         if (this.game.gather(id)) this.render();
@@ -296,6 +314,7 @@ class UI {
         el.innerHTML = `
           <span class="btn-icon">🔒</span>
           <span class="btn-label">${recipe.name}</span>
+          ${recipe.description ? `<span class="btn-desc">${recipe.description}</span>` : ""}
           ${reqName ? `<span class="btn-cooldown">Требуется: ${reqName}</span>` : ""}
         `;
       } else {
@@ -304,7 +323,8 @@ class UI {
         btn.disabled = !canDo;
         if (!canDo) btn.classList.add("disabled");
 
-        const costStr = Object.entries(recipe.ingredients)
+        const effectiveCost = this.game._getDiscountedCost(recipe.ingredients);
+        const costStr = Object.entries(effectiveCost)
           .map(([rid, amount]) => `${this.data.resources[rid].icon}${amount}`)
           .join(" ");
         const outStr = Object.entries(recipe.output)
@@ -383,6 +403,7 @@ class UI {
         el.innerHTML = `
           <span class="building-icon">${building.icon}</span>
           <span class="building-name">${building.name}</span>
+          ${building.description ? `<span class="btn-desc">${building.description}</span>` : ""}
           ${extraInfo}
         `;
       } else {
@@ -476,7 +497,11 @@ class UI {
           </div>
         `;
       } else if (state === "waiting") {
-        stateDisplay = `<span class="automation-state-label state-waiting">⚠️ Ожидание — нет ${inputStr}</span>`;
+        const missing = this.game.getMissingResources(auto.input);
+        const missingStr = missing
+          .map(({ id, missing: amount }) => `${this.data.resources[id].icon}${amount}`)
+          .join(" ");
+        stateDisplay = `<span class="automation-state-label state-waiting">⚠️ Ожидание — не хватает ${missingStr || inputStr}</span>`;
         progressHtml = `<div class="automation-bar"><div class="automation-bar-fill" style="width:0%"></div></div>`;
       } else {
         stateDisplay = `<span class="automation-state-label state-idle">⏸ Неактивно</span>`;
@@ -485,6 +510,7 @@ class UI {
       el.innerHTML = `
         <span class="btn-icon">${building.icon}</span>
         <span class="btn-label">${building.name}</span>
+        ${auto.description ? `<span class="btn-desc">${auto.description}</span>` : ""}
         <span class="automation-flow">${inputStr} → ${outputStr}</span>
         ${stateDisplay}
         ${progressHtml}
@@ -523,6 +549,7 @@ class UI {
         el.innerHTML = `
           <span class="tech-icon">${tech.icon}</span>
           <span class="tech-name">${tech.name}</span>
+          ${tech.description ? `<span class="btn-desc">${tech.description}</span>` : ""}
           <span class="tech-status">✅ Изучено</span>
         `;
       } else if (!meetsReqs) {
@@ -531,6 +558,7 @@ class UI {
         el.innerHTML = `
           <span class="tech-icon">🔒</span>
           <span class="tech-name">${tech.name}</span>
+          ${tech.description ? `<span class="btn-desc">${tech.description}</span>` : ""}
           <span class="tech-req">Требуется: ${reqBuilding ? reqBuilding.icon + " " + reqBuilding.name : tech.requires}</span>
         `;
       } else {
