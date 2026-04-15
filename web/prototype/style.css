@@ -410,21 +410,21 @@ body {
 }
 
 .storage-summary {
-  margin-bottom: 0.55rem;
-  padding: 0.45rem 0.55rem;
+  margin-bottom: 0.45rem;
+  padding: 0.35rem 0.5rem;
   border-radius: 6px;
   border: 1px solid #2d3341;
   background: #141620;
   color: #bfc8da;
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   line-height: 1.35;
 }
 
 .storage-bar {
   position: relative;
   width: 100%;
-  height: 16px;
-  margin-bottom: 0.6rem;
+  height: 14px;
+  margin-bottom: 0.5rem;
   border-radius: 999px;
   overflow: hidden;
   background: #10141f;
@@ -475,11 +475,14 @@ body {
 .storage-groups {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.55rem;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 0.15rem;
 }
 
 .storage-category {
-  padding: 0.7rem;
+  padding: 0.5rem;
   border: 1px solid #262b37;
   border-radius: 8px;
   background: #141620;
@@ -487,27 +490,20 @@ body {
 
 .storage-category-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 0.55rem;
+  gap: 0.6rem;
+  margin-bottom: 0.4rem;
 }
 
 .storage-category-title {
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 700;
   color: #f3f4f6;
 }
 
-.storage-category-desc {
-  margin-top: 0.15rem;
-  font-size: 0.68rem;
-  line-height: 1.3;
-  color: #8b93a7;
-}
-
 .storage-category-meta {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   color: #9ca3af;
   text-align: right;
   white-space: nowrap;
@@ -516,7 +512,7 @@ body {
 .storage-resource-list {
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: 0.35rem;
 }
 
 .resource-item {
@@ -586,7 +582,7 @@ body {
 }
 
 .storage-resource-row {
-  padding: 0.6rem 0.65rem;
+  padding: 0.42rem 0.5rem;
   border: 1px solid #262b37;
   border-radius: 7px;
   background: #171a23;
@@ -615,31 +611,29 @@ body {
 
 .storage-resource-main {
   display: flex;
-  align-items: flex-start;
-  gap: 0.55rem;
+  align-items: center;
+  gap: 0.45rem;
 }
 
 .storage-resource-top {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: 0.6rem;
+  gap: 0.5rem;
 }
 
 .storage-resource-count {
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 700;
   color: #fbbf24;
   white-space: nowrap;
 }
 
-.storage-resource-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.2rem 0.55rem;
-  margin-top: 0.2rem;
-  font-size: 0.68rem;
-  color: #9ca3af;
+.storage-overflow-badge {
+  margin-top: 0.12rem;
+  font-size: 0.64rem;
+  line-height: 1.2;
+  color: #fca5a5;
 }
 
 .storage-resource-state {

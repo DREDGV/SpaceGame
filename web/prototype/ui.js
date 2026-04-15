@@ -335,8 +335,7 @@ class UI {
 
     const storageSummary = document.createElement("div");
     storageSummary.className = "storage-summary";
-    storageSummary.textContent =
-      `Занято: ${storageTotals.used} / ${storageTotals.capacity} • Свободно: ${storageTotals.free} • Лимит на ресурс: ${this.game.maxResourceCap}`;
+    storageSummary.textContent = `Занято: ${storageTotals.used} / ${storageTotals.capacity}`;
     this.setTooltip(storageSummary, [
       "Суммарная занятость склада по всем ресурсам",
       `Использовано: ${storageTotals.used} из ${storageTotals.capacity}`,
@@ -367,24 +366,22 @@ class UI {
       const overflowNotice = document.createElement("div");
       overflowNotice.className = "storage-warning is-full";
       const resource = this.data.resources[recentOverflow.id];
-      overflowNotice.textContent = `Потеря ресурсов: ${resource.icon} ${resource.name} не поместился в склад, потеряно ${recentOverflow.lost}.`;
+      overflowNotice.textContent = `Переполнение: ${resource.icon} ${resource.name} -${recentOverflow.lost}`;
       this.setTooltip(overflowNotice, [
         "Последнее переполнение склада",
         `${resource.name}: потеряно ${recentOverflow.lost}`,
         `Лимит по ресурсу: ${this.game.maxResourceCap}`,
       ]);
       container.appendChild(overflowNotice);
-    }
-
-    if (storageStatus.isFull || storageStatus.isNearFull) {
+    } else if (storageStatus.isFull || storageStatus.isNearFull) {
       const warning = document.createElement("div");
       warning.className = `storage-warning ${storageStatus.isFull ? "is-full" : "is-near"}`;
       const resourceName = storageStatus.highest.id
         ? this.data.resources[storageStatus.highest.id].name
         : "ресурсов";
       warning.textContent = storageStatus.isFull
-        ? `Склад заполнен: ${resourceName} упёрся в лимит и лишние единицы теряются.`
-        : `Склад почти полон: ${resourceName} близко к лимиту, пора тратить или расширять хранение.`;
+        ? `Лимит достигнут: ${resourceName}`
+        : `Склад почти полон: ${resourceName}`;
       this.setTooltip(warning, [
         "Склад ограничивает накопление каждого ресурса",
         `Текущий лимит: ${this.game.maxResourceCap}`,
@@ -395,13 +392,6 @@ class UI {
       container.appendChild(warning);
     }
 
-    if (bonus > 0) {
-      const note = document.createElement("p");
-      note.className = "hint";
-      note.textContent = `Ручной сбор усилен на +${bonus} за действие за счёт инструментов и исследований.`;
-      container.appendChild(note);
-    }
-
     const groups = document.createElement("div");
     groups.className = "storage-groups";
 
@@ -410,13 +400,16 @@ class UI {
       section.className = "storage-category";
       section.innerHTML = `
         <div class="storage-category-header">
-          <div>
-            <div class="storage-category-title">${group.label}</div>
-            ${group.description ? `<div class="storage-category-desc">${group.description}</div>` : ""}
-          </div>
-          <div class="storage-category-meta">${group.usedSpace} места • ${Math.round(group.contributionRatio * 100)}% склада</div>
+          <div class="storage-category-title">${group.label}</div>
+          <div class="storage-category-meta">${group.usedSpace} места</div>
         </div>
       `;
+      this.setTooltip(section, [
+        group.label,
+        group.description || "Категория ресурсов склада",
+        `Занято в категории: ${group.usedSpace}`,
+        `Доля общего склада: ${Math.round(group.contributionRatio * 100)}%`,
+      ]);
 
       const list = document.createElement("div");
       list.className = "storage-resource-list";
@@ -430,31 +423,17 @@ class UI {
         if (item.isFull) row.classList.add("is-full");
         if (item.overflow) row.classList.add("is-overflowed");
 
-        let stateLabel = `Занимает ${item.usedSpace} места • ${Math.round(item.contributionRatio * 100)}% склада`;
-        if (item.isFull) {
-          stateLabel = `Лимит достигнут: ${item.amount} / ${this.game.maxResourceCap}`;
-        }
-        if (item.overflow) {
-          stateLabel = `Переполнение: потеряно ${item.overflow.lost}`;
-        }
-
         row.innerHTML = `
           <div class="storage-resource-main">
             <span class="resource-icon" style="color:${item.def.color}">${item.def.icon}</span>
             <div class="resource-text">
               <div class="storage-resource-top">
                 <span class="resource-name">${item.def.name}</span>
-                <span class="storage-resource-count">${item.amount} / ${this.game.maxResourceCap}</span>
+                <span class="storage-resource-count">${item.amount}</span>
               </div>
-              ${item.def.description ? `<span class="resource-desc">${item.def.description}</span>` : ""}
-              <div class="storage-resource-meta">
-                <span>${item.usedSpace} места</span>
-                <span>${Math.round(item.contributionRatio * 100)}% склада</span>
-                <span>Размер: x${item.storageSize}</span>
-              </div>
+              ${item.overflow ? `<div class="storage-overflow-badge">Переполнение -${item.overflow.lost}</div>` : ""}
             </div>
           </div>
-          <div class="storage-resource-state">${stateLabel}</div>
           <div class="storage-resource-bar">
             <div class="storage-resource-bar-fill" style="width:${Math.round(item.fillRatio * 100)}%"></div>
           </div>
@@ -464,6 +443,7 @@ class UI {
           item.def.name,
           item.def.description || "Ресурс склада",
           `На складе: ${item.amount} / ${this.game.maxResourceCap}`,
+          `Размер ресурса: x${item.storageSize}`,
           `Занимает места: ${item.usedSpace}`,
           `Доля общего склада: ${Math.round(item.contributionRatio * 100)}%`,
           item.overflow
@@ -471,6 +451,7 @@ class UI {
             : item.isFull
               ? "Ресурс упёрся в лимит и лишнее не помещается"
               : "",
+          bonus > 0 ? `Бонус ручного сбора сейчас: +${bonus}` : "",
         ]);
 
         list.appendChild(row);
