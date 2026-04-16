@@ -51,6 +51,9 @@ class GameState {
     this.completedGoals = [];
     this.allGoalsComplete = false;
 
+    this.currentEra = this.data.eras.current;
+    this.eraProgress = { completedMilestones: new Set() };
+
     this.hasUnsavedChanges = false;
     this.loadedFromSave = false;
     this.loadErrorMessage = "";
@@ -130,7 +133,10 @@ class GameState {
       if (!building) continue;
 
       if (building.effect?.maxResourceCap) {
-        maxResourceCap = Math.max(maxResourceCap, building.effect.maxResourceCap);
+        maxResourceCap = Math.max(
+          maxResourceCap,
+          building.effect.maxResourceCap,
+        );
       }
 
       if (building.effect?.unlocks) {
@@ -149,6 +155,93 @@ class GameState {
     this.maxResourceCap = maxResourceCap;
     this.craftDiscount = craftDiscount;
     this._recalculateEnergyStats();
+    this._recalculateEraProgress();
+  }
+
+  _getEraData(eraId = this.currentEra) {
+    return this.data.eras[eraId];
+  }
+
+  _recalculateEraProgress() {
+    const eraData = this._getEraData();
+    if (!eraData) return;
+
+    this.eraProgress.completedMilestones.clear();
+
+    for (const milestone of eraData.milestones) {
+      if (milestone.check(this)) {
+        this.eraProgress.completedMilestones.add(milestone.id);
+      }
+    }
+
+    this.transitionToNextEra();
+  }
+
+  getEraProgress() {
+    const eraData = this._getEraData();
+    if (!eraData)
+      return { progress: 0, total: 0, completed: 0, milestones: [] };
+
+    const completed = this.eraProgress.completedMilestones.size;
+    const total = eraData.milestones.length;
+    return {
+      progress: total > 0 ? completed / total : 0,
+      total,
+      completed,
+      milestones: eraData.milestones.map((m) => ({
+        ...m,
+        completed: this.eraProgress.completedMilestones.has(m.id),
+      })),
+    };
+  }
+
+  transitionToNextEra() {
+    const eraData = this._getEraData();
+    if (!eraData || !eraData.nextEra) return false;
+
+    const progress = this.getEraProgress();
+    if (progress.progress < 1) return false;
+
+    this.currentEra = eraData.nextEra;
+    this.eraProgress.completedMilestones.clear();
+    this.addLog(
+      `🌟 Эпоха завершена! Добро пожаловать в ${this._getEraData().name}`,
+    );
+    this.markDirty();
+    return true;
+  }
+
+  toggleAutomation(buildingId) {
+    if (!this.buildings[buildingId]) return false;
+
+    const buildingData = this.buildings[buildingId];
+    buildingData.isAutomationRunning = !buildingData.isAutomationRunning;
+
+    const building = this.data.buildings[buildingId];
+    const auto = building?.effect?.automation;
+    if (auto) {
+      if (!buildingData.isAutomationRunning) {
+        // Stop automation
+        if (this.automation[auto.id]) {
+          this.automation[auto.id].state = AUTO_STATE.IDLE;
+        }
+        this.addLog(
+          `⏸️ Автоматизация остановлена: ${building.icon} ${building.name}`,
+        );
+      } else {
+        // Start automation
+        if (this.automation[auto.id]) {
+          this.automation[auto.id].state = AUTO_STATE.WAITING;
+        }
+        this.addLog(
+          `▶️ Автоматизация запущена: ${building.icon} ${building.name}`,
+        );
+      }
+    }
+
+    this.markDirty();
+    this.saveGame(true);
+    return true;
   }
 
   _serializeCooldowns() {
@@ -192,7 +285,9 @@ class GameState {
   _restoreCraftQueue(savedQueue) {
     this.craftQueue = [];
     const now = Date.now();
-    const normalizedQueue = Array.isArray(savedQueue) ? savedQueue.slice(0, this.maxCraftQueueSize) : [];
+    const normalizedQueue = Array.isArray(savedQueue)
+      ? savedQueue.slice(0, this.maxCraftQueueSize)
+      : [];
 
     normalizedQueue.forEach((job, index) => {
       const recipe = this.data.recipes[job.recipeId];
@@ -277,6 +372,10 @@ class GameState {
         currentGoalIndex: this.currentGoalIndex,
         completedGoals: [...this.completedGoals],
         allGoalsComplete: this.allGoalsComplete,
+        currentEra: this.currentEra,
+        eraProgress: {
+          completedMilestones: Array.from(this.eraProgress.completedMilestones),
+        },
         craftQueue: this._serializeCraftQueue(),
         automation: this._serializeAutomation(),
         cooldowns: this._serializeCooldowns(),
@@ -288,17 +387,37 @@ class GameState {
   _applySaveState(state) {
     this._cloneMapFromSource(this.resources, state.resources);
     this._cloneMapFromSource(this.resourceTotals, state.resourceTotals);
-    this._cloneMapFromSource(this.automationProduction, state.automationProduction);
+    this._cloneMapFromSource(
+      this.automationProduction,
+      state.automationProduction,
+    );
 
-    this.buildings = typeof state.buildings === "object" && state.buildings
-      ? { ...state.buildings }
-      : {};
-    this.researched = typeof state.researched === "object" && state.researched
-      ? { ...state.researched }
-      : {};
-    this.unlockedRecipes = new Set(Array.isArray(state.unlockedRecipes) ? state.unlockedRecipes : []);
+    this.buildings =
+      typeof state.buildings === "object" && state.buildings
+        ? { ...state.buildings }
+        : {};
 
-    this.totalResourcesCollected = Number.isFinite(state.totalResourcesCollected)
+    // Migrate old format (number) to new (object)
+    for (const [id, data] of Object.entries(this.buildings)) {
+      if (typeof data === "number") {
+        this.buildings[id] = { count: data, isAutomationRunning: true };
+      } else if (typeof data === "object" && data !== null) {
+        if (data.isAutomationRunning === undefined)
+          data.isAutomationRunning = true;
+      }
+    }
+
+    this.researched =
+      typeof state.researched === "object" && state.researched
+        ? { ...state.researched }
+        : {};
+    this.unlockedRecipes = new Set(
+      Array.isArray(state.unlockedRecipes) ? state.unlockedRecipes : [],
+    );
+
+    this.totalResourcesCollected = Number.isFinite(
+      state.totalResourcesCollected,
+    )
       ? state.totalResourcesCollected
       : 0;
 
@@ -307,11 +426,27 @@ class GameState {
       ? Math.max(0, Math.min(this.data.goals.length, state.currentGoalIndex))
       : 0;
     this.completedGoals = Array.isArray(state.completedGoals)
-      ? state.completedGoals.filter((id) => this.data.goals.some((goal) => goal.id === id))
+      ? state.completedGoals.filter((id) =>
+          this.data.goals.some((goal) => goal.id === id),
+        )
       : [];
     this.allGoalsComplete = !!state.allGoalsComplete;
 
-    this.log = Array.isArray(state.log) ? state.log.slice(0, MAX_SAVED_LOGS) : [];
+    this.currentEra =
+      typeof state.currentEra === "string"
+        ? state.currentEra
+        : this.data.eras.current;
+    this.eraProgress = {
+      completedMilestones: new Set(
+        Array.isArray(state.eraProgress?.completedMilestones)
+          ? state.eraProgress.completedMilestones
+          : [],
+      ),
+    };
+
+    this.log = Array.isArray(state.log)
+      ? state.log.slice(0, MAX_SAVED_LOGS)
+      : [];
 
     this._recalculateDerivedState();
 
@@ -319,9 +454,13 @@ class GameState {
       ? Math.max(0, Math.min(this.maxEnergy, state.energy))
       : this.maxEnergy;
     const regenRemainingMs = Number.isFinite(state.energyRegenRemainingMs)
-      ? Math.max(0, Math.min(this.energyRegenInterval, state.energyRegenRemainingMs))
+      ? Math.max(
+          0,
+          Math.min(this.energyRegenInterval, state.energyRegenRemainingMs),
+        )
       : this.energyRegenInterval;
-    this.lastEnergyRegen = Date.now() - (this.energyRegenInterval - regenRemainingMs);
+    this.lastEnergyRegen =
+      Date.now() - (this.energyRegenInterval - regenRemainingMs);
 
     this._restoreCraftQueue(state.craftQueue);
     this._restoreAutomation(state.automation);
@@ -360,8 +499,7 @@ class GameState {
       };
       return true;
     } catch (error) {
-      this.loadErrorMessage =
-        "⚠️ Сохранение повреждено. Запущена новая игра.";
+      this.loadErrorMessage = "⚠️ Сохранение повреждено. Запущена новая игра.";
       this.onboarding = this._loadLegacyOnboarding();
       this._clearSaveStorage();
       return false;
@@ -517,7 +655,10 @@ class GameState {
     if (!Object.prototype.hasOwnProperty.call(this.resources, id)) return 0;
 
     const before = this.resources[id];
-    this.resources[id] = Math.min(this.resources[id] + amount, this.maxResourceCap);
+    this.resources[id] = Math.min(
+      this.resources[id] + amount,
+      this.maxResourceCap,
+    );
     const added = this.resources[id] - before;
     this.totalResourcesCollected += added;
     this.resourceTotals[id] += added;
@@ -568,7 +709,10 @@ class GameState {
     if (now - this.lastEnergyRegen < this.energyRegenInterval) return;
 
     const before = this.energy;
-    this.energy = Math.min(this.energy + this.energyRegenPerTick, this.maxEnergy);
+    this.energy = Math.min(
+      this.energy + this.energyRegenPerTick,
+      this.maxEnergy,
+    );
     this.lastEnergyRegen = now;
 
     if (this.energy !== before) {
@@ -633,7 +777,8 @@ class GameState {
     const action = this.data.gatherActions[actionId];
     if (!action) return false;
     if (action.unlockedBy && !this.researched[action.unlockedBy]) return false;
-    if (this.cooldowns[actionId] && Date.now() < this.cooldowns[actionId]) return false;
+    if (this.cooldowns[actionId] && Date.now() < this.cooldowns[actionId])
+      return false;
     if (!this.hasEnergy(action.energyCost)) return false;
     return true;
   }
@@ -759,9 +904,10 @@ class GameState {
   getCraftQueueState() {
     const items = this.craftQueue.map((job, index) => {
       const elapsed = job.startedAt ? Date.now() - job.startedAt : 0;
-      const progress = index === 0 && job.startedAt
-        ? Math.min(1, elapsed / job.durationMs)
-        : 0;
+      const progress =
+        index === 0 && job.startedAt
+          ? Math.min(1, elapsed / job.durationMs)
+          : 0;
       const recipe = this.data.recipes[job.recipeId];
 
       return {
@@ -792,7 +938,8 @@ class GameState {
   canBuild(buildingId) {
     const building = this.data.buildings[buildingId];
     if (!building) return false;
-    if (building.unlockedBy && !this.researched[building.unlockedBy]) return false;
+    if (building.unlockedBy && !this.researched[building.unlockedBy])
+      return false;
     if (building.requires && !this.buildings[building.requires]) return false;
     if (this.buildings[buildingId]) return false;
     return this.hasResources(building.cost);
@@ -804,7 +951,7 @@ class GameState {
     const building = this.data.buildings[buildingId];
     if (!this.spendResources(building.cost)) return false;
 
-    this.buildings[buildingId] = 1;
+    this.buildings[buildingId] = { count: 1, isAutomationRunning: true };
     if (building.effect?.automation) {
       this.automation[building.effect.automation.id] = {
         lastRun: 0,
@@ -825,6 +972,9 @@ class GameState {
     const now = Date.now();
 
     for (const [buildingId] of Object.entries(this.buildings)) {
+      const buildingData = this.buildings[buildingId];
+      if (!buildingData.isAutomationRunning) continue;
+
       const building = this.data.buildings[buildingId];
       const auto = building?.effect?.automation;
       if (!auto) continue;
@@ -948,12 +1098,16 @@ class GameState {
     if (!resource) return null;
 
     const amount = this.resources[resourceId] || 0;
-    const storageSize = Number.isFinite(resource.storageSize) ? resource.storageSize : 1;
+    const storageSize = Number.isFinite(resource.storageSize)
+      ? resource.storageSize
+      : 1;
     const usedSpace = amount * storageSize;
     const itemCapacity = this.maxResourceCap * storageSize;
     const totals = this.getStorageTotals();
-    const contributionRatio = totals.capacity > 0 ? usedSpace / totals.capacity : 0;
-    const fillRatio = this.maxResourceCap > 0 ? amount / this.maxResourceCap : 0;
+    const contributionRatio =
+      totals.capacity > 0 ? usedSpace / totals.capacity : 0;
+    const fillRatio =
+      this.maxResourceCap > 0 ? amount / this.maxResourceCap : 0;
     const overflow = this.getRecentOverflow(resourceId);
 
     return {
@@ -975,12 +1129,16 @@ class GameState {
   getStorageTotals() {
     const resourceEntries = Object.entries(this.data.resources);
     const used = resourceEntries.reduce((sum, [id, def]) => {
-      const storageSize = Number.isFinite(def.storageSize) ? def.storageSize : 1;
+      const storageSize = Number.isFinite(def.storageSize)
+        ? def.storageSize
+        : 1;
       return sum + (this.resources[id] || 0) * storageSize;
     }, 0);
     const resourceTypes = resourceEntries.length;
     const capacity = resourceEntries.reduce((sum, [, def]) => {
-      const storageSize = Number.isFinite(def.storageSize) ? def.storageSize : 1;
+      const storageSize = Number.isFinite(def.storageSize)
+        ? def.storageSize
+        : 1;
       return sum + this.maxResourceCap * storageSize;
     }, 0);
     const free = Math.max(0, capacity - used);
@@ -1039,7 +1197,8 @@ class GameState {
       .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label, "ru"))
       .map((category) => ({
         ...category,
-        contributionRatio: totals.capacity > 0 ? category.usedSpace / totals.capacity : 0,
+        contributionRatio:
+          totals.capacity > 0 ? category.usedSpace / totals.capacity : 0,
       }));
   }
 
@@ -1049,7 +1208,10 @@ class GameState {
 
     const cycleSeconds = auto.intervalMs / 1000;
     const outputPerSecond = Object.fromEntries(
-      Object.entries(auto.output).map(([id, amount]) => [id, amount / cycleSeconds]),
+      Object.entries(auto.output).map(([id, amount]) => [
+        id,
+        amount / cycleSeconds,
+      ]),
     );
 
     return {
@@ -1096,7 +1258,10 @@ class GameState {
       changed = true;
     }
 
-    if (this.currentGoalIndex >= this.data.goals.length && !this.allGoalsComplete) {
+    if (
+      this.currentGoalIndex >= this.data.goals.length &&
+      !this.allGoalsComplete
+    ) {
       this.allGoalsComplete = true;
       this.addLog("🏆 Все цели выполнены!");
       changed = true;

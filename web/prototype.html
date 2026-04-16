@@ -14,14 +14,11 @@
             <h1>🌌 Примитивная эпоха</h1>
             <span id="version-badge" class="version-badge">v0.4 — Onboarding</span>
           </div>
+          <section id="energy-panel" class="panel panel-energy panel-compact"></section>
           <div class="header-actions">
-            <span id="save-status" class="save-status">Новая игра</span>
+            <span id="save-status" class="save-status">Начать заново</span>
             <button id="reset-progress-btn" class="header-reset-btn" type="button">Новая игра</button>
           </div>
-        </div>
-        <div class="header-status">
-          <section id="energy-panel" class="panel panel-energy panel-compact"></section>
-          <div id="progress-panel" class="panel panel-progress panel-compact"></div>
         </div>
       </header>
 
@@ -31,23 +28,33 @@
       <!-- Onboarding step-by-step -->
       <div id="onboarding-step-panel" class="panel panel-onboarding-step" style="display:none"></div>
 
-      <main id="game-main">
-        <section id="goals-panel" class="panel panel-goals" style="display:none"></section>
+      <div id="game-layout">
+        <!-- Left sidebar: always-visible info -->
+        <aside id="game-sidebar">
+          <section id="resources-panel" class="panel"></section>
+          <div id="era-progress-panel" class="panel panel-era-progress"></div>
+          <div id="progress-panel" class="panel panel-progress"></div>
+        </aside>
 
-        <section id="resources-panel" class="panel"></section>
+        <!-- Main content: actions -->
+        <main id="game-main">
+          <section id="goals-panel" class="panel panel-goals" style="display:none"></section>
 
-        <section id="gather-panel" class="panel"></section>
+          <div class="panel-row">
+            <section id="gather-panel" class="panel"></section>
+            <section id="craft-panel" class="panel"></section>
+          </div>
 
-        <section id="craft-panel" class="panel"></section>
+          <div class="panel-row">
+            <section id="buildings-panel" class="panel"></section>
+            <section id="automation-panel" class="panel"></section>
+          </div>
 
-        <section id="buildings-panel" class="panel"></section>
+          <section id="research-panel" class="panel"></section>
 
-        <section id="automation-panel" class="panel"></section>
-
-        <section id="research-panel" class="panel"></section>
-
-        <section id="log-panel" class="panel"></section>
-      </main>
+          <section id="log-panel" class="panel"></section>
+        </main>
+      </div>
     </div>
 
     <!-- Data & Logic -->

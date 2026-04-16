@@ -85,7 +85,9 @@ class UI {
 
     const craftHovered = !!document.querySelector("#craft-panel:hover");
     const buildingsHovered = !!document.querySelector("#buildings-panel:hover");
-    const automationHovered = !!document.querySelector("#automation-panel:hover");
+    const automationHovered = !!document.querySelector(
+      "#automation-panel:hover",
+    );
     const researchHovered = !!document.querySelector("#research-panel:hover");
 
     if (this.game.shouldShowOnboardingIntro()) {
@@ -110,6 +112,7 @@ class UI {
     if (!researchHovered) this.renderResearch();
     this.renderLog();
     this.renderProgress();
+    this.renderEraProgress();
     this.renderSaveStatus();
   }
 
@@ -321,7 +324,9 @@ class UI {
       used: storageTotals.used,
       free: storageTotals.free,
       totalCap: storageTotals.capacity,
-      overflow: recentOverflow ? `${recentOverflow.id}:${recentOverflow.lost}` : null,
+      overflow: recentOverflow
+        ? `${recentOverflow.id}:${recentOverflow.lost}`
+        : null,
     });
     if (renderKey === this.lastResourcesRenderKey) {
       return;
@@ -536,11 +541,15 @@ class UI {
             : "Ожидает";
 
           return `
-            <div class="craft-queue-slot ${item.isActive ? "is-active" : "is-waiting"} has-tooltip" data-tooltip="${this.formatTooltipText([
-              item.name,
-              item.isActive ? "Статус: выполняется сейчас" : "Статус: ожидает в очереди",
-              `Осталось: ${this.formatSeconds(item.remainingMs)}`,
-            ])}">
+            <div class="craft-queue-slot ${item.isActive ? "is-active" : "is-waiting"} has-tooltip" data-tooltip="${this.formatTooltipText(
+              [
+                item.name,
+                item.isActive
+                  ? "Статус: выполняется сейчас"
+                  : "Статус: ожидает в очереди",
+                `Осталось: ${this.formatSeconds(item.remainingMs)}`,
+              ],
+            )}">
               <div class="craft-queue-slot-top">
                 <span class="craft-queue-icon">${item.icon}</span>
                 <span class="craft-queue-name">${item.name}</span>
@@ -563,7 +572,8 @@ class UI {
 
     for (const [id, recipe] of Object.entries(this.data.recipes)) {
       const unlocked = this.game.unlockedRecipes.has(id);
-      const meetsReqs = !recipe.requires || this.game.buildings[recipe.requires];
+      const meetsReqs =
+        !recipe.requires || this.game.buildings[recipe.requires];
       const canQueue = this.game.canQueueCraft(id);
       const effectiveCost = this.game._getDiscountedCost(recipe.ingredients);
 
@@ -635,8 +645,10 @@ class UI {
     for (const [id, building] of Object.entries(this.data.buildings)) {
       const alreadyBuilt = this.game.buildings[id];
       const canDo = this.game.canBuild(id);
-      const unlockedByTech = !building.unlockedBy || this.game.researched[building.unlockedBy];
-      const requiredBuildingReady = !building.requires || this.game.buildings[building.requires];
+      const unlockedByTech =
+        !building.unlockedBy || this.game.researched[building.unlockedBy];
+      const requiredBuildingReady =
+        !building.requires || this.game.buildings[building.requires];
 
       const el = document.createElement("div");
       el.className = "building-card";
@@ -645,7 +657,9 @@ class UI {
       if (building.effect.automation) {
         const auto = building.effect.automation;
         const efficiency = this.game.getAutomationEfficiency(auto.id);
-        const cycleOutput = this.formatResourcePairs(auto.output, { plus: true });
+        const cycleOutput = this.formatResourcePairs(auto.output, {
+          plus: true,
+        });
         const perSecond = efficiency
           ? this.formatResourcePairs(efficiency.outputPerSecond, {
               plus: false,
@@ -669,7 +683,9 @@ class UI {
           const state = this.game.getAutomationState(autoId);
           const remaining = this.game.getAutomationRemaining(autoId);
           const inputStr = this.formatResourcePairs(auto.input);
-          const outputStr = this.formatResourcePairs(auto.output, { plus: true });
+          const outputStr = this.formatResourcePairs(auto.output, {
+            plus: true,
+          });
           const efficiency = this.game.getAutomationEfficiency(autoId);
           const perSecond = efficiency
             ? this.formatResourcePairs(efficiency.outputPerSecond, {
@@ -785,9 +801,13 @@ class UI {
       if (!building || !building.effect.automation) continue;
 
       anyActive = true;
+      const buildingData = this.game.buildings[buildingId];
       const auto = building.effect.automation;
       const autoId = auto.id;
-      const state = this.game.getAutomationState(autoId);
+      let state = this.game.getAutomationState(autoId);
+      if (!buildingData.isAutomationRunning) {
+        state = "idle";
+      }
       const progress = this.game.getAutomationProgress(autoId);
       const remaining = this.game.getAutomationRemaining(autoId);
       const efficiency = this.game.getAutomationEfficiency(autoId);
@@ -816,13 +836,27 @@ class UI {
       } else if (state === "waiting") {
         const missing = this.game.getMissingResources(auto.input);
         const missingStr = missing
-          .map(({ id, missing: amount }) => `${this.data.resources[id].icon}${amount}`)
+          .map(
+            ({ id, missing: amount }) =>
+              `${this.data.resources[id].icon}${amount}`,
+          )
           .join(" ");
         stateDisplay = `<span class="automation-state-label state-waiting">⚠️ Ожидание — не хватает ${missingStr || inputStr}</span>`;
         progressHtml = `<div class="automation-bar"><div class="automation-bar-fill" style="width:0%"></div></div>`;
       } else {
-        stateDisplay = `<span class="automation-state-label state-idle">⏸ Неактивно</span>`;
+        stateDisplay = `<span class="automation-state-label state-idle">⏸ Остановлено</span>`;
       }
+
+      const toggleBtn = document.createElement("button");
+      toggleBtn.className = "automation-toggle-btn";
+      toggleBtn.textContent = buildingData.isAutomationRunning
+        ? "⏸ Остановить"
+        : "▶️ Запустить";
+      toggleBtn.addEventListener("click", () => {
+        if (this.game.toggleAutomation(buildingId)) {
+          this.render();
+        }
+      });
 
       el.innerHTML = `
         <span class="btn-icon">${building.icon}</span>
@@ -833,13 +867,17 @@ class UI {
         ${stateDisplay}
         ${progressHtml}
       `;
+      el.appendChild(toggleBtn);
+
       this.setTooltip(el, [
         `${building.name}: автоматизация`,
         state === "running"
           ? "Статус: работает и выпускает ресурс по циклу"
           : state === "waiting"
             ? "Статус: ожидание, пока не хватает входных ресурсов"
-            : "Статус: неактивно, цикл ещё не запущен",
+            : buildingData.isAutomationRunning
+              ? "Статус: остановлено вручную"
+              : "Статус: неактивно, цикл ещё не запущен",
         "Автоматизация снижает ручную нагрузку и поддерживает цепочку",
       ]);
 
@@ -849,7 +887,8 @@ class UI {
     if (!anyActive) {
       const hint = document.createElement("p");
       hint.className = "hint";
-      hint.textContent = "Постройте здание с автоматическим циклом, чтобы часть прогресса шла без ручных кликов.";
+      hint.textContent =
+        "Постройте здание с автоматическим циклом, чтобы часть прогресса шла без ручных кликов.";
       container.appendChild(hint);
     }
   }
@@ -968,6 +1007,41 @@ class UI {
       <div class="progress-stat">Ресурсов получено: <strong>${summary.resourcesOwned}</strong></div>
       <div class="progress-stat">Зданий построено: <strong>${summary.buildingsBuilt}</strong></div>
       <div class="progress-stat">Технологий изучено: <strong>${summary.techResearched}</strong></div>
+    `;
+  }
+
+  renderEraProgress() {
+    const container = document.getElementById("era-progress-panel");
+    if (!container) return;
+
+    const progress = this.game.getEraProgress();
+    const eraData = this.game._getEraData();
+
+    if (!eraData) {
+      container.innerHTML = "";
+      return;
+    }
+
+    const progressPercent = Math.round(progress.progress * 100);
+    const completedText = `${progress.completed}/${progress.total}`;
+
+    let milestonesHtml = "";
+    for (const milestone of progress.milestones) {
+      const statusIcon = milestone.completed ? "✅" : "⏳";
+      const statusClass = milestone.completed ? "completed" : "pending";
+      milestonesHtml += `<div class="era-milestone ${statusClass}">${statusIcon} ${milestone.text}</div>`;
+    }
+
+    container.innerHTML = `
+      <h3>🌟 ${eraData.name}</h3>
+      <div class="era-description">${eraData.description}</div>
+      <div class="era-progress-bar">
+        <div class="era-progress-fill" style="width: ${progressPercent}%"></div>
+        <span class="era-progress-text">${progressPercent}% (${completedText})</span>
+      </div>
+      <div class="era-milestones">
+        ${milestonesHtml}
+      </div>
     `;
   }
 

@@ -93,7 +93,7 @@ const GAME_DATA = {
           : 0,
       check: (game) =>
         !!game.buildings.workshop &&
-        (((game.resourceTotals.improved_tools || 0) >= 1) ||
+        ((game.resourceTotals.improved_tools || 0) >= 1 ||
           (game.resourceTotals.workshop_parts || 0) >= 2),
       description:
         "Цепочка должна работать как система: дерево в доски, доски и детали в мастерскую, мастерская в ускорение.",
@@ -106,10 +106,7 @@ const GAME_DATA = {
       text: "Автоматизируйте производство кирпича",
       target: 1,
       progress: (game) =>
-        game.buildings.campfire &&
-        game.automationProduction.brick >= 1
-          ? 1
-          : 0,
+        game.buildings.campfire && game.automationProduction.brick >= 1 ? 1 : 0,
       check: (game) =>
         !!game.buildings.campfire && game.automationProduction.brick >= 1,
       description:
@@ -143,19 +140,22 @@ const GAME_DATA = {
     materials: {
       id: "materials",
       label: "Материалы",
-      description: "Обработанные ресурсы для зданий и производственных рецептов.",
+      description:
+        "Обработанные ресурсы для зданий и производственных рецептов.",
       order: 2,
     },
     components: {
       id: "components",
       label: "Компоненты",
-      description: "Промежуточные детали для более сложных производственных узлов.",
+      description:
+        "Промежуточные детали для более сложных производственных узлов.",
       order: 3,
     },
     tools: {
       id: "tools",
       label: "Инструменты",
-      description: "Оснастка, которая ускоряет ручной труд и усиливает экономику.",
+      description:
+        "Оснастка, которая ускоряет ручной труд и усиливает экономику.",
       order: 4,
     },
   },
@@ -230,7 +230,8 @@ const GAME_DATA = {
       name: "Простые инструменты",
       icon: "🔧",
       color: "#696969",
-      description: "Повышают ручной сбор и открывают первые производственные развилки.",
+      description:
+        "Повышают ручной сбор и открывают первые производственные развилки.",
       storageCategory: "tools",
       storageSize: 1,
     },
@@ -254,9 +255,53 @@ const GAME_DATA = {
       name: "Кирпичи",
       icon: "🧱",
       color: "#CD5C5C",
-      description: "Материал для прогрессивных построек и дальнейшего развития.",
+      description:
+        "Материал для прогрессивных построек и дальнейшего развития.",
       storageCategory: "materials",
       storageSize: 1,
+    },
+  },
+
+  // ─── Eras ───
+  eras: {
+    current: "primitive",
+    primitive: {
+      name: "Примитивная эпоха",
+      description: "Ручной труд и первые открытия",
+      milestones: [
+        {
+          id: "create_crude_tools",
+          text: "Создать простые инструменты",
+          check: (game) => (game.resources.crude_tools || 0) >= 1,
+        },
+        {
+          id: "build_campfire",
+          text: "Построить костёр",
+          check: (game) => !!game.buildings.campfire,
+        },
+        {
+          id: "start_automation",
+          text: "Запустить автоматизацию",
+          check: (game) => (game.resources.brick || 0) >= 1,
+        },
+        {
+          id: "build_workshop",
+          text: "Построить мастерскую",
+          check: (game) => !!game.buildings.workshop,
+        },
+        {
+          id: "build_kiln",
+          text: "Построить печь для обжига",
+          check: (game) => !!game.buildings.kiln,
+        },
+      ],
+      nextEra: "early_production",
+    },
+    early_production: {
+      name: "Раннее производство",
+      description: "Переход к системному производству",
+      milestones: [],
+      nextEra: null,
     },
   },
 
@@ -307,7 +352,8 @@ const GAME_DATA = {
       energyCost: 1,
       cooldown: 800,
       unlockedBy: null,
-      description: "Полезно для улучшений и построек, где нужен связующий материал.",
+      description:
+        "Полезно для улучшений и построек, где нужен связующий материал.",
     },
   },
 
@@ -355,7 +401,8 @@ const GAME_DATA = {
       craftTimeMs: 7000,
       requires: "workshop",
       unlockedBy: null,
-      description: "Доски + Волокно + Простой инструмент → Улучшенные инструменты",
+      description:
+        "Доски + Волокно + Простой инструмент → Улучшенные инструменты",
     },
     craft_brick: {
       id: "craft_brick",
