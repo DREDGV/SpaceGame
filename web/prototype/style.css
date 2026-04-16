@@ -113,13 +113,17 @@ body {
 .save-status {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   min-height: 30px;
+  min-width: 160px;
   padding: 0.2rem 0.65rem;
   background: #141620;
   border: 1px solid #2a2d37;
   border-radius: 999px;
   font-size: 0.72rem;
   color: #9ca3af;
+  text-align: center;
+  transition: color 0.3s, border-color 0.3s;
 }
 
 .save-status.is-saved {
@@ -130,6 +134,10 @@ body {
 .save-status.is-error {
   border-color: rgba(239, 68, 68, 0.35);
   color: #fca5a5;
+}
+
+.save-status:hover {
+  border-color: #4a4d57;
 }
 
 .header-reset-btn {

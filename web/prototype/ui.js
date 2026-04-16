@@ -46,6 +46,20 @@ class UI {
       });
     }
 
+    const saveStatusEl = document.getElementById("save-status");
+    if (saveStatusEl) {
+      const intervals = [15000, 30000, 60000];
+      saveStatusEl.style.cursor = "pointer";
+      saveStatusEl.title = "Нажмите для смены интервала автосохранения";
+      saveStatusEl.addEventListener("click", () => {
+        const current = this.game.saveIntervalMs;
+        const idx = intervals.indexOf(current);
+        const next = intervals[(idx + 1) % intervals.length];
+        this.game.setSaveInterval(next);
+        this.renderSaveStatus();
+      });
+    }
+
     this.bindChangelogModal();
   }
 
@@ -1038,7 +1052,10 @@ class UI {
     const goal = this.game.getCurrentGoal();
     const goalProgress = this.game.getGoalProgress();
 
-    if (this.game.isOnboardingActive() || this.game.shouldShowOnboardingIntro()) {
+    if (
+      this.game.isOnboardingActive() ||
+      this.game.shouldShowOnboardingIntro()
+    ) {
       // During onboarding, don't show goal block
       goalHtml = "";
     } else if (!goal) {

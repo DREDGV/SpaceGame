@@ -19,7 +19,6 @@
   const UI_TICK = 200; // UI refresh every 200ms
   const AUTO_TICK = 500; // Automation check every 500ms
   const CRAFT_TICK = 200; // Craft queue check every 200ms
-  const SAVE_TICK = 5000; // Periodic autosave
   let lastUiTick = 0;
   let lastAutoTick = 0;
   let lastCraftTick = 0;
@@ -40,7 +39,7 @@
       lastCraftTick = timestamp;
     }
 
-    if (timestamp - lastSaveTick >= SAVE_TICK) {
+    if (timestamp - lastSaveTick >= game.saveIntervalMs) {
       game.autoSaveIfNeeded();
       lastSaveTick = timestamp;
     }

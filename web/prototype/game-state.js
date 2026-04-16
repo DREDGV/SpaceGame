@@ -10,6 +10,7 @@ const AUTO_STATE = {
 };
 
 const GAME_SAVE_KEY = "spacegame_save_v1";
+const GAME_SETTINGS_KEY = "spacegame_settings";
 const LEGACY_ONBOARDING_KEY = "spacegame_onboarding_v1";
 const SAVE_VERSION = 1;
 const MAX_SAVED_LOGS = 15;
@@ -63,6 +64,8 @@ class GameState {
       savedAt: 0,
       errorMessage: "",
     };
+    this.saveIntervalMs = 15000;
+    this._loadSettings();
 
     for (const id of Object.keys(data.resources)) {
       this.resources[id] = 0;
@@ -519,6 +522,42 @@ class GameState {
     this.hasUnsavedChanges = true;
   }
 
+  // --- Settings (stored separately from save data) ---
+
+  _loadSettings() {
+    try {
+      const raw = localStorage.getItem(GAME_SETTINGS_KEY);
+      if (!raw) return;
+      const settings = JSON.parse(raw);
+      if (Number.isFinite(settings.saveIntervalMs) && settings.saveIntervalMs >= 5000) {
+        this.saveIntervalMs = settings.saveIntervalMs;
+      }
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  _saveSettings() {
+    try {
+      localStorage.setItem(GAME_SETTINGS_KEY, JSON.stringify({
+        saveIntervalMs: this.saveIntervalMs,
+      }));
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  setSaveInterval(ms) {
+    const clamped = Math.max(5000, Math.min(60000, Math.round(ms)));
+    this.saveIntervalMs = clamped;
+    this._saveSettings();
+    return clamped;
+  }
+
+  getSaveIntervalSec() {
+    return Math.round(this.saveIntervalMs / 1000);
+  }
+
   saveGame(force = false) {
     if (this.isResettingProgress) return false;
     if (!force && !this.hasUnsavedChanges) return false;
@@ -570,12 +609,13 @@ class GameState {
       if (ageMs < 2000) {
         return {
           state: "saved",
-          text: "Прогресс сохранён",
+          text: "✓ Сохранено",
         };
       }
+      const sec = this.getSaveIntervalSec();
       return {
         state: "idle",
-        text: "Автосохранение включено",
+        text: `Автосохр. каждые ${sec}с`,
       };
     }
 
