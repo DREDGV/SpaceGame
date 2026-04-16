@@ -17,7 +17,15 @@
           <section id="energy-panel" class="panel panel-energy panel-compact"></section>
           <div class="header-actions">
             <button id="changelog-btn" class="header-changelog-btn" type="button" title="История изменений">📋 v0.1.13</button>
-            <button id="save-status" class="save-status" type="button" title="Нажмите для смены интервала автосохранения">Новая игра</button>
+            <div class="save-status-wrap">
+              <button id="save-status" class="save-status" type="button" title="Нажмите для смены интервала автосохранения">Новая игра</button>
+              <div id="save-interval-popup" class="save-interval-popup" hidden>
+                <label class="save-interval-label">Каждые
+                  <input id="save-interval-input" class="save-interval-input" type="number" min="5" max="120" step="5" value="15" />
+                  сек
+                </label>
+              </div>
+            </div>
             <button id="restart-onboarding-btn" class="header-service-btn" type="button" title="Начать обучение заново">📖</button>
             <button id="reset-progress-btn" class="header-reset-btn" type="button">Новая игра</button>
           </div>

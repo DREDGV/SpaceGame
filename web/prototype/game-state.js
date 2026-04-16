@@ -215,6 +215,7 @@ class GameState {
       `🌟 Эпоха завершена! Добро пожаловать в ${this._getEraData().name}`,
     );
     this.markDirty();
+    this.saveGame(true);
     return true;
   }
 

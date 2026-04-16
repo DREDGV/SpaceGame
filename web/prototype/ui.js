@@ -47,14 +47,42 @@ class UI {
     }
 
     const saveStatusEl = document.getElementById("save-status");
-    if (saveStatusEl) {
-      const intervals = [15000, 30000, 60000];
-      saveStatusEl.addEventListener("click", () => {
-        const current = this.game.saveIntervalMs;
-        const idx = intervals.indexOf(current);
-        const next = intervals[(idx + 1) % intervals.length];
-        this.game.setSaveInterval(next);
-        this.renderSaveStatus();
+    const savePopup = document.getElementById("save-interval-popup");
+    const saveInput = document.getElementById("save-interval-input");
+
+    if (saveStatusEl && savePopup && saveInput) {
+      const openPopup = () => {
+        saveInput.value = this.game.getSaveIntervalSec();
+        savePopup.hidden = false;
+        saveInput.focus();
+        saveInput.select();
+      };
+
+      const closePopup = () => {
+        savePopup.hidden = true;
+      };
+
+      const applyInterval = () => {
+        const sec = parseInt(saveInput.value, 10);
+        if (Number.isFinite(sec)) {
+          this.game.setSaveInterval(sec * 1000);
+          this.renderSaveStatus();
+        }
+        closePopup();
+      };
+
+      saveStatusEl.addEventListener("click", openPopup);
+
+      saveInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); applyInterval(); }
+        if (e.key === "Escape") { e.preventDefault(); closePopup(); }
+      });
+
+      // Apply on blur only if focus left the popup entirely
+      saveInput.addEventListener("blur", (e) => {
+        if (!savePopup.contains(e.relatedTarget)) {
+          applyInterval();
+        }
       });
     }
 

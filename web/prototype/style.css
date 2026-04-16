@@ -160,6 +160,50 @@ body {
   outline-offset: 2px;
 }
 
+/* Save interval popup */
+.save-status-wrap {
+  position: relative;
+}
+
+.save-interval-popup {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 100;
+  background: #1c1f2b;
+  border: 1px solid #3a3d47;
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  white-space: nowrap;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.save-interval-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  color: #9ca3af;
+}
+
+.save-interval-input {
+  width: 48px;
+  padding: 0.2rem 0.3rem;
+  background: #0f1117;
+  border: 1px solid #4a4d57;
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-size: 0.72rem;
+  font-family: inherit;
+  text-align: center;
+}
+
+.save-interval-input:focus {
+  outline: 2px solid #a78bfa;
+  outline-offset: 1px;
+  border-color: #a78bfa;
+}
+
 .header-reset-btn {
   min-height: 30px;
   padding: 0.35rem 0.8rem;
