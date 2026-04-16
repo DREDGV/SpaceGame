@@ -246,7 +246,7 @@ class UI {
     container.style.display = "block";
     const lines = this.data.onboarding.introLines;
     container.innerHTML = `
-      <img class="intro-hero-image" src="assets/intro-campfire.svg" alt="" aria-hidden="true">
+      <img class="intro-hero-image" src="assets/intro-campfire.jpg" alt="" aria-hidden="true" onerror="this.src='assets/intro-campfire.svg'; this.onerror=null;">
       <div class="intro-hero-overlay"></div>
       <div class="onboarding-intro-content">
         <p class="intro-era-label">— Начало пути —</p>
