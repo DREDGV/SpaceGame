@@ -1337,3 +1337,170 @@ body {
     align-items: flex-start;
   }
 }
+
+/* ─── Changelog button ─────────────────────────────────────────────────────── */
+.header-changelog-btn {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.78rem;
+  background: #1e2130;
+  color: #a78bfa;
+  border: 1px solid #3d3566;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.header-changelog-btn:hover {
+  background: #2a2550;
+  border-color: #a78bfa;
+}
+
+/* ─── Modal overlay ────────────────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  backdrop-filter: blur(2px);
+}
+
+.modal-panel {
+  background: #181b27;
+  border: 1px solid #2a2d37;
+  border-radius: 10px;
+  width: 100%;
+  max-width: 560px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem 0.75rem;
+  border-bottom: 1px solid #2a2d37;
+  flex-shrink: 0;
+}
+
+.modal-header h2 {
+  font-size: 1.05rem;
+  color: #a78bfa;
+  margin: 0;
+}
+
+.modal-close-btn {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s, background 0.15s;
+}
+
+.modal-close-btn:hover {
+  color: #e0e0e0;
+  background: #2a2d37;
+}
+
+.modal-body {
+  overflow-y: auto;
+  padding: 1rem 1.25rem 1.25rem;
+  flex: 1;
+}
+
+/* ─── Changelog content ───────────────────────────────────────────────────── */
+.cl-version-block {
+  margin-bottom: 1.5rem;
+}
+
+.cl-version-block:last-child {
+  margin-bottom: 0;
+}
+
+.cl-version-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.5rem;
+}
+
+.cl-version-tag {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #a78bfa;
+}
+
+.cl-version-date {
+  font-size: 0.78rem;
+  color: #666;
+}
+
+.cl-version-title {
+  font-size: 0.85rem;
+  color: #9ca3af;
+  font-style: italic;
+}
+
+.cl-changes-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.cl-change-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: #d0d0d0;
+  line-height: 1.45;
+}
+
+.cl-change-badge {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-top: 0.1rem;
+}
+
+.cl-change-badge.new {
+  background: #1a3a2a;
+  color: #4ade80;
+  border: 1px solid #166534;
+}
+
+.cl-change-badge.improved {
+  background: #1e2f4a;
+  color: #60a5fa;
+  border: 1px solid #1e40af;
+}
+
+.cl-change-badge.fixed {
+  background: #3a2a1a;
+  color: #fb923c;
+  border: 1px solid #7c2d12;
+}
+
+.cl-divider {
+  border: none;
+  border-top: 1px solid #2a2d37;
+  margin: 1.25rem 0;
+}

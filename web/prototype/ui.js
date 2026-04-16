@@ -37,6 +37,75 @@ class UI {
         window.alert("Не удалось сбросить прогресс.");
       }
     });
+
+    this.bindChangelogModal();
+  }
+
+  bindChangelogModal() {
+    const btn = document.getElementById("changelog-btn");
+    const modal = document.getElementById("changelog-modal");
+    const closeBtn = document.getElementById("changelog-close-btn");
+    const content = document.getElementById("changelog-content");
+    if (!btn || !modal || !closeBtn || !content) return;
+
+    const open = () => {
+      content.innerHTML = this._renderChangelogContent();
+      modal.style.display = "flex";
+      document.body.style.overflow = "hidden";
+      closeBtn.focus();
+    };
+
+    const close = () => {
+      modal.style.display = "none";
+      document.body.style.overflow = "";
+      btn.focus();
+    };
+
+    btn.addEventListener("click", open);
+    closeBtn.addEventListener("click", close);
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) close();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && modal.style.display === "flex") close();
+    });
+  }
+
+  _renderChangelogContent() {
+    if (typeof CHANGELOG_DATA === "undefined" || !CHANGELOG_DATA.length) {
+      return "<p>История изменений пуста.</p>";
+    }
+
+    const typeLabelMap = {
+      new: "Новое",
+      improved: "Улучшено",
+      fixed: "Исправлено",
+    };
+
+    return CHANGELOG_DATA.map((entry, i) => {
+      const changes = entry.changes
+        .map((c) => {
+          const label = typeLabelMap[c.type] || c.type;
+          return `<li class="cl-change-item">
+            <span class="cl-change-badge ${c.type}">${label}</span>
+            <span>${c.text}</span>
+          </li>`;
+        })
+        .join("");
+
+      const divider = i < CHANGELOG_DATA.length - 1
+        ? '<hr class="cl-divider">'
+        : "";
+
+      return `<div class="cl-version-block">
+        <div class="cl-version-header">
+          <span class="cl-version-tag">${entry.version}</span>
+          <span class="cl-version-date">${entry.date}</span>
+        </div>
+        <div class="cl-version-title">${entry.title}</div>
+        <ul class="cl-changes-list" style="margin-top:0.5rem">${changes}</ul>
+      </div>${divider}`;
+    }).join("");
   }
 
   formatResourcePairs(resourceMap, { plus = false, decimals = 0 } = {}) {
