@@ -246,11 +246,16 @@ class UI {
     container.style.display = "block";
     const lines = this.data.onboarding.introLines;
     container.innerHTML = `
+      <img class="intro-hero-image" src="assets/intro-campfire.jpg" alt="" aria-hidden="true" onerror="this.src='assets/intro-campfire.svg'">
+      <div class="intro-hero-overlay"></div>
       <div class="onboarding-intro-content">
-        <h3 class="onboarding-intro-title">🌍 Добро пожаловать</h3>
-        <p class="onboarding-intro-text">${lines.join("<br>")}</p>
+        <p class="intro-era-label">— Начало пути —</p>
+        <h2 class="onboarding-intro-title">🌍 На заре человечества</h2>
+        <div class="onboarding-intro-text">
+          ${lines.map(l => `<p>${l}</p>`).join("")}
+        </div>
         <div class="onboarding-intro-buttons">
-          <button id="obStartBtn" class="ob-btn ob-btn-start">Начать обучение</button>
+          <button id="obStartBtn" class="ob-btn ob-btn-start">📖 Начать обучение</button>
           <button id="obSkipBtn" class="ob-btn ob-btn-skip">Пропустить</button>
         </div>
       </div>
@@ -698,7 +703,15 @@ class UI {
     }
   }
 
-  createTimedStatusCard({ title, icon, name, remainingMs, progress, note, variant }) {
+  createTimedStatusCard({
+    title,
+    icon,
+    name,
+    remainingMs,
+    progress,
+    note,
+    variant,
+  }) {
     const card = document.createElement("div");
     card.className = `project-status-card${variant ? ` is-${variant}` : ""}`;
     card.innerHTML = `
@@ -868,12 +881,12 @@ class UI {
           unlocksInfo = automationInfo;
         }
 
-                let buildStatus = `Строительство: ${buildTime}`;
-                if (construction) {
-                  buildStatus = `Занято: ${construction.icon} ${construction.name}`;
-                } else if (!this.game.hasResources(building.cost)) {
-                  buildStatus = "Не хватает ресурсов";
-                }
+        let buildStatus = `Строительство: ${buildTime}`;
+        if (construction) {
+          buildStatus = `Занято: ${construction.icon} ${construction.name}`;
+        } else if (!this.game.hasResources(building.cost)) {
+          buildStatus = "Не хватает ресурсов";
+        }
 
         btn.innerHTML = `
           <span class="btn-icon">${building.icon}</span>
@@ -888,8 +901,8 @@ class UI {
           building.name,
           building.description || "Раннее здание",
           building.effect.automation
-                    ? "Запускает строительство; после завершения включит автоматический цикл"
-                    : "Запускает строительство; эффект появится после завершения",
+            ? "Запускает строительство; после завершения включит автоматический цикл"
+            : "Запускает строительство; эффект появится после завершения",
         ]);
 
         btn.addEventListener("click", () => {
@@ -1092,7 +1105,9 @@ class UI {
         ]);
       } else {
         const costStr = this.formatResourcePairs(tech.cost);
-        const researchTime = this.formatSeconds(this.game.getResearchDuration(id));
+        const researchTime = this.formatSeconds(
+          this.game.getResearchDuration(id),
+        );
         const btn = document.createElement("button");
         btn.className = "action-btn";
         btn.disabled = !canDo;
