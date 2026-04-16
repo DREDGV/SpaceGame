@@ -49,8 +49,6 @@ class UI {
     const saveStatusEl = document.getElementById("save-status");
     if (saveStatusEl) {
       const intervals = [15000, 30000, 60000];
-      saveStatusEl.style.cursor = "pointer";
-      saveStatusEl.title = "Нажмите для смены интервала автосохранения";
       saveStatusEl.addEventListener("click", () => {
         const current = this.game.saveIntervalMs;
         const idx = intervals.indexOf(current);
@@ -1029,7 +1027,7 @@ class UI {
     const container = document.getElementById("era-progress-panel");
     if (!container) return;
 
-    const eraData = this.game._getEraData();
+    const eraData = this.game.getEraData();
     if (!eraData) {
       container.innerHTML = "";
       return;

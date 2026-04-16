@@ -165,6 +165,10 @@ class GameState {
     return this.data.eras[eraId];
   }
 
+  getEraData(eraId = this.currentEra) {
+    return this._getEraData(eraId);
+  }
+
   _recalculateEraProgress() {
     const eraData = this._getEraData();
     if (!eraData) return;
@@ -529,7 +533,10 @@ class GameState {
       const raw = localStorage.getItem(GAME_SETTINGS_KEY);
       if (!raw) return;
       const settings = JSON.parse(raw);
-      if (Number.isFinite(settings.saveIntervalMs) && settings.saveIntervalMs >= 5000) {
+      if (
+        Number.isFinite(settings.saveIntervalMs) &&
+        settings.saveIntervalMs >= 5000
+      ) {
         this.saveIntervalMs = settings.saveIntervalMs;
       }
     } catch (_) {
@@ -539,9 +546,12 @@ class GameState {
 
   _saveSettings() {
     try {
-      localStorage.setItem(GAME_SETTINGS_KEY, JSON.stringify({
-        saveIntervalMs: this.saveIntervalMs,
-      }));
+      localStorage.setItem(
+        GAME_SETTINGS_KEY,
+        JSON.stringify({
+          saveIntervalMs: this.saveIntervalMs,
+        }),
+      );
     } catch (_) {
       // ignore
     }
@@ -584,15 +594,10 @@ class GameState {
 
   autoSaveIfNeeded(force = false) {
     if (this.isResettingProgress) return false;
-
-    const shouldSave =
-      force ||
-      this.hasUnsavedChanges ||
-      this.craftQueue.length > 0 ||
-      Object.keys(this.automation).length > 0 ||
-      this.energy !== this.maxEnergy;
-
-    if (!shouldSave) return false;
+    // hasUnsavedChanges is the authoritative dirty flag.
+    // All state-mutating methods (actions, regen, automation, craft) call markDirty().
+    // Add future dirty-tracking sources here before the final check.
+    if (!force && !this.hasUnsavedChanges) return false;
     return this.saveGame(true);
   }
 
@@ -768,6 +773,7 @@ class GameState {
   spendEnergy(amount) {
     if (!this.hasEnergy(amount)) return false;
     this.energy -= amount;
+    this.markDirty();
     return true;
   }
 

@@ -114,6 +114,7 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 0.3rem;
   min-height: 30px;
   min-width: 160px;
   padding: 0.2rem 0.65rem;
@@ -121,9 +122,23 @@ body {
   border: 1px solid #2a2d37;
   border-radius: 999px;
   font-size: 0.72rem;
+  font-family: inherit;
   color: #9ca3af;
   text-align: center;
-  transition: color 0.3s, border-color 0.3s;
+  cursor: pointer;
+  transition: color 0.3s, border-color 0.2s;
+}
+
+.save-status::after {
+  content: "⚙";
+  font-size: 0.65rem;
+  opacity: 0.4;
+  flex-shrink: 0;
+}
+
+.save-status.is-saved::after,
+.save-status.is-error::after {
+  display: none;
 }
 
 .save-status.is-saved {
@@ -138,6 +153,11 @@ body {
 
 .save-status:hover {
   border-color: #4a4d57;
+}
+
+.save-status:focus-visible {
+  outline: 2px solid #a78bfa;
+  outline-offset: 2px;
 }
 
 .header-reset-btn {
