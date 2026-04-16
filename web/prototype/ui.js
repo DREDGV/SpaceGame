@@ -778,17 +778,6 @@ class UI {
           `Осталось: ${this.formatSeconds(construction.remainingMs)}`,
           "После завершения появится в постоянных постройках.",
         ]);
-      } else if (!unlockedByTech || !requiredBuildingReady) {
-          ? this.formatResourcePairs(efficiency.outputPerSecond, {
-              plus: false,
-              decimals: 1,
-            })
-          : "";
-
-        automationInfo = `
-          <span class="btn-desc">⚙️ Авто: ${this.formatResourcePairs(auto.input)} → ${cycleOutput}</span>
-          <span class="btn-efficiency">Выпуск: ${cycleOutput} / ${efficiency.cycleSeconds.toFixed(0)}с = ${perSecond} / с</span>
-        `;
       }
 
       if (alreadyBuilt) {
