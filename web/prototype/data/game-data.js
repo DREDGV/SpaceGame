@@ -31,13 +31,13 @@ const GAME_DATA = {
       {
         id: "ob_build_campfire",
         text: "Постройте костёр",
-        hint: "Здания → Костёр: 5 дерева + 3 камня. Он начнёт автоматически жечь кирпичи!",
+        hint: "Здания → Костёр: 4 дерева + 3 камня. Он начнёт автоматически жечь кирпичи!",
         check: (game) => !!game.buildings.campfire,
       },
       {
         id: "ob_auto_brick",
         text: "Костёр произвёл кирпич! Наблюдайте за автоматизацией",
-        hint: "Костёр работает сам — собирайте глину, и он будет жечь кирпичи каждые 10 секунд",
+        hint: "Костёр работает сам — собирайте глину, и он будет жечь кирпичи каждые 7 секунд",
         check: (game) => (game.resources.brick || 0) >= 1,
       },
     ],
@@ -307,9 +307,9 @@ const GAME_DATA = {
 
   // ─── Energy ───
   energy: {
-    max: 10,
+    max: 12,
     regenPerTick: 1,
-    regenIntervalMs: 3500,
+    regenIntervalMs: 3000,
   },
 
   // ─── Gathering ───
@@ -365,7 +365,7 @@ const GAME_DATA = {
       icon: "🪵",
       output: { plank: 1 },
       ingredients: { wood: 2 },
-      craftTimeMs: 3000,
+      craftTimeMs: 2500,
       requires: null,
       unlockedBy: null,
       description: "Дерево → Доски",
@@ -376,7 +376,7 @@ const GAME_DATA = {
       icon: "🔩",
       output: { workshop_parts: 1 },
       ingredients: { wood: 2, stone: 2 },
-      craftTimeMs: 4500,
+      craftTimeMs: 3500,
       requires: null,
       unlockedBy: null,
       description: "Дерево + камень → Детали мастерской",
@@ -387,7 +387,7 @@ const GAME_DATA = {
       icon: "🔨",
       output: { crude_tools: 1 },
       ingredients: { wood: 1, stone: 2 },
-      craftTimeMs: 5000,
+      craftTimeMs: 3500,
       requires: null,
       unlockedBy: null,
       description: "Дерево + Камень → Инструменты",
@@ -398,7 +398,7 @@ const GAME_DATA = {
       icon: "🛠️",
       output: { improved_tools: 1 },
       ingredients: { plank: 2, fiber: 2, crude_tools: 1 },
-      craftTimeMs: 7000,
+      craftTimeMs: 5500,
       requires: "workshop",
       unlockedBy: null,
       description:
@@ -410,7 +410,7 @@ const GAME_DATA = {
       icon: "🔥",
       output: { brick: 1 },
       ingredients: { clay: 2, wood: 1 },
-      craftTimeMs: 5500,
+      craftTimeMs: 4500,
       requires: "campfire",
       unlockedBy: null,
       description: "Глина + Древесина → Кирпич (требует Костёр)",
@@ -423,9 +423,9 @@ const GAME_DATA = {
       id: "storage",
       name: "Хранилище",
       icon: "🏚️",
-      description: "Увеличивает лимит ресурсов до 120",
+      description: "Увеличивает лимит ресурсов до 150",
       cost: { wood: 8, fiber: 5, plank: 2 },
-      effect: { maxResourceCap: 120 },
+      effect: { maxResourceCap: 150 },
       unlockedBy: null,
     },
     campfire: {
@@ -433,8 +433,8 @@ const GAME_DATA = {
       name: "Костёр",
       icon: "🔥",
       description:
-        "Автоматически обжигает кирпичи из глины и древесного топлива (1 кирпич / 10 сек). Открывает ручной крафт кирпича.",
-      cost: { wood: 5, stone: 3 },
+        "Автоматически обжигает кирпичи из глины и древесного топлива (1 кирпич / 7 сек). Открывает ручной крафт кирпича.",
+      cost: { wood: 4, stone: 3 },
       effect: {
         unlocks: ["craft_brick"],
         automation: {
@@ -442,7 +442,7 @@ const GAME_DATA = {
           name: "Обжиг кирпича",
           input: { clay: 1, wood: 1 },
           output: { brick: 1 },
-          intervalMs: 10000,
+          intervalMs: 7000,
           description: "Глина + Древесина → Кирпич",
         },
       },
@@ -473,7 +473,7 @@ const GAME_DATA = {
       name: "Печь для обжига",
       icon: "🏺",
       description: "Требуется для поздних производственных шагов",
-      cost: { clay: 8, stone: 5, brick: 3, workshop_parts: 1 },
+      cost: { clay: 6, stone: 4, brick: 3, workshop_parts: 1 },
       effect: {},
       unlockedBy: null,
       requires: "workshop",
@@ -530,16 +530,49 @@ const GAME_DATA = {
 // ─── Changelog data ─────────────────────────────────────────────────────────
 const CHANGELOG_DATA = [
   {
+    version: "v0.1.12",
+    date: "2026-04-16",
+    title: "Баланс и темп раннего цикла",
+    changes: [
+      { type: "improved", text: "Энергия: запас 10 → 12, регенерация 3.5с → 3.0с" },
+      { type: "improved", text: "Костёр: цикл автоматизации 10с → 7с, стоимость 5🪵 → 4🪵" },
+      { type: "improved", text: "Крафт досок 3.0с → 2.5с, простые инструменты 5.0с → 3.5с" },
+      { type: "improved", text: "Крафт деталей мастерской 4.5с → 3.5с" },
+      { type: "improved", text: "Крафт улучшенных инструментов 7.0с → 5.5с" },
+      { type: "improved", text: "Ручной обжиг кирпича 5.5с → 4.5с" },
+      { type: "improved", text: "Хранилище: лимит 120 → 150" },
+      { type: "improved", text: "Печь: глина 8 → 6, камень 5 → 4" },
+    ],
+  },
+  {
     version: "v0.1.11",
     date: "2026-04-16",
     title: "Система прогресса эпох и переработка интерфейса",
     changes: [
-      { type: "new",      text: "Система прогресса эпох: вехи (milestones) и автопереход между эпохами" },
-      { type: "new",      text: "Переключатель запуска/остановки автоматизации для каждого здания" },
-      { type: "new",      text: "Двухколоночный интерфейс: постоянный боковой sidebar с ресурсами" },
-      { type: "new",      text: "Модальное окно «Журнал изменений» с историей версий" },
-      { type: "improved", text: "Интерфейс хранилища: сжатие и категоризация ресурсов" },
-      { type: "improved", text: "Система сохранений: эпоха и вехи прогресса сохраняются" },
+      {
+        type: "new",
+        text: "Система прогресса эпох: вехи (milestones) и автопереход между эпохами",
+      },
+      {
+        type: "new",
+        text: "Переключатель запуска/остановки автоматизации для каждого здания",
+      },
+      {
+        type: "new",
+        text: "Двухколоночный интерфейс: постоянный боковой sidebar с ресурсами",
+      },
+      {
+        type: "new",
+        text: "Модальное окно «Журнал изменений» с историей версий",
+      },
+      {
+        type: "improved",
+        text: "Интерфейс хранилища: сжатие и категоризация ресурсов",
+      },
+      {
+        type: "improved",
+        text: "Система сохранений: эпоха и вехи прогресса сохраняются",
+      },
       { type: "improved", text: "Подсказки и хинты в игровом интерфейсе" },
     ],
   },
@@ -549,7 +582,10 @@ const CHANGELOG_DATA = [
     title: "Первый играбельный прототип",
     changes: [
       { type: "new", text: "Начальный играбельный прототип примитивной эпохи" },
-      { type: "new", text: "Базовые механики: сбор ресурсов, крафт, постройки, автоматизация" },
+      {
+        type: "new",
+        text: "Базовые механики: сбор ресурсов, крафт, постройки, автоматизация",
+      },
       { type: "new", text: "Онбординг и начальные игровые цели" },
     ],
   },

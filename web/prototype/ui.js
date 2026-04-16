@@ -93,9 +93,8 @@ class UI {
         })
         .join("");
 
-      const divider = i < CHANGELOG_DATA.length - 1
-        ? '<hr class="cl-divider">'
-        : "";
+      const divider =
+        i < CHANGELOG_DATA.length - 1 ? '<hr class="cl-divider">' : "";
 
       return `<div class="cl-version-block">
         <div class="cl-version-header">
