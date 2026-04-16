@@ -246,13 +246,13 @@ class UI {
     container.style.display = "block";
     const lines = this.data.onboarding.introLines;
     container.innerHTML = `
-      <img class="intro-hero-image" src="assets/intro-campfire.jpg" alt="" aria-hidden="true" onerror="this.src='assets/intro-campfire.svg'">
+      <img class="intro-hero-image" src="assets/intro-campfire.svg" alt="" aria-hidden="true">
       <div class="intro-hero-overlay"></div>
       <div class="onboarding-intro-content">
         <p class="intro-era-label">— Начало пути —</p>
         <h2 class="onboarding-intro-title">🌍 На заре человечества</h2>
         <div class="onboarding-intro-text">
-          ${lines.map(l => `<p>${l}</p>`).join("")}
+          ${lines.map((l) => `<p>${l}</p>`).join("")}
         </div>
         <div class="onboarding-intro-buttons">
           <button id="obStartBtn" class="ob-btn ob-btn-start">📖 Начать обучение</button>
