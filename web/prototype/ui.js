@@ -38,6 +38,14 @@ class UI {
       }
     });
 
+    const restartObBtn = document.getElementById("restart-onboarding-btn");
+    if (restartObBtn) {
+      restartObBtn.addEventListener("click", () => {
+        this.game.restartOnboarding();
+        this.render();
+      });
+    }
+
     this.bindChangelogModal();
   }
 
@@ -161,14 +169,11 @@ class UI {
     if (this.game.shouldShowOnboardingIntro()) {
       this.renderOnboardingIntro();
       this.hideOnboardingStep();
-      this.hideGoals();
     } else if (this.game.isOnboardingActive()) {
       this.hideOnboardingIntro();
       this.renderOnboardingStep();
-      this.hideGoals();
     } else {
       this.hideOnboarding();
-      this.renderGoals();
     }
 
     this.renderEnergy();
@@ -179,7 +184,6 @@ class UI {
     if (!automationHovered) this.renderAutomation();
     if (!researchHovered) this.renderResearch();
     this.renderLog();
-    this.renderProgress();
     this.renderEraProgress();
     this.renderSaveStatus();
   }
@@ -263,64 +267,6 @@ class UI {
   hideOnboardingStep() {
     const step = document.getElementById("onboarding-step-panel");
     if (step) step.style.display = "none";
-  }
-
-  hideGoals() {
-    const container = document.getElementById("goals-panel");
-    if (container) container.style.display = "none";
-  }
-
-  renderGoals() {
-    const container = document.getElementById("goals-panel");
-    if (!container) return;
-
-    container.style.display = "block";
-    container.innerHTML = "";
-
-    const goal = this.game.getCurrentGoal();
-    const progress = this.game.getGoalProgress();
-
-    if (!goal) {
-      container.innerHTML = `
-        <h3>🎯 Цели</h3>
-        <div class="goal-complete">✅ Все цели выполнены!</div>
-        <div class="goal-progress-bar">
-          <div class="goal-progress-fill" style="width:100%"></div>
-        </div>
-        <div class="goal-progress-text">${progress.done} / ${progress.total}</div>
-        <button id="restartOnboardingBtn" class="ob-btn ob-btn-start">Начать обучение заново</button>
-      `;
-
-      document
-        .getElementById("restartOnboardingBtn")
-        .addEventListener("click", () => {
-          this.game.restartOnboarding();
-          this.render();
-        });
-      return;
-    }
-
-    container.innerHTML = `
-      <h3>🎯 Текущая цель</h3>
-      <div class="goal-current">
-        <span class="goal-number">${progress.done + 1}</span>
-        <span class="goal-text">${goal.text}</span>
-      </div>
-      ${goal.description ? `<div class="goal-description">${goal.description}</div>` : ""}
-      ${goal.hint ? `<div class="goal-hint">Как выполнить: ${goal.hint}</div>` : ""}
-      <div class="goal-progress-bar">
-        <div class="goal-progress-fill" style="width:${progress.currentPct}%"></div>
-      </div>
-      <div class="goal-progress-text">${progress.current} / ${progress.target}</div>
-      <button id="restartOnboardingBtn" class="ob-btn ob-btn-start">Начать обучение заново</button>
-    `;
-
-    document
-      .getElementById("restartOnboardingBtn")
-      .addEventListener("click", () => {
-        this.game.restartOnboarding();
-        this.render();
-      });
   }
 
   renderEnergy() {
@@ -1065,51 +1011,75 @@ class UI {
     container.appendChild(logContainer);
   }
 
-  renderProgress() {
-    const container = document.getElementById("progress-panel");
-    if (!container) return;
-
-    const summary = this.game.getProgressSummary();
-    container.innerHTML = `
-      <h3>📊 Прогресс</h3>
-      <div class="progress-stat">Ресурсов получено: <strong>${summary.resourcesOwned}</strong></div>
-      <div class="progress-stat">Зданий построено: <strong>${summary.buildingsBuilt}</strong></div>
-      <div class="progress-stat">Технологий изучено: <strong>${summary.techResearched}</strong></div>
-    `;
-  }
-
   renderEraProgress() {
     const container = document.getElementById("era-progress-panel");
     if (!container) return;
 
-    const progress = this.game.getEraProgress();
     const eraData = this.game._getEraData();
-
     if (!eraData) {
       container.innerHTML = "";
       return;
     }
 
-    const progressPercent = Math.round(progress.progress * 100);
-    const completedText = `${progress.completed}/${progress.total}`;
+    const eraProgress = this.game.getEraProgress();
+    const progressPercent = Math.round(eraProgress.progress * 100);
+    const summary = this.game.getProgressSummary();
 
+    // Milestones
     let milestonesHtml = "";
-    for (const milestone of progress.milestones) {
+    for (const milestone of eraProgress.milestones) {
       const statusIcon = milestone.completed ? "✅" : "⏳";
       const statusClass = milestone.completed ? "completed" : "pending";
       milestonesHtml += `<div class="era-milestone ${statusClass}">${statusIcon} ${milestone.text}</div>`;
     }
+
+    // Tactical goal (compact)
+    let goalHtml = "";
+    const goal = this.game.getCurrentGoal();
+    const goalProgress = this.game.getGoalProgress();
+
+    if (this.game.isOnboardingActive() || this.game.shouldShowOnboardingIntro()) {
+      // During onboarding, don't show goal block
+      goalHtml = "";
+    } else if (!goal) {
+      goalHtml = `<div class="era-goal-done">✅ Все цели выполнены (${goalProgress.done}/${goalProgress.total})</div>`;
+    } else {
+      const pct = goalProgress.currentPct;
+      goalHtml = `
+        <div class="era-goal-block">
+          <div class="era-goal-header">
+            <span class="era-goal-label">Цель ${goalProgress.done + 1}/${goalProgress.total}:</span>
+            <span class="era-goal-text">${goal.text}</span>
+          </div>
+          ${goal.hint ? `<div class="era-goal-hint">💡 ${goal.hint}</div>` : ""}
+          <div class="era-goal-bar">
+            <div class="era-goal-bar-fill" style="width:${pct}%"></div>
+          </div>
+        </div>
+      `;
+    }
+
+    // Stats line
+    const statsHtml = `
+      <div class="era-stats">
+        <span>🏗 ${summary.buildingsBuilt}</span>
+        <span>🔬 ${summary.techResearched}</span>
+        <span>📦 ${summary.resourcesOwned}</span>
+      </div>
+    `;
 
     container.innerHTML = `
       <h3>🌟 ${eraData.name}</h3>
       <div class="era-description">${eraData.description}</div>
       <div class="era-progress-bar">
         <div class="era-progress-fill" style="width: ${progressPercent}%"></div>
-        <span class="era-progress-text">${progressPercent}% (${completedText})</span>
+        <span class="era-progress-text">${progressPercent}% (${eraProgress.completed}/${eraProgress.total})</span>
       </div>
       <div class="era-milestones">
         ${milestonesHtml}
       </div>
+      ${goalHtml}
+      ${statsHtml}
     `;
   }
 
