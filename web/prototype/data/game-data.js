@@ -425,6 +425,7 @@ const GAME_DATA = {
       icon: "🏚️",
       description: "Увеличивает лимит ресурсов до 150",
       cost: { wood: 8, fiber: 5, plank: 2 },
+      buildTimeMs: 6000,
       effect: { maxResourceCap: 150 },
       unlockedBy: null,
     },
@@ -435,6 +436,7 @@ const GAME_DATA = {
       description:
         "Автоматически обжигает кирпичи из глины и древесного топлива (1 кирпич / 7 сек). Открывает ручной крафт кирпича.",
       cost: { wood: 4, stone: 3 },
+      buildTimeMs: 5000,
       effect: {
         unlocks: ["craft_brick"],
         automation: {
@@ -454,6 +456,7 @@ const GAME_DATA = {
       icon: "🔧",
       description: "Открывает улучшенные инструменты и сложные цепочки",
       cost: { wood: 6, plank: 3, workshop_parts: 2 },
+      buildTimeMs: 8000,
       effect: { unlocks: ["craft_improved_tools"] },
       unlockedBy: null,
     },
@@ -463,6 +466,7 @@ const GAME_DATA = {
       icon: "⛺",
       description: "Повышает запас энергии и ускоряет восстановление",
       cost: { wood: 4, plank: 2, fiber: 4 },
+      buildTimeMs: 7000,
       effect: {
         energy: { maxBonus: 3, regenIntervalBonusMs: 1500 },
       },
@@ -474,6 +478,7 @@ const GAME_DATA = {
       icon: "🏺",
       description: "Требуется для поздних производственных шагов",
       cost: { clay: 6, stone: 4, brick: 3, workshop_parts: 1 },
+      buildTimeMs: 10000,
       effect: {},
       unlockedBy: null,
       requires: "workshop",
@@ -488,6 +493,7 @@ const GAME_DATA = {
       icon: "🛠️",
       description: "Добавляет +1 к ручному сбору ресурсов",
       cost: { crude_tools: 2 },
+      researchTimeMs: 8000,
       effect: { gatherBonus: 1 },
       unlockedBy: null,
       requires: null,
@@ -498,6 +504,7 @@ const GAME_DATA = {
       icon: "⚒️",
       description: "Снижает стоимость крафта на 10%",
       cost: { plank: 5, crude_tools: 1 },
+      researchTimeMs: 10000,
       effect: { craftDiscount: 0.1 },
       unlockedBy: null,
       requires: "workshop",
@@ -508,6 +515,7 @@ const GAME_DATA = {
       icon: "🛏️",
       description: "Увеличивает запас энергии и слегка ускоряет восстановление",
       cost: { fiber: 4, crude_tools: 1 },
+      researchTimeMs: 9000,
       effect: {
         energy: { maxBonus: 1, regenIntervalBonusMs: 500 },
       },
@@ -520,6 +528,7 @@ const GAME_DATA = {
       icon: "⛏️",
       description: "(Заглушка) Открывает глубокую добычу",
       cost: { stone: 20, crude_tools: 3 },
+      researchTimeMs: 12000,
       effect: {},
       unlockedBy: null,
       requires: "kiln",
@@ -529,6 +538,29 @@ const GAME_DATA = {
 
 // ─── Changelog data ─────────────────────────────────────────────────────────
 const CHANGELOG_DATA = [
+  {
+    version: "v0.1.14",
+    date: "2026-04-17",
+    title: "Асинхронные стройки и исследования, более умное автосохранение",
+    changes: [
+      {
+        type: "improved",
+        text: "Здания теперь строятся по таймеру, а не появляются мгновенно по клику",
+      },
+      {
+        type: "improved",
+        text: "Исследования теперь запускаются отдельно и завершаются через время",
+      },
+      {
+        type: "improved",
+        text: "Автосохранение переведено на периодический режим + важные события вместо частых мгновенных записей",
+      },
+      {
+        type: "improved",
+        text: "Лимит ручной настройки интервала автосохранения увеличен до 300 секунд",
+      },
+    ],
+  },
   {
     version: "v0.1.13",
     date: "2026-04-16",

@@ -18,10 +18,10 @@
   // Tick intervals
   const UI_TICK = 200; // UI refresh every 200ms
   const AUTO_TICK = 500; // Automation check every 500ms
-  const CRAFT_TICK = 200; // Craft queue check every 200ms
+  const WORK_TICK = 200; // Craft, construction and research checks
   let lastUiTick = 0;
   let lastAutoTick = 0;
-  let lastCraftTick = 0;
+  let lastWorkTick = 0;
   let lastSaveTick = 0;
 
   function tick(timestamp) {
@@ -34,9 +34,11 @@
       lastAutoTick = timestamp;
     }
 
-    if (timestamp - lastCraftTick >= CRAFT_TICK) {
+    if (timestamp - lastWorkTick >= WORK_TICK) {
       game.tickCraftQueue();
-      lastCraftTick = timestamp;
+      game.tickConstruction();
+      game.tickResearch();
+      lastWorkTick = timestamp;
     }
 
     if (timestamp - lastSaveTick >= game.saveIntervalMs) {

@@ -14,6 +14,9 @@ const GAME_SETTINGS_KEY = "spacegame_settings";
 const LEGACY_ONBOARDING_KEY = "spacegame_onboarding_v1";
 const SAVE_VERSION = 1;
 const MAX_SAVED_LOGS = 15;
+const DEFAULT_SAVE_INTERVAL_MS = 15000;
+const MIN_SAVE_INTERVAL_MS = 5000;
+const MAX_SAVE_INTERVAL_MS = 300000;
 
 class GameState {
   constructor(data) {
@@ -46,6 +49,8 @@ class GameState {
     this.automation = {};
     this.craftQueue = [];
     this.maxCraftQueueSize = 3;
+    this.activeConstruction = null;
+    this.activeResearch = null;
 
     this.onboarding = this._getDefaultOnboardingState();
     this.currentGoalIndex = 0;
@@ -64,7 +69,7 @@ class GameState {
       savedAt: 0,
       errorMessage: "",
     };
-    this.saveIntervalMs = 15000;
+    this.saveIntervalMs = DEFAULT_SAVE_INTERVAL_MS;
     this._loadSettings();
 
     for (const id of Object.keys(data.resources)) {
@@ -248,7 +253,6 @@ class GameState {
     }
 
     this.markDirty();
-    this.saveGame(true);
     return true;
   }
 
@@ -314,6 +318,82 @@ class GameState {
         startedAt: index === 0 ? now - (durationMs - remainingMs) : null,
       });
     });
+  }
+
+  _serializeConstruction() {
+    if (!this.activeConstruction) return null;
+
+    const now = Date.now();
+    const remainingMs = Math.max(
+      0,
+      this.activeConstruction.durationMs -
+        (now - this.activeConstruction.startedAt),
+    );
+
+    return {
+      buildingId: this.activeConstruction.buildingId,
+      durationMs: this.activeConstruction.durationMs,
+      remainingMs,
+    };
+  }
+
+  _restoreConstruction(savedConstruction) {
+    this.activeConstruction = null;
+    if (
+      !savedConstruction ||
+      !this.data.buildings[savedConstruction.buildingId]
+    ) {
+      return;
+    }
+
+    const durationMs = Number.isFinite(savedConstruction.durationMs)
+      ? savedConstruction.durationMs
+      : this.getBuildDuration(savedConstruction.buildingId);
+    const remainingMs = Number.isFinite(savedConstruction.remainingMs)
+      ? Math.max(0, Math.min(durationMs, savedConstruction.remainingMs))
+      : durationMs;
+
+    this.activeConstruction = {
+      buildingId: savedConstruction.buildingId,
+      durationMs,
+      startedAt: Date.now() - (durationMs - remainingMs),
+    };
+  }
+
+  _serializeResearchTask() {
+    if (!this.activeResearch) return null;
+
+    const now = Date.now();
+    const remainingMs = Math.max(
+      0,
+      this.activeResearch.durationMs - (now - this.activeResearch.startedAt),
+    );
+
+    return {
+      techId: this.activeResearch.techId,
+      durationMs: this.activeResearch.durationMs,
+      remainingMs,
+    };
+  }
+
+  _restoreResearchTask(savedResearch) {
+    this.activeResearch = null;
+    if (!savedResearch || !this.data.tech[savedResearch.techId]) {
+      return;
+    }
+
+    const durationMs = Number.isFinite(savedResearch.durationMs)
+      ? savedResearch.durationMs
+      : this.getResearchDuration(savedResearch.techId);
+    const remainingMs = Number.isFinite(savedResearch.remainingMs)
+      ? Math.max(0, Math.min(durationMs, savedResearch.remainingMs))
+      : durationMs;
+
+    this.activeResearch = {
+      techId: savedResearch.techId,
+      durationMs,
+      startedAt: Date.now() - (durationMs - remainingMs),
+    };
   }
 
   _serializeAutomation() {
@@ -385,6 +465,8 @@ class GameState {
           completedMilestones: Array.from(this.eraProgress.completedMilestones),
         },
         craftQueue: this._serializeCraftQueue(),
+        construction: this._serializeConstruction(),
+        researchTask: this._serializeResearchTask(),
         automation: this._serializeAutomation(),
         cooldowns: this._serializeCooldowns(),
         log: this.log.slice(0, MAX_SAVED_LOGS),
@@ -471,6 +553,8 @@ class GameState {
       Date.now() - (this.energyRegenInterval - regenRemainingMs);
 
     this._restoreCraftQueue(state.craftQueue);
+    this._restoreConstruction(state.construction);
+    this._restoreResearchTask(state.researchTask);
     this._restoreAutomation(state.automation);
     this._restoreCooldowns(state.cooldowns);
   }
@@ -536,9 +620,12 @@ class GameState {
       const settings = JSON.parse(raw);
       if (
         Number.isFinite(settings.saveIntervalMs) &&
-        settings.saveIntervalMs >= 5000
+        settings.saveIntervalMs >= MIN_SAVE_INTERVAL_MS
       ) {
-        this.saveIntervalMs = settings.saveIntervalMs;
+        this.saveIntervalMs = Math.min(
+          MAX_SAVE_INTERVAL_MS,
+          settings.saveIntervalMs,
+        );
       }
     } catch (_) {
       // ignore
@@ -559,7 +646,10 @@ class GameState {
   }
 
   setSaveInterval(ms) {
-    const clamped = Math.max(5000, Math.min(60000, Math.round(ms)));
+    const clamped = Math.max(
+      MIN_SAVE_INTERVAL_MS,
+      Math.min(MAX_SAVE_INTERVAL_MS, Math.round(ms)),
+    );
     this.saveIntervalMs = clamped;
     this._saveSettings();
     return clamped;
@@ -567,6 +657,16 @@ class GameState {
 
   getSaveIntervalSec() {
     return Math.round(this.saveIntervalMs / 1000);
+  }
+
+  getSaveIntervalLabel() {
+    const totalSec = this.getSaveIntervalSec();
+    const minutes = Math.floor(totalSec / 60);
+    const seconds = totalSec % 60;
+
+    if (minutes <= 0) return `${totalSec}с`;
+    if (seconds === 0) return `${minutes}м`;
+    return `${minutes}м ${seconds}с`;
   }
 
   saveGame(force = false) {
@@ -595,9 +695,9 @@ class GameState {
 
   autoSaveIfNeeded(force = false) {
     if (this.isResettingProgress) return false;
-    // hasUnsavedChanges is the authoritative dirty flag.
-    // All state-mutating methods (actions, regen, automation, craft) call markDirty().
-    // Add future dirty-tracking sources here before the final check.
+    // Periodic autosave persists routine progress.
+    // Immediate saves are reserved for rare, high-value events like
+    // building/research start-complete, onboarding state changes and era transitions.
     if (!force && !this.hasUnsavedChanges) return false;
     return this.saveGame(true);
   }
@@ -618,10 +718,9 @@ class GameState {
           text: "✓ Сохранено",
         };
       }
-      const sec = this.getSaveIntervalSec();
       return {
         state: "idle",
-        text: `Автосохр. каждые ${sec}с`,
+        text: `Автосохр. ${this.getSaveIntervalLabel()}`,
       };
     }
 
@@ -851,7 +950,6 @@ class GameState {
     this._checkOnboarding();
     this._checkGoals();
     this.markDirty();
-    this.saveGame(true);
     return true;
   }
 
@@ -915,7 +1013,6 @@ class GameState {
     this.addLog(`🧰 В очередь: ${recipe.icon} ${recipe.name}`);
     this._checkGoals();
     this.markDirty();
-    this.saveGame(true);
     return true;
   }
 
@@ -945,7 +1042,6 @@ class GameState {
     this._checkOnboarding();
     this._checkGoals();
     this.markDirty();
-    this.saveGame(true);
   }
 
   getCraftQueueState() {
@@ -982,9 +1078,41 @@ class GameState {
     return this.queueCraft(recipeId);
   }
 
+  getBuildDuration(buildingId) {
+    const building = this.data.buildings[buildingId];
+    return Number.isFinite(building?.buildTimeMs) ? building.buildTimeMs : 8000;
+  }
+
+  getConstructionState() {
+    if (!this.activeConstruction) return null;
+
+    const building = this.data.buildings[this.activeConstruction.buildingId];
+    if (!building) return null;
+
+    const elapsed = Math.max(0, Date.now() - this.activeConstruction.startedAt);
+    const remainingMs = Math.max(
+      0,
+      this.activeConstruction.durationMs - elapsed,
+    );
+
+    return {
+      buildingId: this.activeConstruction.buildingId,
+      name: building.name,
+      icon: building.icon,
+      description: building.description,
+      durationMs: this.activeConstruction.durationMs,
+      remainingMs,
+      progress:
+        this.activeConstruction.durationMs > 0
+          ? Math.min(1, elapsed / this.activeConstruction.durationMs)
+          : 1,
+    };
+  }
+
   canBuild(buildingId) {
     const building = this.data.buildings[buildingId];
     if (!building) return false;
+    if (this.activeConstruction) return false;
     if (building.unlockedBy && !this.researched[building.unlockedBy])
       return false;
     if (building.requires && !this.buildings[building.requires]) return false;
@@ -998,7 +1126,31 @@ class GameState {
     const building = this.data.buildings[buildingId];
     if (!this.spendResources(building.cost)) return false;
 
-    this.buildings[buildingId] = { count: 1, isAutomationRunning: true };
+    const durationMs = this.getBuildDuration(buildingId);
+    this.activeConstruction = {
+      buildingId,
+      durationMs,
+      startedAt: Date.now(),
+    };
+
+    this.addLog(
+      `🏗️ Начато строительство: ${building.icon} ${building.name} (${Math.ceil(durationMs / 1000)}с)`,
+    );
+    this.markDirty();
+    this.saveGame(true);
+    return true;
+  }
+
+  tickConstruction() {
+    const current = this.getConstructionState();
+    if (!current || current.remainingMs > 0) return;
+
+    const building = this.data.buildings[current.buildingId];
+    this.activeConstruction = null;
+    this.buildings[current.buildingId] = {
+      count: 1,
+      isAutomationRunning: true,
+    };
     if (building.effect?.automation) {
       this.automation[building.effect.automation.id] = {
         lastRun: 0,
@@ -1012,7 +1164,6 @@ class GameState {
     this._checkGoals();
     this.markDirty();
     this.saveGame(true);
-    return true;
   }
 
   tickAutomation() {
@@ -1071,7 +1222,6 @@ class GameState {
       this._checkOnboarding();
       this._checkGoals();
       this.markDirty();
-      this.saveGame(true);
     }
   }
 
@@ -1350,9 +1500,38 @@ class GameState {
   canResearch(techId) {
     const tech = this.data.tech[techId];
     if (!tech) return false;
+    if (this.activeResearch) return false;
     if (this.researched[techId]) return false;
     if (tech.requires && !this.buildings[tech.requires]) return false;
     return this.hasResources(tech.cost);
+  }
+
+  getResearchDuration(techId) {
+    const tech = this.data.tech[techId];
+    return Number.isFinite(tech?.researchTimeMs) ? tech.researchTimeMs : 10000;
+  }
+
+  getResearchState() {
+    if (!this.activeResearch) return null;
+
+    const tech = this.data.tech[this.activeResearch.techId];
+    if (!tech) return null;
+
+    const elapsed = Math.max(0, Date.now() - this.activeResearch.startedAt);
+    const remainingMs = Math.max(0, this.activeResearch.durationMs - elapsed);
+
+    return {
+      techId: this.activeResearch.techId,
+      name: tech.name,
+      icon: tech.icon,
+      description: tech.description,
+      durationMs: this.activeResearch.durationMs,
+      remainingMs,
+      progress:
+        this.activeResearch.durationMs > 0
+          ? Math.min(1, elapsed / this.activeResearch.durationMs)
+          : 1,
+    };
   }
 
   research(techId) {
@@ -1361,14 +1540,34 @@ class GameState {
     const tech = this.data.tech[techId];
     if (!this.spendResources(tech.cost)) return false;
 
-    this.researched[techId] = true;
+    const durationMs = this.getResearchDuration(techId);
+    this.activeResearch = {
+      techId,
+      durationMs,
+      startedAt: Date.now(),
+    };
+
+    this.addLog(
+      `🔬 Начато исследование: ${tech.icon} ${tech.name} (${Math.ceil(durationMs / 1000)}с)`,
+    );
+    this.markDirty();
+    this.saveGame(true);
+    return true;
+  }
+
+  tickResearch() {
+    const current = this.getResearchState();
+    if (!current || current.remainingMs > 0) return;
+
+    const tech = this.data.tech[current.techId];
+    this.activeResearch = null;
+    this.researched[current.techId] = true;
     this._recalculateDerivedState();
     this.addLog(`🔬 Изучено: ${tech.icon} ${tech.name}`);
     this._checkOnboarding();
     this._checkGoals();
     this.markDirty();
     this.saveGame(true);
-    return true;
   }
 
   addLog(message) {

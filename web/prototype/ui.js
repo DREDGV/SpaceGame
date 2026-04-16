@@ -65,8 +65,11 @@ class UI {
       const applyInterval = () => {
         const sec = parseInt(saveInput.value, 10);
         if (Number.isFinite(sec)) {
-          this.game.setSaveInterval(sec * 1000);
+          const appliedMs = this.game.setSaveInterval(sec * 1000);
+          saveInput.value = String(Math.round(appliedMs / 1000));
           this.renderSaveStatus();
+        } else {
+          saveInput.value = this.game.getSaveIntervalSec();
         }
         closePopup();
       };
@@ -74,8 +77,14 @@ class UI {
       saveStatusEl.addEventListener("click", openPopup);
 
       saveInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") { e.preventDefault(); applyInterval(); }
-        if (e.key === "Escape") { e.preventDefault(); closePopup(); }
+        if (e.key === "Enter") {
+          e.preventDefault();
+          applyInterval();
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          closePopup();
+        }
       });
 
       // Apply on blur only if focus left the popup entirely
@@ -205,6 +214,8 @@ class UI {
       "#automation-panel:hover",
     );
     const researchHovered = !!document.querySelector("#research-panel:hover");
+    const hasActiveConstruction = !!this.game.getConstructionState();
+    const hasActiveResearch = !!this.game.getResearchState();
 
     if (this.game.shouldShowOnboardingIntro()) {
       this.renderOnboardingIntro();
@@ -220,9 +231,9 @@ class UI {
     this.renderResources();
     this.renderGather();
     if (!craftHovered) this.renderCrafting();
-    if (!buildingsHovered) this.renderBuildings();
+    if (!buildingsHovered || hasActiveConstruction) this.renderBuildings();
     if (!automationHovered) this.renderAutomation();
-    if (!researchHovered) this.renderResearch();
+    if (!researchHovered || hasActiveResearch) this.renderResearch();
     this.renderLog();
     this.renderEraProgress();
     this.renderSaveStatus();
@@ -687,6 +698,23 @@ class UI {
     }
   }
 
+  createTimedStatusCard({ title, icon, name, remainingMs, progress, note, variant }) {
+    const card = document.createElement("div");
+    card.className = `project-status-card${variant ? ` is-${variant}` : ""}`;
+    card.innerHTML = `
+      <div class="project-status-top">
+        <span class="project-status-title">${title}</span>
+        <span class="project-status-remaining">${this.formatSeconds(remainingMs)}</span>
+      </div>
+      <div class="project-status-name">${icon} ${name}</div>
+      ${note ? `<div class="project-status-note">${note}</div>` : ""}
+      <div class="project-status-bar">
+        <div class="project-status-bar-fill" style="width:${progress * 100}%"></div>
+      </div>
+    `;
+    return card;
+  }
+
   renderBuildings() {
     const container = document.getElementById("buildings-panel");
     if (!container) return;
@@ -696,6 +724,25 @@ class UI {
     title.textContent = "🏗️ Здания";
     container.appendChild(title);
 
+    const construction = this.game.getConstructionState();
+    if (construction) {
+      const card = this.createTimedStatusCard({
+        title: "Активное строительство",
+        icon: construction.icon,
+        name: construction.name,
+        remainingMs: construction.remainingMs,
+        progress: construction.progress,
+        note: "Эффект здания включится после завершения строительства.",
+        variant: "construction",
+      });
+      this.setTooltip(card, [
+        `${construction.name}: строительство в процессе`,
+        `Осталось: ${this.formatSeconds(construction.remainingMs)}`,
+        "После завершения здание станет доступно как постоянный узел поселения.",
+      ]);
+      container.appendChild(card);
+    }
+
     for (const [id, building] of Object.entries(this.data.buildings)) {
       const alreadyBuilt = this.game.buildings[id];
       const canDo = this.game.canBuild(id);
@@ -703,6 +750,7 @@ class UI {
         !building.unlockedBy || this.game.researched[building.unlockedBy];
       const requiredBuildingReady =
         !building.requires || this.game.buildings[building.requires];
+      const isConstructingThis = construction?.buildingId === id;
 
       const el = document.createElement("div");
       el.className = "building-card";
@@ -714,7 +762,23 @@ class UI {
         const cycleOutput = this.formatResourcePairs(auto.output, {
           plus: true,
         });
-        const perSecond = efficiency
+      } else if (isConstructingThis) {
+        el.classList.add("in-progress");
+        el.innerHTML = `
+          <span class="building-icon">${building.icon}</span>
+          <span class="building-name">${building.name}</span>
+          ${building.description ? `<span class="btn-desc">${building.description}</span>` : ""}
+          <span class="building-status is-pending">⏳ Строится — ${this.formatSeconds(construction.remainingMs)}</span>
+          <div class="project-mini-bar">
+            <div class="project-mini-bar-fill" style="width:${construction.progress * 100}%"></div>
+          </div>
+        `;
+        this.setTooltip(el, [
+          `${building.name}: строительство начато`,
+          `Осталось: ${this.formatSeconds(construction.remainingMs)}`,
+          "После завершения появится в постоянных постройках.",
+        ]);
+      } else if (!unlockedByTech || !requiredBuildingReady) {
           ? this.formatResourcePairs(efficiency.outputPerSecond, {
               plus: false,
               decimals: 1,
@@ -798,6 +862,7 @@ class UI {
         ]);
       } else {
         const costStr = this.formatResourcePairs(building.cost);
+        const buildTime = this.formatSeconds(this.game.getBuildDuration(id));
         const btn = document.createElement("button");
         btn.className = "action-btn";
         btn.disabled = !canDo;
@@ -814,19 +879,28 @@ class UI {
           unlocksInfo = automationInfo;
         }
 
+                let buildStatus = `Строительство: ${buildTime}`;
+                if (construction) {
+                  buildStatus = `Занято: ${construction.icon} ${construction.name}`;
+                } else if (!this.game.hasResources(building.cost)) {
+                  buildStatus = "Не хватает ресурсов";
+                }
+
         btn.innerHTML = `
           <span class="btn-icon">${building.icon}</span>
           <span class="btn-label">${building.name}</span>
           <span class="btn-desc">${building.description}</span>
           ${unlocksInfo}
           <span class="btn-cost">Стоимость: ${costStr}</span>
+                  <span class="btn-efficiency">Время строительства: ${buildTime}</span>
+                  <span class="btn-queue-status">${buildStatus}</span>
         `;
         this.setTooltip(btn, [
           building.name,
           building.description || "Раннее здание",
           building.effect.automation
-            ? "После постройки запускает автоматический цикл"
-            : "После постройки открывает новые действия или бонусы",
+                    ? "Запускает строительство; после завершения включит автоматический цикл"
+                    : "Запускает строительство; эффект появится после завершения",
         ]);
 
         btn.addEventListener("click", () => {
@@ -956,10 +1030,30 @@ class UI {
     title.textContent = "🔬 Исследования";
     container.appendChild(title);
 
+    const researchState = this.game.getResearchState();
+    if (researchState) {
+      const card = this.createTimedStatusCard({
+        title: "Активное исследование",
+        icon: researchState.icon,
+        name: researchState.name,
+        remainingMs: researchState.remainingMs,
+        progress: researchState.progress,
+        note: "Эффект технологии включится после завершения исследования.",
+        variant: "research",
+      });
+      this.setTooltip(card, [
+        `${researchState.name}: исследование в процессе`,
+        `Осталось: ${this.formatSeconds(researchState.remainingMs)}`,
+        "После завершения технология сразу усилит ваше поселение.",
+      ]);
+      container.appendChild(card);
+    }
+
     for (const [id, tech] of Object.entries(this.data.tech)) {
       const done = this.game.researched[id];
       const canDo = this.game.canResearch(id);
       const meetsReqs = !tech.requires || this.game.buildings[tech.requires];
+      const isResearchingThis = researchState?.techId === id;
 
       const el = document.createElement("div");
       el.className = "tech-card";
@@ -977,6 +1071,22 @@ class UI {
           tech.description || "Исследование завершено",
           "Эффект уже применён к вашему поселению",
         ]);
+      } else if (isResearchingThis) {
+        el.classList.add("in-progress");
+        el.innerHTML = `
+          <span class="tech-icon">${tech.icon}</span>
+          <span class="tech-name">${tech.name}</span>
+          ${tech.description ? `<span class="btn-desc">${tech.description}</span>` : ""}
+          <span class="tech-status is-pending">⏳ Исследуется — ${this.formatSeconds(researchState.remainingMs)}</span>
+          <div class="project-mini-bar">
+            <div class="project-mini-bar-fill" style="width:${researchState.progress * 100}%"></div>
+          </div>
+        `;
+        this.setTooltip(el, [
+          `${tech.name}: исследование запущено`,
+          `Осталось: ${this.formatSeconds(researchState.remainingMs)}`,
+          "После завершения эффект технологии применится автоматически.",
+        ]);
       } else if (!meetsReqs) {
         el.classList.add("locked");
         const reqBuilding = this.data.buildings[tech.requires];
@@ -993,21 +1103,31 @@ class UI {
         ]);
       } else {
         const costStr = this.formatResourcePairs(tech.cost);
+        const researchTime = this.formatSeconds(this.game.getResearchDuration(id));
         const btn = document.createElement("button");
         btn.className = "action-btn";
         btn.disabled = !canDo;
         if (!canDo) btn.classList.add("disabled");
+
+        let researchStatus = `Исследование: ${researchTime}`;
+        if (researchState) {
+          researchStatus = `Идёт: ${researchState.icon} ${researchState.name}`;
+        } else if (!this.game.hasResources(tech.cost)) {
+          researchStatus = "Не хватает ресурсов";
+        }
 
         btn.innerHTML = `
           <span class="btn-icon">${tech.icon}</span>
           <span class="btn-label">${tech.name}</span>
           <span class="btn-desc">${tech.description}</span>
           <span class="btn-cost">Стоимость: ${costStr}</span>
+          <span class="btn-efficiency">Время исследования: ${researchTime}</span>
+          <span class="btn-queue-status">${researchStatus}</span>
         `;
         this.setTooltip(btn, [
           tech.name,
           tech.description || "Дает постоянный эффект",
-          "Исследования усиливают добычу и производство без новых действий",
+          "Запускает исследование; эффект применится после завершения таймера",
         ]);
 
         btn.addEventListener("click", () => {
