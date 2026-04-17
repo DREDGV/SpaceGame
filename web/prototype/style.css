@@ -1137,6 +1137,99 @@ body {
   gap: 0.25rem;
 }
 
+.tech-card.queued {
+  border: 1px solid #818cf8;
+  background: #16163a;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+
+.tech-cancel-btn {
+  margin-top: 0.3rem;
+  padding: 0.25rem 0.65rem;
+  background: transparent;
+  border: 1px solid #6b7280;
+  border-radius: 5px;
+  color: #9ca3af;
+  font-size: 0.76rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.tech-cancel-btn:hover {
+  border-color: #f87171;
+  color: #f87171;
+}
+
+.tech-queue-hint {
+  color: #818cf8 !important;
+}
+
+/* Queue slot in research modal */
+.research-queue-slot {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 0.75rem;
+  margin: 0.35rem 0 0.5rem;
+  background: rgba(129, 140, 248, 0.07);
+  border: 1px solid rgba(129, 140, 248, 0.22);
+  border-radius: 7px;
+  font-size: 0.82rem;
+}
+
+.research-queue-slot.is-empty {
+  opacity: 0.55;
+  border-style: dashed;
+}
+
+.research-queue-slot-label {
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
+.research-queue-slot-name {
+  color: #c7d2fe;
+  font-weight: 600;
+}
+
+.research-queue-slot-hint {
+  color: #6b7280;
+  font-size: 0.78rem;
+}
+
+/* Queue row in widget */
+.rw-queue-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid rgba(129, 140, 248, 0.15);
+  font-size: 0.8rem;
+}
+
+.rw-queue-label {
+  color: #818cf8;
+  flex-shrink: 0;
+}
+
+.rw-queue-name {
+  color: #c7d2fe;
+}
+
+/* Completed branch */
+.research-branch.is-complete .research-branch-header {
+  opacity: 0.65;
+}
+
+.research-branch.is-complete .research-branch-techs {
+  opacity: 0.7;
+}
+
 .building-card.built .building-status,
 .tech-card.done .tech-status {
   color: #22c55e;

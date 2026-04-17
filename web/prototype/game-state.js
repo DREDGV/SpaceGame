@@ -30,6 +30,8 @@ class GameState {
     this.unlockedRecipes = new Set();
     this.maxResourceCap = 50;
     this.craftDiscount = 0;
+    this.buildTimeMultiplier = 1;
+    this.automationIntervalMultiplier = 1;
     this.totalResourcesCollected = 0;
     this.log = [];
     this.cooldowns = {};
@@ -51,6 +53,7 @@ class GameState {
     this.maxCraftQueueSize = 3;
     this.activeConstruction = null;
     this.activeResearch = null;
+    this.researchQueue = [];  // max 1 queued item
 
     this.onboarding = this._getDefaultOnboardingState();
     this.currentGoalIndex = 0;
@@ -116,23 +119,37 @@ class GameState {
 
   _ensureBaseRecipeUnlocks() {
     for (const [id, recipe] of Object.entries(this.data.recipes)) {
-      if (!recipe.requires) {
+      if (!recipe.requires && !recipe.unlockedBy) {
         this.unlockedRecipes.add(id);
       }
     }
   }
 
   _recalculateDerivedState() {
+    this.unlockedRecipes = new Set();
     this._ensureBaseRecipeUnlocks();
 
     let maxResourceCap = 50;
     let craftDiscount = 0;
+    let buildTimeMultiplier = 1;
+    let automationIntervalMultiplier = 1;
 
     for (const techId of Object.keys(this.researched)) {
       const tech = this.data.tech[techId];
       if (!tech) continue;
       if (tech.effect?.craftDiscount) {
         craftDiscount = Math.max(craftDiscount, tech.effect.craftDiscount);
+      }
+      if (tech.effect?.buildTimeMultiplier) {
+        buildTimeMultiplier *= tech.effect.buildTimeMultiplier;
+      }
+      if (tech.effect?.automationIntervalMultiplier) {
+        automationIntervalMultiplier *= tech.effect.automationIntervalMultiplier;
+      }
+      for (const [recipeId, recipe] of Object.entries(this.data.recipes)) {
+        if (recipe.unlockedBy === techId) {
+          this.unlockedRecipes.add(recipeId);
+        }
       }
     }
 
@@ -162,6 +179,8 @@ class GameState {
 
     this.maxResourceCap = maxResourceCap;
     this.craftDiscount = craftDiscount;
+    this.buildTimeMultiplier = buildTimeMultiplier;
+    this.automationIntervalMultiplier = automationIntervalMultiplier;
     this._recalculateEnergyStats();
     this._recalculateEraProgress();
   }
@@ -376,6 +395,23 @@ class GameState {
     };
   }
 
+  _serializeResearchQueue() {
+    return this.researchQueue.map((q) => ({ ...q }));
+  }
+
+  _restoreResearchQueue(savedQueue) {
+    this.researchQueue = [];
+    if (!Array.isArray(savedQueue)) return;
+    for (const item of savedQueue) {
+      if (item?.techId && this.data.tech[item.techId] && !this.researched[item.techId]) {
+        this.researchQueue.push({
+          techId: item.techId,
+          spentResources: typeof item.spentResources === "object" && item.spentResources ? { ...item.spentResources } : {},
+        });
+      }
+    }
+  }
+
   _restoreResearchTask(savedResearch) {
     this.activeResearch = null;
     if (!savedResearch || !this.data.tech[savedResearch.techId]) {
@@ -405,7 +441,11 @@ class GameState {
       if (entry.lastRun > 0) {
         const autoDef = this.getAutomationDefinition(autoId);
         if (autoDef) {
-          remainingMs = Math.max(0, autoDef.intervalMs - (now - entry.lastRun));
+          remainingMs = Math.max(
+            0,
+            this.getEffectiveAutomationInterval(autoDef) -
+              (now - entry.lastRun),
+          );
         }
       }
 
@@ -425,16 +465,17 @@ class GameState {
     for (const [autoId, entry] of Object.entries(savedAutomation || {})) {
       const autoDef = this.getAutomationDefinition(autoId);
       if (!autoDef) continue;
+      const intervalMs = this.getEffectiveAutomationInterval(autoDef);
 
       const remainingMs = Number.isFinite(entry.remainingMs)
-        ? Math.max(0, Math.min(autoDef.intervalMs, entry.remainingMs))
+        ? Math.max(0, Math.min(intervalMs, entry.remainingMs))
         : 0;
 
       this.automation[autoId] = {
         state: entry.state || AUTO_STATE.IDLE,
         lastRun:
           entry.state === AUTO_STATE.RUNNING && remainingMs > 0
-            ? now - (autoDef.intervalMs - remainingMs)
+            ? now - (intervalMs - remainingMs)
             : 0,
       };
     }
@@ -467,6 +508,7 @@ class GameState {
         craftQueue: this._serializeCraftQueue(),
         construction: this._serializeConstruction(),
         researchTask: this._serializeResearchTask(),
+        researchQueue: this._serializeResearchQueue(),
         automation: this._serializeAutomation(),
         cooldowns: this._serializeCooldowns(),
         log: this.log.slice(0, MAX_SAVED_LOGS),
@@ -555,6 +597,7 @@ class GameState {
     this._restoreCraftQueue(state.craftQueue);
     this._restoreConstruction(state.construction);
     this._restoreResearchTask(state.researchTask);
+    this._restoreResearchQueue(state.researchQueue);
     this._restoreAutomation(state.automation);
     this._restoreCooldowns(state.cooldowns);
   }
@@ -962,8 +1005,12 @@ class GameState {
     let bonus = 0;
     if ((this.resources.crude_tools || 0) > 0) bonus = Math.max(bonus, 1);
     if ((this.resources.improved_tools || 0) > 0) bonus = Math.max(bonus, 2);
-    if (this.researched.basic_tools) {
-      bonus += this.data.tech.basic_tools?.effect?.gatherBonus || 0;
+
+    for (const techId of Object.keys(this.researched)) {
+      const gatherBonus = this.data.tech[techId]?.effect?.gatherBonus || 0;
+      if (gatherBonus > 0) {
+        bonus += gatherBonus;
+      }
     }
     return bonus;
   }
@@ -1078,9 +1125,20 @@ class GameState {
     return this.queueCraft(recipeId);
   }
 
+  getEffectiveAutomationInterval(auto) {
+    if (!auto) return 0;
+    return Math.max(
+      1000,
+      Math.round(auto.intervalMs * this.automationIntervalMultiplier),
+    );
+  }
+
   getBuildDuration(buildingId) {
     const building = this.data.buildings[buildingId];
-    return Number.isFinite(building?.buildTimeMs) ? building.buildTimeMs : 8000;
+    const baseDuration = Number.isFinite(building?.buildTimeMs)
+      ? building.buildTimeMs
+      : 8000;
+    return Math.max(1000, Math.round(baseDuration * this.buildTimeMultiplier));
   }
 
   getConstructionState() {
@@ -1200,7 +1258,7 @@ class GameState {
         continue;
       }
 
-      if (now - entry.lastRun < auto.intervalMs) {
+      if (now - entry.lastRun < this.getEffectiveAutomationInterval(auto)) {
         entry.state = AUTO_STATE.RUNNING;
         continue;
       }
@@ -1244,14 +1302,21 @@ class GameState {
     const entry = this.automation[automationId];
     const auto = this.getAutomationDefinition(automationId);
     if (!entry || !auto || entry.lastRun === 0) return 0;
-    return Math.min(1, (Date.now() - entry.lastRun) / auto.intervalMs);
+    return Math.min(
+      1,
+      (Date.now() - entry.lastRun) / this.getEffectiveAutomationInterval(auto),
+    );
   }
 
   getAutomationRemaining(automationId) {
     const entry = this.automation[automationId];
     const auto = this.getAutomationDefinition(automationId);
     if (!entry || !auto || entry.lastRun === 0) return 0;
-    return Math.max(0, (auto.intervalMs - (Date.now() - entry.lastRun)) / 1000);
+    return Math.max(
+      0,
+      (this.getEffectiveAutomationInterval(auto) - (Date.now() - entry.lastRun)) /
+        1000,
+    );
   }
 
   getMissingResources(costObj) {
@@ -1403,7 +1468,7 @@ class GameState {
     const auto = this.getAutomationDefinition(automationId);
     if (!auto) return null;
 
-    const cycleSeconds = auto.intervalMs / 1000;
+    const cycleSeconds = this.getEffectiveAutomationInterval(auto) / 1000;
     const outputPerSecond = Object.fromEntries(
       Object.entries(auto.output).map(([id, amount]) => [
         id,
@@ -1497,12 +1562,87 @@ class GameState {
     };
   }
 
+  getTechPrerequisites(techId) {
+    const tech = this.data.tech[techId];
+    if (!tech) {
+      return {
+        requiredTechIds: [],
+        missingTechIds: [],
+        requiredBuildingIds: [],
+        missingBuildingIds: [],
+      };
+    }
+
+    const requiredTechIds = Array.isArray(tech.requiresTech)
+      ? tech.requiresTech.filter(Boolean)
+      : tech.requiresTech
+        ? [tech.requiresTech]
+        : [];
+    const requiredBuildingIds = Array.isArray(tech.requires)
+      ? tech.requires.filter(Boolean)
+      : tech.requires
+        ? [tech.requires]
+        : [];
+
+    return {
+      requiredTechIds,
+      missingTechIds: requiredTechIds.filter((id) => !this.researched[id]),
+      requiredBuildingIds,
+      missingBuildingIds: requiredBuildingIds.filter((id) => !this.buildings[id]),
+    };
+  }
+
+  getResearchBranchesState() {
+    const branchDefs = this.data.researchBranches || {};
+    const eraData = this.getEraData();
+    const foundationIds = eraData?.researchFoundation || [];
+    const branchIds =
+      eraData?.researchBranches ||
+      Object.values(branchDefs)
+        .filter((branch) => branch.id !== "foundation")
+        .sort((a, b) => (a.order || 0) - (b.order || 0))
+        .map((branch) => branch.id);
+
+    const foundation = foundationIds
+      .map((id) => this.data.tech[id])
+      .filter(Boolean)
+      .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    const branches = branchIds
+      .map((branchId) => {
+        const branch = branchDefs[branchId];
+        if (!branch) return null;
+
+        const techs = Object.values(this.data.tech)
+          .filter((tech) => tech.branch === branchId)
+          .sort((a, b) => (a.order || 0) - (b.order || 0));
+        const completed = techs.filter((tech) => this.researched[tech.id]).length;
+
+        return {
+          ...branch,
+          techs,
+          completed,
+          total: techs.length,
+          started: completed > 0,
+        };
+      })
+      .filter(Boolean);
+
+    return {
+      foundation,
+      branches,
+      transitionText: eraData?.researchTransitionText || "",
+    };
+  }
+
   canResearch(techId) {
     const tech = this.data.tech[techId];
     if (!tech) return false;
     if (this.activeResearch) return false;
     if (this.researched[techId]) return false;
-    if (tech.requires && !this.buildings[tech.requires]) return false;
+    const prereqs = this.getTechPrerequisites(techId);
+    if (prereqs.missingTechIds.length > 0) return false;
+    if (prereqs.missingBuildingIds.length > 0) return false;
     return this.hasResources(tech.cost);
   }
 
@@ -1555,6 +1695,55 @@ class GameState {
     return true;
   }
 
+  canQueueResearch(techId) {
+    if (!this.activeResearch) return false; // queue only relevant when busy
+    const tech = this.data.tech[techId];
+    if (!tech) return false;
+    if (this.researched[techId]) return false;
+    if (this.researchQueue.some((q) => q.techId === techId)) return false;
+    if (this.researchQueue.length >= 1) return false;
+    const prereqs = this.getTechPrerequisites(techId);
+    if (prereqs.missingTechIds.length > 0) return false;
+    if (prereqs.missingBuildingIds.length > 0) return false;
+    return this.hasResources(tech.cost);
+  }
+
+  queueResearch(techId) {
+    if (!this.canQueueResearch(techId)) return false;
+    const tech = this.data.tech[techId];
+    if (!this.spendResources(tech.cost)) return false;
+    this.researchQueue.push({ techId, spentResources: { ...tech.cost } });
+    this.addLog(`📋 В очередь: ${tech.icon} ${tech.name}`);
+    this.markDirty();
+    return true;
+  }
+
+  cancelQueuedResearch() {
+    if (this.researchQueue.length === 0) return false;
+    const queued = this.researchQueue.shift();
+    for (const [id, amount] of Object.entries(queued.spentResources || {})) {
+      this.addResource(id, amount);
+    }
+    const tech = this.data.tech[queued.techId];
+    this.addLog(`↩️ Убрано из очереди: ${tech?.icon || ""} ${tech?.name || queued.techId}`);
+    this.markDirty();
+    return true;
+  }
+
+  cancelResearch() {
+    if (!this.activeResearch) return false;
+    const tech = this.data.tech[this.activeResearch.techId];
+    const cost = tech?.cost || {};
+    for (const [id, amount] of Object.entries(cost)) {
+      this.addResource(id, Math.floor(amount * 0.5));
+    }
+    this.addLog(`❌ Исследование отменено: ${tech?.icon || ""} ${tech?.name || ""} (возвращено 50% ресурсов)`);
+    this.activeResearch = null;
+    this.markDirty();
+    this.saveGame(true);
+    return true;
+  }
+
   tickResearch() {
     const current = this.getResearchState();
     if (!current || current.remainingMs > 0) return;
@@ -1566,6 +1755,18 @@ class GameState {
     this.addLog(`🔬 Изучено: ${tech.icon} ${tech.name}`);
     this._checkOnboarding();
     this._checkGoals();
+
+    // Auto-start queued research
+    if (this.researchQueue.length > 0) {
+      const next = this.researchQueue.shift();
+      const durationMs = this.getResearchDuration(next.techId);
+      this.activeResearch = { techId: next.techId, durationMs, startedAt: Date.now() };
+      const nextTech = this.data.tech[next.techId];
+      if (nextTech) {
+        this.addLog(`🔬 Начато (из очереди): ${nextTech.icon} ${nextTech.name} (${Math.ceil(durationMs / 1000)}с)`);
+      }
+    }
+
     this.markDirty();
     this.saveGame(true);
   }

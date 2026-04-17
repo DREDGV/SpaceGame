@@ -200,6 +200,12 @@ class UI {
     let activeHtml = "";
     if (researchState) {
       const pct = Math.round(researchState.progress * 100);
+      const queuedTech = this.game.researchQueue.length > 0
+        ? this.data.tech[this.game.researchQueue[0].techId]
+        : null;
+      const queueHtml = queuedTech
+        ? `<div class="rw-queue-row"><span class="rw-queue-label">📋</span><span class="rw-queue-name">${queuedTech.icon} ${queuedTech.name}</span></div>`
+        : "";
       activeHtml = `
         <div class="rw-active">
           <div class="rw-active-info">
@@ -208,6 +214,7 @@ class UI {
             <span class="rw-active-time">${this.formatSeconds(researchState.remainingMs)}</span>
           </div>
           <div class="rw-progress-bar"><div class="rw-progress-fill" style="width:${pct}%"></div></div>
+          ${queueHtml}
         </div>`;
     }
 
@@ -1153,6 +1160,8 @@ class UI {
     const done = this.game.researched[tech.id];
     const canDo = this.game.canResearch(tech.id);
     const isResearchingThis = researchState?.techId === tech.id;
+    const isQueued = this.game.researchQueue.some((q) => q.techId === tech.id);
+    const canQueue = this.game.canQueueResearch(tech.id);
     const outcomes = Array.isArray(tech.outcomes) ? tech.outcomes : [];
     const missingRequirementLabels = [
       ...prereqs.missingTechIds.map((id) => {
@@ -1184,11 +1193,7 @@ class UI {
         ${outcomesHtml}
         <span class="tech-status">✅ Изучено</span>
       `;
-      this.setTooltip(el, [
-        tech.name,
-        tech.description,
-        ...outcomes,
-      ]);
+      this.setTooltip(el, [tech.name, tech.description, ...outcomes]);
       return el;
     }
 
@@ -1204,11 +1209,42 @@ class UI {
           <div class="project-mini-bar-fill" style="width:${researchState.progress * 100}%"></div>
         </div>
       `;
+      const cancelBtn = document.createElement("button");
+      cancelBtn.className = "tech-cancel-btn";
+      cancelBtn.type = "button";
+      cancelBtn.textContent = "✕ Отменить (−50% ресурсов)";
+      cancelBtn.addEventListener("click", () => {
+        this.game.cancelResearch();
+        this.render({ forcePanels: true });
+      });
+      el.appendChild(cancelBtn);
       this.setTooltip(el, [
         `${tech.name}: исследование запущено`,
         `Осталось: ${this.formatSeconds(researchState.remainingMs)}`,
         ...outcomes,
       ]);
+      return el;
+    }
+
+    if (isQueued) {
+      el.classList.add("queued");
+      el.innerHTML = `
+        <span class="tech-icon">${tech.icon}</span>
+        <span class="tech-name">${tech.name}</span>
+        <span class="btn-desc">${tech.description}</span>
+        ${outcomesHtml}
+        <span class="tech-status is-pending">📋 В очереди — запустится автоматически</span>
+      `;
+      const dequeueBtn = document.createElement("button");
+      dequeueBtn.className = "tech-cancel-btn";
+      dequeueBtn.type = "button";
+      dequeueBtn.textContent = "✕ Убрать из очереди (вернуть ресурсы)";
+      dequeueBtn.addEventListener("click", () => {
+        this.game.cancelQueuedResearch();
+        this.render({ forcePanels: true });
+      });
+      el.appendChild(dequeueBtn);
+      this.setTooltip(el, [tech.name, tech.description, "В очереди — ресурсы уже заняты", ...outcomes]);
       return el;
     }
 
@@ -1221,52 +1257,71 @@ class UI {
         ${outcomesHtml}
         <span class="tech-req">${requirementText}</span>
       `;
-      this.setTooltip(el, [
-        tech.name,
-        tech.description,
-        requirementText,
-        ...outcomes,
-      ]);
+      this.setTooltip(el, [tech.name, tech.description, requirementText, ...outcomes]);
       return el;
     }
 
     const costStr = this.formatResourcePairs(tech.cost);
     const researchTime = this.formatSeconds(this.game.getResearchDuration(tech.id));
+
+    // Build resource status string with specific missing resources
+    let researchStatus;
+    if (canQueue) {
+      researchStatus = `Исследование в очереди: стоимость ${costStr}`;
+    } else if (researchState && !isResearchingThis) {
+      // Another tech is being researched
+      researchStatus = `Идёт: ${researchState.icon} ${researchState.name}`;
+    } else if (!this.game.hasResources(tech.cost)) {
+      const missing = this.game.getMissingResources(tech.cost);
+      const missingStr = missing
+        .map(({ id, missing: amount }) => `${this.data.resources[id].icon}${amount}`)
+        .join(" ");
+      researchStatus = `Не хватает: ${missingStr}`;
+    } else {
+      researchStatus = `Стоит: ${costStr} · Время: ${researchTime}`;
+    }
+
     const btn = document.createElement("button");
     btn.className = "action-btn";
     btn.type = "button";
-    this.setButtonAvailability(btn, canDo);
 
-    let researchStatus = `Время исследования: ${researchTime}`;
-    if (researchState) {
-      researchStatus = `Идёт: ${researchState.icon} ${researchState.name}`;
-    } else if (!this.game.hasResources(tech.cost)) {
-      researchStatus = "Не хватает ресурсов";
+    if (canQueue) {
+      // Show queue button
+      this.setButtonAvailability(btn, true);
+      btn.innerHTML = `
+        <span class="btn-icon">${tech.icon}</span>
+        <span class="btn-label">${tech.name}</span>
+        <span class="btn-desc">${tech.description}</span>
+        ${outcomesHtml}
+        <span class="btn-cost">Стоимость: ${costStr}</span>
+        <span class="btn-efficiency">Время исследования: ${researchTime}</span>
+        <span class="btn-queue-status tech-queue-hint">📋 Поставить в очередь</span>
+      `;
+      btn.addEventListener("click", () => {
+        this.game.queueResearch(tech.id);
+        this.render({ forcePanels: true });
+      });
+    } else {
+      this.setButtonAvailability(btn, canDo);
+      btn.innerHTML = `
+        <span class="btn-icon">${tech.icon}</span>
+        <span class="btn-label">${tech.name}</span>
+        <span class="btn-desc">${tech.description}</span>
+        ${outcomesHtml}
+        <span class="btn-cost">Стоимость: ${costStr}</span>
+        <span class="btn-efficiency">Время исследования: ${researchTime}</span>
+        <span class="btn-queue-status">${researchStatus}</span>
+      `;
+      btn.addEventListener("click", () => {
+        if (!this.game.research(tech.id)) {
+          this.render({ forcePanels: true });
+          return;
+        }
+        this.render({ forcePanels: true });
+      });
     }
 
-    btn.innerHTML = `
-      <span class="btn-icon">${tech.icon}</span>
-      <span class="btn-label">${tech.name}</span>
-      <span class="btn-desc">${tech.description}</span>
-      ${outcomesHtml}
-      <span class="btn-cost">Стоимость: ${costStr}</span>
-      <span class="btn-efficiency">Время исследования: ${researchTime}</span>
-      <span class="btn-queue-status">${researchStatus}</span>
-    `;
-    this.setTooltip(btn, [
-      tech.name,
-      tech.description,
-      ...outcomes,
-    ]);
-
-    btn.addEventListener("click", () => {
-      if (!this.game.research(tech.id)) {
-        this.render({ forcePanels: true });
-        return;
-      }
-      this.render({ forcePanels: true });
-    });
-
+    this.setTooltip(btn, [tech.name, tech.description, ...outcomes]);
     el.appendChild(btn);
     return el;
   }
@@ -1331,15 +1386,52 @@ class UI {
         `Осталось: ${this.formatSeconds(researchState.remainingMs)}`,
         "После завершения технология сразу усилит ваше поселение.",
       ]);
+      const cancelBtn = document.createElement("button");
+      cancelBtn.className = "tech-cancel-btn";
+      cancelBtn.type = "button";
+      cancelBtn.textContent = "✕ Отменить (−50% ресурсов)";
+      cancelBtn.addEventListener("click", () => {
+        this.game.cancelResearch();
+        this.render({ forcePanels: true });
+      });
+      card.appendChild(cancelBtn);
       container.appendChild(card);
+    }
+
+    // Queue slot indicator
+    if (this.game.researchQueue.length > 0) {
+      const queuedTech = this.data.tech[this.game.researchQueue[0].techId];
+      const queueSlot = document.createElement("div");
+      queueSlot.className = "research-queue-slot";
+      queueSlot.innerHTML = `
+        <span class="research-queue-slot-label">📋 В очереди:</span>
+        <span class="research-queue-slot-name">${queuedTech?.icon || ""} ${queuedTech?.name || "?"}</span>
+        <span class="research-queue-slot-hint">запустится автоматически</span>
+      `;
+      const cancelQueueBtn = document.createElement("button");
+      cancelQueueBtn.className = "tech-cancel-btn";
+      cancelQueueBtn.type = "button";
+      cancelQueueBtn.textContent = "✕ Убрать (вернуть ресурсы)";
+      cancelQueueBtn.addEventListener("click", () => {
+        this.game.cancelQueuedResearch();
+        this.render({ forcePanels: true });
+      });
+      queueSlot.appendChild(cancelQueueBtn);
+      container.appendChild(queueSlot);
+    } else if (researchState) {
+      const emptySlot = document.createElement("div");
+      emptySlot.className = "research-queue-slot is-empty";
+      emptySlot.innerHTML = `<span class="research-queue-slot-label">📋 Очередь пуста</span><span class="research-queue-slot-hint">Выберите следующее исследование ниже</span>`;
+      container.appendChild(emptySlot);
     }
 
     const branchesGrid = document.createElement("div");
     branchesGrid.className = "research-branches-grid";
 
     for (const branch of branchState.branches) {
+      const isComplete = branch.completed === branch.total && branch.total > 0;
       const section = document.createElement("section");
-      section.className = "research-branch";
+      section.className = "research-branch" + (isComplete ? " is-complete" : "");
       section.innerHTML = `
         <div class="research-branch-header">
           <div class="research-branch-title">
@@ -1349,7 +1441,7 @@ class UI {
               <div class="research-branch-desc">${branch.description}</div>
             </div>
           </div>
-          <div class="research-branch-meta">${branch.completed}/${branch.total}</div>
+          <div class="research-branch-meta">${isComplete ? "✅" : `${branch.completed}/${branch.total}`}</div>
         </div>
         <div class="research-branch-leads">${branch.leadsTo}</div>
       `;
