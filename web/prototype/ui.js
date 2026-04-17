@@ -42,7 +42,7 @@ class UI {
     if (restartObBtn) {
       restartObBtn.addEventListener("click", () => {
         this.game.restartOnboarding();
-        this.render();
+        this.render({ forcePanels: true });
       });
     }
 
@@ -96,6 +96,7 @@ class UI {
     }
 
     this.bindChangelogModal();
+    this.bindResearchModal();
   }
 
   bindChangelogModal() {
@@ -164,6 +165,90 @@ class UI {
     }).join("");
   }
 
+  bindResearchModal() {
+    const modal = document.getElementById("research-modal");
+    const closeBtn = document.getElementById("research-modal-close-btn");
+    if (!modal || !closeBtn) return;
+
+    const close = () => {
+      modal.style.display = "none";
+      document.body.style.overflow = "";
+    };
+
+    closeBtn.addEventListener("click", close);
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) close();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && modal.style.display === "flex") close();
+    });
+  }
+
+  renderResearchWidget() {
+    const container = document.getElementById("research-widget");
+    if (!container) return;
+
+    const researchState = this.game.getResearchState();
+    const branchState = this.game.getResearchBranchesState();
+    const totalDone = Object.keys(this.game.researched).length;
+    const startedBranches = branchState.branches.filter((b) => b.started).length;
+
+    const hasAvailable =
+      branchState.branches.some((b) => b.techs.some((t) => this.game.canResearch(t.id))) ||
+      branchState.foundation.some((t) => this.game.canResearch(t.id));
+
+    let activeHtml = "";
+    if (researchState) {
+      const pct = Math.round(researchState.progress * 100);
+      activeHtml = `
+        <div class="rw-active">
+          <div class="rw-active-info">
+            <span class="rw-active-label">Исследуется:</span>
+            <span class="rw-active-name">${researchState.icon} ${researchState.name}</span>
+            <span class="rw-active-time">${this.formatSeconds(researchState.remainingMs)}</span>
+          </div>
+          <div class="rw-progress-bar"><div class="rw-progress-fill" style="width:${pct}%"></div></div>
+        </div>`;
+    }
+
+    const indicatorClass = researchState ? "is-active" : hasAvailable ? "has-available" : "";
+    const btnLabel = researchState
+      ? "Управлять исследованиями"
+      : hasAvailable
+      ? "Открыть исследования ✦"
+      : "Открыть исследования";
+
+    container.innerHTML = `
+      <div class="rw-header">
+        <div class="rw-title">
+          🔬 <span>Исследования</span>
+          ${indicatorClass ? `<span class="rw-dot ${indicatorClass}"></span>` : ""}
+        </div>
+        <div class="rw-chips">
+          <span class="research-summary-chip">Изучено: ${totalDone}</span>
+          <span class="research-summary-chip">Ветви: ${startedBranches}/${branchState.branches.length}</span>
+        </div>
+      </div>
+      ${activeHtml}
+      <button class="rw-open-btn js-research-open" type="button">${btnLabel}</button>
+    `;
+
+    container.querySelector(".js-research-open")?.addEventListener("click", () => {
+      const modal = document.getElementById("research-modal");
+      if (!modal) return;
+      this.renderResearchModalContent();
+      modal.style.display = "flex";
+      document.body.style.overflow = "hidden";
+      document.getElementById("research-modal-close-btn")?.focus();
+    });
+  }
+
+  renderResearchModalContent() {
+    const container = document.getElementById("research-modal-body");
+    if (!container) return;
+    this._renderResearchBody(container);
+  }
+
   formatResourcePairs(resourceMap, { plus = false, decimals = 0 } = {}) {
     return Object.entries(resourceMap)
       .map(([id, amount]) => {
@@ -200,22 +285,26 @@ class UI {
     element.setAttribute("data-tooltip", text);
   }
 
-  render() {
+  setButtonAvailability(button, isAvailable) {
+    if (!button) return;
+    button.disabled = false;
+    button.classList.toggle("disabled", !isAvailable);
+    button.setAttribute("aria-disabled", isAvailable ? "false" : "true");
+  }
+
+  isPanelHovered(panelId) {
+    if (!panelId) return false;
+    const panel = document.getElementById(panelId);
+    return !!panel && panel.matches(":hover");
+  }
+
+  render({ forcePanels = false } = {}) {
     // Prevent click loss when DOM is rebuilt between pointer down/up.
     if (this.isPointerDown) {
       this.renderEnergy();
       this.renderSaveStatus();
       return;
     }
-
-    const craftHovered = !!document.querySelector("#craft-panel:hover");
-    const buildingsHovered = !!document.querySelector("#buildings-panel:hover");
-    const automationHovered = !!document.querySelector(
-      "#automation-panel:hover",
-    );
-    const researchHovered = !!document.querySelector("#research-panel:hover");
-    const hasActiveConstruction = !!this.game.getConstructionState();
-    const hasActiveResearch = !!this.game.getResearchState();
 
     if (this.game.shouldShowOnboardingIntro()) {
       this.renderOnboardingIntro();
@@ -227,13 +316,29 @@ class UI {
       this.hideOnboarding();
     }
 
-    this.renderEnergy();
-    this.renderResources();
-    this.renderGather();
-    if (!craftHovered) this.renderCrafting();
-    if (!buildingsHovered || hasActiveConstruction) this.renderBuildings();
-    if (!automationHovered) this.renderAutomation();
-    if (!researchHovered || hasActiveResearch) this.renderResearch();
+    if (forcePanels || !this.isPanelHovered("energy-panel")) {
+      this.renderEnergy();
+    }
+    if (forcePanels || !this.isPanelHovered("resources-panel")) {
+      this.renderResources();
+    }
+    if (forcePanels || !this.isPanelHovered("gather-panel")) {
+      this.renderGather();
+    }
+    if (forcePanels || !this.isPanelHovered("craft-panel")) {
+      this.renderCrafting();
+    }
+    if (forcePanels || !this.isPanelHovered("buildings-panel")) {
+      this.renderBuildings();
+    }
+    if (forcePanels || !this.isPanelHovered("automation-panel")) {
+      this.renderAutomation();
+    }
+    this.renderResearchWidget();
+    const _rModal = document.getElementById("research-modal");
+    if (_rModal && _rModal.style.display !== "none" && !this.isPanelHovered("research-modal-body")) {
+      this.renderResearchModalContent();
+    }
     this.renderLog();
     this.renderEraProgress();
     this.renderSaveStatus();
@@ -263,13 +368,13 @@ class UI {
 
     document.getElementById("obStartBtn").addEventListener("click", () => {
       this.game.startOnboarding();
-      this.render();
+      this.render({ forcePanels: true });
     });
 
     document.getElementById("obSkipBtn").addEventListener("click", () => {
       this.game.skipOnboarding();
       container.style.display = "none";
-      this.render();
+      this.render({ forcePanels: true });
     });
   }
 
@@ -304,7 +409,7 @@ class UI {
 
     document.getElementById("obSkipStepBtn").addEventListener("click", () => {
       this.game.skipOnboarding();
-      this.render();
+      this.render({ forcePanels: true });
     });
   }
 
@@ -575,7 +680,11 @@ class UI {
       btn.setAttribute("aria-disabled", disabled ? "true" : "false");
 
       btn.addEventListener("click", () => {
-        if (this.game.gather(id)) this.render();
+        if (!this.game.gather(id)) {
+          this.render({ forcePanels: true });
+          return;
+        }
+        this.render({ forcePanels: true });
       });
 
       container.appendChild(btn);
@@ -641,7 +750,9 @@ class UI {
     container.appendChild(queueCard);
 
     for (const [id, recipe] of Object.entries(this.data.recipes)) {
-      const unlocked = this.game.unlockedRecipes.has(id);
+      const unlocked =
+        this.game.unlockedRecipes.has(id) &&
+        (!recipe.unlockedBy || this.game.researched[recipe.unlockedBy]);
       const meetsReqs =
         !recipe.requires || this.game.buildings[recipe.requires];
       const canQueue = this.game.canQueueCraft(id);
@@ -652,14 +763,17 @@ class UI {
 
       if (!unlocked || !meetsReqs) {
         el.classList.add("locked");
-        const reqName = recipe.requires
-          ? this.data.buildings[recipe.requires]?.name || recipe.requires
-          : null;
+        const reqName = !unlocked && recipe.unlockedBy
+          ? this.data.tech[recipe.unlockedBy]?.name || recipe.unlockedBy
+          : recipe.requires
+            ? this.data.buildings[recipe.requires]?.name || recipe.requires
+            : null;
+        const reqType = !unlocked && recipe.unlockedBy ? "Исследование" : "Требуется";
         el.innerHTML = `
           <span class="btn-icon">🔒</span>
           <span class="btn-label">${recipe.name}</span>
           ${recipe.description ? `<span class="btn-desc">${recipe.description}</span>` : ""}
-          ${reqName ? `<span class="btn-cooldown">Требуется: ${reqName}</span>` : ""}
+          ${reqName ? `<span class="btn-cooldown">${reqType}: ${reqName}</span>` : ""}
         `;
         container.appendChild(el);
         continue;
@@ -667,8 +781,8 @@ class UI {
 
       const btn = document.createElement("button");
       btn.className = "action-btn";
-      btn.disabled = !canQueue;
-      if (!canQueue) btn.classList.add("disabled");
+      btn.type = "button";
+      this.setButtonAvailability(btn, canQueue);
 
       const costStr = this.formatResourcePairs(effectiveCost);
       const outStr = this.formatResourcePairs(recipe.output, { plus: true });
@@ -695,7 +809,11 @@ class UI {
       ]);
 
       btn.addEventListener("click", () => {
-        if (this.game.queueCraft(id)) this.render();
+        if (!this.game.queueCraft(id)) {
+          this.render({ forcePanels: true });
+          return;
+        }
+        this.render({ forcePanels: true });
       });
 
       el.appendChild(btn);
@@ -867,8 +985,8 @@ class UI {
         const buildTime = this.formatSeconds(this.game.getBuildDuration(id));
         const btn = document.createElement("button");
         btn.className = "action-btn";
-        btn.disabled = !canDo;
-        if (!canDo) btn.classList.add("disabled");
+        btn.type = "button";
+        this.setButtonAvailability(btn, canDo);
 
         let unlocksInfo = "";
         if (building.effect.unlocks && building.effect.unlocks.length > 0) {
@@ -906,7 +1024,11 @@ class UI {
         ]);
 
         btn.addEventListener("click", () => {
-          if (this.game.build(id)) this.render();
+          if (!this.game.build(id)) {
+            this.render({ forcePanels: true });
+            return;
+          }
+          this.render({ forcePanels: true });
         });
 
         el.appendChild(btn);
@@ -979,13 +1101,16 @@ class UI {
 
       const toggleBtn = document.createElement("button");
       toggleBtn.className = "automation-toggle-btn";
+      toggleBtn.type = "button";
       toggleBtn.textContent = buildingData.isAutomationRunning
         ? "⏸ Остановить"
         : "▶️ Запустить";
       toggleBtn.addEventListener("click", () => {
-        if (this.game.toggleAutomation(buildingId)) {
-          this.render();
+        if (!this.game.toggleAutomation(buildingId)) {
+          this.render({ forcePanels: true });
+          return;
         }
+        this.render({ forcePanels: true });
       });
 
       el.innerHTML = `
@@ -1023,16 +1148,174 @@ class UI {
     }
   }
 
-  renderResearch() {
-    const container = document.getElementById("research-panel");
-    if (!container) return;
+  createResearchCard(tech, researchState) {
+    const prereqs = this.game.getTechPrerequisites(tech.id);
+    const done = this.game.researched[tech.id];
+    const canDo = this.game.canResearch(tech.id);
+    const isResearchingThis = researchState?.techId === tech.id;
+    const outcomes = Array.isArray(tech.outcomes) ? tech.outcomes : [];
+    const missingRequirementLabels = [
+      ...prereqs.missingTechIds.map((id) => {
+        const reqTech = this.data.tech[id];
+        return reqTech ? `${reqTech.icon} ${reqTech.name}` : id;
+      }),
+      ...prereqs.missingBuildingIds.map((id) => {
+        const reqBuilding = this.data.buildings[id];
+        return reqBuilding ? `${reqBuilding.icon} ${reqBuilding.name}` : id;
+      }),
+    ];
+    const outcomesHtml = outcomes.length
+      ? `<div class="tech-outcomes">${outcomes.map((item) => `<span class="tech-outcome">${item}</span>`).join("")}</div>`
+      : "";
+    const requirementText =
+      missingRequirementLabels.length > 0
+        ? `Нужно: ${missingRequirementLabels.join(" · ")}`
+        : "";
 
+    const el = document.createElement("div");
+    el.className = "tech-card";
+
+    if (done) {
+      el.classList.add("done");
+      el.innerHTML = `
+        <span class="tech-icon">${tech.icon}</span>
+        <span class="tech-name">${tech.name}</span>
+        <span class="btn-desc">${tech.description}</span>
+        ${outcomesHtml}
+        <span class="tech-status">✅ Изучено</span>
+      `;
+      this.setTooltip(el, [
+        tech.name,
+        tech.description,
+        ...outcomes,
+      ]);
+      return el;
+    }
+
+    if (isResearchingThis) {
+      el.classList.add("in-progress");
+      el.innerHTML = `
+        <span class="tech-icon">${tech.icon}</span>
+        <span class="tech-name">${tech.name}</span>
+        <span class="btn-desc">${tech.description}</span>
+        ${outcomesHtml}
+        <span class="tech-status is-pending">⏳ Исследуется — ${this.formatSeconds(researchState.remainingMs)}</span>
+        <div class="project-mini-bar">
+          <div class="project-mini-bar-fill" style="width:${researchState.progress * 100}%"></div>
+        </div>
+      `;
+      this.setTooltip(el, [
+        `${tech.name}: исследование запущено`,
+        `Осталось: ${this.formatSeconds(researchState.remainingMs)}`,
+        ...outcomes,
+      ]);
+      return el;
+    }
+
+    if (missingRequirementLabels.length > 0) {
+      el.classList.add("locked");
+      el.innerHTML = `
+        <span class="tech-icon">🔒</span>
+        <span class="tech-name">${tech.name}</span>
+        <span class="btn-desc">${tech.description}</span>
+        ${outcomesHtml}
+        <span class="tech-req">${requirementText}</span>
+      `;
+      this.setTooltip(el, [
+        tech.name,
+        tech.description,
+        requirementText,
+        ...outcomes,
+      ]);
+      return el;
+    }
+
+    const costStr = this.formatResourcePairs(tech.cost);
+    const researchTime = this.formatSeconds(this.game.getResearchDuration(tech.id));
+    const btn = document.createElement("button");
+    btn.className = "action-btn";
+    btn.type = "button";
+    this.setButtonAvailability(btn, canDo);
+
+    let researchStatus = `Время исследования: ${researchTime}`;
+    if (researchState) {
+      researchStatus = `Идёт: ${researchState.icon} ${researchState.name}`;
+    } else if (!this.game.hasResources(tech.cost)) {
+      researchStatus = "Не хватает ресурсов";
+    }
+
+    btn.innerHTML = `
+      <span class="btn-icon">${tech.icon}</span>
+      <span class="btn-label">${tech.name}</span>
+      <span class="btn-desc">${tech.description}</span>
+      ${outcomesHtml}
+      <span class="btn-cost">Стоимость: ${costStr}</span>
+      <span class="btn-efficiency">Время исследования: ${researchTime}</span>
+      <span class="btn-queue-status">${researchStatus}</span>
+    `;
+    this.setTooltip(btn, [
+      tech.name,
+      tech.description,
+      ...outcomes,
+    ]);
+
+    btn.addEventListener("click", () => {
+      if (!this.game.research(tech.id)) {
+        this.render({ forcePanels: true });
+        return;
+      }
+      this.render({ forcePanels: true });
+    });
+
+    el.appendChild(btn);
+    return el;
+  }
+
+  _renderResearchBody(container) {
     container.innerHTML = "";
-    const title = document.createElement("h3");
-    title.textContent = "🔬 Исследования";
-    container.appendChild(title);
 
     const researchState = this.game.getResearchState();
+    const branchState = this.game.getResearchBranchesState();
+    const startedBranches = branchState.branches.filter((branch) => branch.started)
+      .length;
+
+    const overview = document.createElement("div");
+    overview.className = "research-overview";
+    overview.innerHTML = `
+      <div class="research-overview-summary">
+        <span class="research-summary-chip">Основа: ${branchState.foundation.filter((tech) => this.game.researched[tech.id]).length}/${branchState.foundation.length}</span>
+        <span class="research-summary-chip">Ветви начаты: ${startedBranches}/${branchState.branches.length}</span>
+        <span class="research-summary-chip">Изучено: ${Object.keys(this.game.researched).length}</span>
+      </div>
+      ${branchState.transitionText ? `<div class="research-overview-text">${branchState.transitionText}</div>` : ""}
+    `;
+    container.appendChild(overview);
+
+    if (branchState.foundation.length > 0) {
+      const foundation = document.createElement("section");
+      foundation.className = "research-foundation";
+      foundation.innerHTML = `
+        <div class="research-branch-header is-foundation">
+          <div class="research-branch-title">
+            <span class="research-branch-icon">🪶</span>
+            <div>
+              <div class="research-branch-name">Основа эпохи</div>
+              <div class="research-branch-desc">Без этих знаний ветви развития не складываются в общую систему.</div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      const foundationGrid = document.createElement("div");
+      foundationGrid.className = "research-foundation-grid";
+      for (const tech of branchState.foundation) {
+        foundationGrid.appendChild(this.createResearchCard(tech, researchState));
+      }
+
+      foundation.appendChild(foundationGrid);
+      container.appendChild(foundation);
+    }
+
     if (researchState) {
       const card = this.createTimedStatusCard({
         title: "Активное исследование",
@@ -1051,98 +1334,37 @@ class UI {
       container.appendChild(card);
     }
 
-    for (const [id, tech] of Object.entries(this.data.tech)) {
-      const done = this.game.researched[id];
-      const canDo = this.game.canResearch(id);
-      const meetsReqs = !tech.requires || this.game.buildings[tech.requires];
-      const isResearchingThis = researchState?.techId === id;
+    const branchesGrid = document.createElement("div");
+    branchesGrid.className = "research-branches-grid";
 
-      const el = document.createElement("div");
-      el.className = "tech-card";
-
-      if (done) {
-        el.classList.add("done");
-        el.innerHTML = `
-          <span class="tech-icon">${tech.icon}</span>
-          <span class="tech-name">${tech.name}</span>
-          ${tech.description ? `<span class="btn-desc">${tech.description}</span>` : ""}
-          <span class="tech-status">✅ Изучено</span>
-        `;
-        this.setTooltip(el, [
-          tech.name,
-          tech.description || "Исследование завершено",
-          "Эффект уже применён к вашему поселению",
-        ]);
-      } else if (isResearchingThis) {
-        el.classList.add("in-progress");
-        el.innerHTML = `
-          <span class="tech-icon">${tech.icon}</span>
-          <span class="tech-name">${tech.name}</span>
-          ${tech.description ? `<span class="btn-desc">${tech.description}</span>` : ""}
-          <span class="tech-status is-pending">⏳ Исследуется — ${this.formatSeconds(researchState.remainingMs)}</span>
-          <div class="project-mini-bar">
-            <div class="project-mini-bar-fill" style="width:${researchState.progress * 100}%"></div>
+    for (const branch of branchState.branches) {
+      const section = document.createElement("section");
+      section.className = "research-branch";
+      section.innerHTML = `
+        <div class="research-branch-header">
+          <div class="research-branch-title">
+            <span class="research-branch-icon">${branch.icon}</span>
+            <div>
+              <div class="research-branch-name">${branch.label}</div>
+              <div class="research-branch-desc">${branch.description}</div>
+            </div>
           </div>
-        `;
-        this.setTooltip(el, [
-          `${tech.name}: исследование запущено`,
-          `Осталось: ${this.formatSeconds(researchState.remainingMs)}`,
-          "После завершения эффект технологии применится автоматически.",
-        ]);
-      } else if (!meetsReqs) {
-        el.classList.add("locked");
-        const reqBuilding = this.data.buildings[tech.requires];
-        el.innerHTML = `
-          <span class="tech-icon">🔒</span>
-          <span class="tech-name">${tech.name}</span>
-          ${tech.description ? `<span class="btn-desc">${tech.description}</span>` : ""}
-          <span class="tech-req">Требуется: ${reqBuilding ? `${reqBuilding.icon} ${reqBuilding.name}` : tech.requires}</span>
-        `;
-        this.setTooltip(el, [
-          tech.name,
-          tech.description || "Исследование пока недоступно",
-          "Нужно построить требуемое здание",
-        ]);
-      } else {
-        const costStr = this.formatResourcePairs(tech.cost);
-        const researchTime = this.formatSeconds(
-          this.game.getResearchDuration(id),
-        );
-        const btn = document.createElement("button");
-        btn.className = "action-btn";
-        btn.disabled = !canDo;
-        if (!canDo) btn.classList.add("disabled");
+          <div class="research-branch-meta">${branch.completed}/${branch.total}</div>
+        </div>
+        <div class="research-branch-leads">${branch.leadsTo}</div>
+      `;
 
-        let researchStatus = `Исследование: ${researchTime}`;
-        if (researchState) {
-          researchStatus = `Идёт: ${researchState.icon} ${researchState.name}`;
-        } else if (!this.game.hasResources(tech.cost)) {
-          researchStatus = "Не хватает ресурсов";
-        }
-
-        btn.innerHTML = `
-          <span class="btn-icon">${tech.icon}</span>
-          <span class="btn-label">${tech.name}</span>
-          <span class="btn-desc">${tech.description}</span>
-          <span class="btn-cost">Стоимость: ${costStr}</span>
-          <span class="btn-efficiency">Время исследования: ${researchTime}</span>
-          <span class="btn-queue-status">${researchStatus}</span>
-        `;
-        this.setTooltip(btn, [
-          tech.name,
-          tech.description || "Дает постоянный эффект",
-          "Запускает исследование; эффект применится после завершения таймера",
-        ]);
-
-        btn.addEventListener("click", () => {
-          if (this.game.research(id)) this.render();
-        });
-
-        el.appendChild(btn);
+      const techList = document.createElement("div");
+      techList.className = "research-branch-techs";
+      for (const tech of branch.techs) {
+        techList.appendChild(this.createResearchCard(tech, researchState));
       }
 
-      container.appendChild(el);
+      section.appendChild(techList);
+      branchesGrid.appendChild(section);
     }
+
+    container.appendChild(branchesGrid);
   }
 
   renderLog() {
