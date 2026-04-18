@@ -315,7 +315,7 @@ class UI {
       return;
     }
 
-    // Flat-top honeycomb: full 61-cell field (radius 4)
+    // Flat-top honeycomb: circular layout
     // tileWidth = 2R, tileHeight = √3·R, colStep = 1.5R, rowStep = √3·R
     const hexRadius = 40;
     const tileWidth = hexRadius * 2;                            // 80
@@ -323,7 +323,8 @@ class UI {
     const horizontalStep = Math.round(hexRadius * 1.5);         // 60
     const verticalStep = tileHeight;                            // 69
     const scenePadding = 20;
-    const gridRadius = 4; // 61 cells total
+    const gridRadius = 4;
+    const maxPixelDist = hexRadius * 5; // circular boundary ≈ 200 px
 
     // Index named tiles by "q,r" for O(1) lookup
     const namedByCoord = new Map();
@@ -331,13 +332,18 @@ class UI {
       namedByCoord.set(`${tile.q},${tile.r}`, tile);
     }
 
-    // Generate every hex within gridRadius using axial coordinates
+    // Generate hex coords within circular pixel-distance boundary
     const allCoords = [];
+    const maxDistSq = maxPixelDist * maxPixelDist;
     for (let q = -gridRadius; q <= gridRadius; q++) {
       const rMin = Math.max(-gridRadius, -q - gridRadius);
       const rMax = Math.min(gridRadius, -q + gridRadius);
       for (let r = rMin; r <= rMax; r++) {
-        allCoords.push({ q, r });
+        const cx = q * horizontalStep;
+        const cy = (r + q * 0.5) * verticalStep;
+        if (cx * cx + cy * cy <= maxDistSq || namedByCoord.has(`${q},${r}`)) {
+          allCoords.push({ q, r });
+        }
       }
     }
 
@@ -550,6 +556,17 @@ class UI {
       `;
     }
 
+    if (selected.id === "camp_clearing") {
+      detailsActionBlock += `
+        <button class="camp-map-primary-btn disabled" type="button" style="opacity:0.5; cursor:default;" aria-disabled="true">
+          🏕️ Карта местности лагеря
+        </button>
+        <div class="camp-map-note" style="margin-top:0.3rem; opacity:0.65; font-style:italic;">
+          Подробная карта лагеря с постройками появится в будущих версиях.
+        </div>
+      `;
+    }
+
     container.innerHTML = `
       <div class="camp-map-header">
         <div>
@@ -661,9 +678,11 @@ class UI {
     const sceneEl = document.getElementById("camp-map-scene");
     const canvasEl = document.getElementById("camp-map-canvas");
     if (sceneEl && canvasEl) {
-      if (this._mapPanX === undefined) {
+      if (this._mapPanX === undefined || this._mapSceneW !== sceneWidth || this._mapSceneH !== sceneHeight) {
         this._mapPanX = Math.round((sceneEl.clientWidth  - sceneWidth)  / 2);
         this._mapPanY = Math.round((sceneEl.clientHeight - sceneHeight) / 2);
+        this._mapSceneW = sceneWidth;
+        this._mapSceneH = sceneHeight;
       }
       canvasEl.style.transform = `translate(${this._mapPanX}px, ${this._mapPanY}px)`;
     }
@@ -698,6 +717,7 @@ class UI {
       document.addEventListener("mouseup", () => {
         if (!this._mapDragging) return;
         this._mapDragging = false;
+        this._mapDragMoved = false;
         const scene = document.getElementById("camp-map-scene");
         if (scene) scene.classList.remove("is-dragging");
       });
