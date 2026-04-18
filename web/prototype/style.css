@@ -338,8 +338,8 @@ body {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  gap: 0.2rem;
-  padding: 0.75rem 0.55rem;
+  gap: 0.15rem;
+  padding: 0.35rem 0.3rem;
   text-align: center;
 }
 
@@ -370,19 +370,19 @@ body {
 }
 
 .camp-tile-icon {
-  font-size: 1.3rem;
+  font-size: 1.05rem;
   line-height: 1;
 }
 
 .camp-tile-name {
-  font-size: 0.72rem;
+  font-size: 0.6rem;
   font-weight: 700;
   color: #f8fafc;
-  line-height: 1.2;
+  line-height: 1.15;
 }
 
 .camp-tile-state {
-  font-size: 0.63rem;
+  font-size: 0.52rem;
   color: #cbd5e1;
   line-height: 1.1;
 }
@@ -497,6 +497,73 @@ body {
   border-radius: 2px;
   background: rgba(248, 113, 113, 0.45);
   pointer-events: none;
+}
+
+/* ── Filler hexes (grid background fill) ──────────────── */
+.camp-tile--filler {
+  pointer-events: none;
+  cursor: default;
+  opacity: 0.55;
+}
+
+.camp-tile--filler:hover {
+  transform: none;
+  z-index: auto;
+}
+
+.camp-tile.terrain-void     { background: #0c0f15; }
+.camp-tile.terrain-filler-brush { background: #0d1510; }
+.camp-tile.terrain-filler-rock  { background: #111110; }
+.camp-tile.terrain-filler-grass { background: #0c1410; }
+
+/* ── Animations ────────────────────────────────────────── */
+@keyframes campPulse {
+  0%, 100% { opacity: 0.25; }
+  50%       { opacity: 0.75; }
+}
+
+@keyframes lorePulse {
+  0%, 100% { opacity: 0.4; }
+  50%       { opacity: 1; }
+}
+
+@keyframes fogShimmer {
+  0%, 100% { opacity: 0.3; }
+  50%       { opacity: 0.65; }
+}
+
+/* Camp center — warm amber glow */
+.camp-tile.terrain-camp:not(.is-hidden) .camp-tile-inner::before,
+.camp-tile.terrain-clearing:not(.is-hidden) .camp-tile-inner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 50%, rgba(251, 191, 36, 0.22), transparent 65%);
+  animation: campPulse 3s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Lore tile — deep amber smolder */
+.camp-tile.terrain-lore:not(.is-hidden) .camp-tile-inner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 55%, rgba(180, 110, 28, 0.3), transparent 65%);
+  animation: lorePulse 4s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Hidden tiles — fog shimmer */
+.camp-tile.is-hidden .camp-tile-inner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(90, 110, 150, 0.12) 0%, transparent 55%);
+  animation: fogShimmer 2.5s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .camp-map-details {

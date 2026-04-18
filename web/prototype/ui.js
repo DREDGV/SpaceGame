@@ -315,83 +315,106 @@ class UI {
       return;
     }
 
-    // Flat-top hexagon layout: tileWidth = 2R, tileHeight = √3·R
-    // Adjacent centers are √3·R apart; column step = 1.5R, row step = √3·R
-    const hexRadius = 60;
-    const tileWidth = hexRadius * 2;                             // 120
-    const tileHeight = Math.round(Math.sqrt(3) * hexRadius);     // 104
-    const horizontalStep = Math.round(hexRadius * 1.5);          // 90
-    const verticalStep = tileHeight;                             // 104
-    const scenePadding = 24;
+    // Flat-top honeycomb: full 61-cell field (radius 4)
+    // tileWidth = 2R, tileHeight = √3·R, colStep = 1.5R, rowStep = √3·R
+    const hexRadius = 40;
+    const tileWidth = hexRadius * 2;                            // 80
+    const tileHeight = Math.round(Math.sqrt(3) * hexRadius);    // 69
+    const horizontalStep = Math.round(hexRadius * 1.5);         // 60
+    const verticalStep = tileHeight;                            // 69
+    const scenePadding = 20;
+    const gridRadius = 4; // 61 cells total
 
-    const tileLayouts = mapState.tiles.map((tile) => {
-      const centerX = tile.q * horizontalStep;
-      const centerY = Math.round((tile.r + tile.q * 0.5) * verticalStep);
-      return {
-        ...tile,
-        left: centerX - tileWidth / 2,
-        top: centerY - tileHeight / 2,
-      };
+    // Index named tiles by "q,r" for O(1) lookup
+    const namedByCoord = new Map();
+    for (const tile of mapState.tiles) {
+      namedByCoord.set(`${tile.q},${tile.r}`, tile);
+    }
+
+    // Generate every hex within gridRadius using axial coordinates
+    const allCoords = [];
+    for (let q = -gridRadius; q <= gridRadius; q++) {
+      const rMin = Math.max(-gridRadius, -q - gridRadius);
+      const rMax = Math.min(gridRadius, -q + gridRadius);
+      for (let r = rMin; r <= rMax; r++) {
+        allCoords.push({ q, r });
+      }
+    }
+
+    // Compute flat-top pixel position for each hex
+    const allLayouts = allCoords.map(({ q, r }) => {
+      const centerX = q * horizontalStep;
+      const centerY = Math.round((r + q * 0.5) * verticalStep);
+      return { q, r, left: centerX - tileWidth / 2, top: centerY - tileHeight / 2 };
     });
 
-    const minX = Math.min(...tileLayouts.map((tile) => tile.left));
-    const maxX = Math.max(...tileLayouts.map((tile) => tile.left + tileWidth));
-    const minY = Math.min(...tileLayouts.map((tile) => tile.top));
-    const maxY = Math.max(...tileLayouts.map((tile) => tile.top + tileHeight));
+    const minX = Math.min(...allLayouts.map((t) => t.left));
+    const maxX = Math.max(...allLayouts.map((t) => t.left + tileWidth));
+    const minY = Math.min(...allLayouts.map((t) => t.top));
+    const maxY = Math.max(...allLayouts.map((t) => t.top + tileHeight));
     const sceneWidth = Math.ceil(maxX - minX + scenePadding * 2);
     const sceneHeight = Math.ceil(maxY - minY + scenePadding * 2);
 
-    const renderedTiles = tileLayouts
-      .map((tile) => {
-        const left = tile.left - minX + scenePadding;
-        const top = tile.top - minY + scenePadding;
-        const tileStateLabel = this.getCampTileStateLabel(tile.state);
-        const displayIcon =
-          tile.construction?.icon ||
-          tile.building?.icon ||
-          tile.icon ||
-          "•";
-        const classes = [
-          "camp-tile",
-          `is-${tile.state}`,
-          `terrain-${tile.terrainType || "plain"}`,
-          `zone-${tile.distanceFromCamp ?? 0}`,
-        ];
-        if (tile.selected) classes.push("is-selected");
-        if (tile.building) classes.push("has-building");
-        if (tile.construction) classes.push("is-constructing");
-        if (tile.isDepleted) classes.push("is-depleted");
-        if (tile.resourceType && Number.isFinite(tile.resourceRemaining) && tile.state !== "hidden") {
-          const cap = tile.resourceCapacity || 1;
-          const pct = tile.resourceRemaining / cap;
-          if (pct >= 0.67) classes.push("res-rich");
-          else if (pct >= 0.34) classes.push("res-medium");
-          else classes.push("res-sparse");
-        }
+    // Deterministic pseudo-random terrain for filler hexes
+    const FILLER_TERRAINS = ["void", "void", "filler-brush", "filler-rock", "void", "filler-grass"];
 
-        return `
-          <button
-            class="${classes.join(" ")}"
-            type="button"
-            data-tile-id="${tile.id}"
-            style="left:${left}px; top:${top}px; width:${tileWidth}px; height:${tileHeight}px;"
-            aria-label="${tile.name}"
-          >
-            <span class="camp-tile-inner">
-              <span class="camp-tile-icon">${tile.state === "hidden" ? "·" : displayIcon}</span>
-              ${
-                tile.state === "hidden"
-                  ? '<span class="camp-tile-state">Туман</span>'
-                  : `
-                    <span class="camp-tile-name">${tile.name}</span>
-                    <span class="camp-tile-state">${tileStateLabel}</span>
-                  `
-              }
-            </span>
-          </button>
-        `;
-      })
-      .join("");
+    const renderedTiles = allLayouts.map(({ q, r, left, top }) => {
+      const px = left - minX + scenePadding;
+      const py = top - minY + scenePadding;
+      const sizeStyle = `left:${px}px; top:${py}px; width:${tileWidth}px; height:${tileHeight}px;`;
+      const tile = namedByCoord.get(`${q},${r}`);
+
+      if (!tile) {
+        const ti = Math.abs((q * 7 + r * 13 + q * r * 3) % FILLER_TERRAINS.length);
+        return `<div class="camp-tile camp-tile--filler terrain-${FILLER_TERRAINS[ti]}" style="${sizeStyle}" aria-hidden="true"></div>`;
+      }
+
+      const tileStateLabel = this.getCampTileStateLabel(tile.state);
+      const displayIcon =
+        tile.construction?.icon ||
+        tile.building?.icon ||
+        tile.icon ||
+        "•";
+      const classes = [
+        "camp-tile",
+        `is-${tile.state}`,
+        `terrain-${tile.terrainType || "plain"}`,
+        `zone-${tile.distanceFromCamp ?? 0}`,
+      ];
+      if (tile.selected) classes.push("is-selected");
+      if (tile.building) classes.push("has-building");
+      if (tile.construction) classes.push("is-constructing");
+      if (tile.isDepleted) classes.push("is-depleted");
+      if (tile.resourceType && Number.isFinite(tile.resourceRemaining) && tile.state !== "hidden") {
+        const cap = tile.resourceCapacity || 1;
+        const pct = tile.resourceRemaining / cap;
+        if (pct >= 0.67) classes.push("res-rich");
+        else if (pct >= 0.34) classes.push("res-medium");
+        else classes.push("res-sparse");
+      }
+
+      return `
+        <button
+          class="${classes.join(" ")}"
+          type="button"
+          data-tile-id="${tile.id}"
+          style="${sizeStyle}"
+          aria-label="${tile.name}"
+        >
+          <span class="camp-tile-inner">
+            <span class="camp-tile-icon">${tile.state === "hidden" ? "·" : displayIcon}</span>
+            ${
+              tile.state === "hidden"
+                ? '<span class="camp-tile-state">Туман</span>'
+                : `
+                  <span class="camp-tile-name">${tile.name}</span>
+                  <span class="camp-tile-state">${tileStateLabel}</span>
+                `
+            }
+          </span>
+        </button>
+      `;
+    }).join("");
 
     const selectedStateLabel = this.getCampTileStateLabel(selected.state);
     const selectedActionCopy = selected.action
