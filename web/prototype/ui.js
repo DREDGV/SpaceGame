@@ -402,15 +402,11 @@ class UI {
           aria-label="${tile.name}"
         >
           <span class="camp-tile-inner">
-            <span class="camp-tile-icon">${tile.state === "hidden" ? "·" : displayIcon}</span>
-            ${
-              tile.state === "hidden"
-                ? '<span class="camp-tile-state">Туман</span>'
-                : `
-                  <span class="camp-tile-name">${tile.name}</span>
-                  <span class="camp-tile-state">${tileStateLabel}</span>
-                `
-            }
+            ${tile.state !== "hidden" ? `
+              <span class="camp-tile-icon">${displayIcon}</span>
+              <span class="camp-tile-name">${tile.name}</span>
+              <span class="camp-tile-state">${tileStateLabel}</span>
+            ` : ""}
           </span>
         </button>
       `;
@@ -568,8 +564,10 @@ class UI {
       </div>
       <div class="camp-map-body">
         <div class="camp-map-scene-wrap">
-          <div class="camp-map-scene" style="height:${sceneHeight}px; min-width:${sceneWidth}px;">
-            ${renderedTiles}
+          <div class="camp-map-scene" id="camp-map-scene">
+            <div id="camp-map-canvas" class="camp-map-canvas" style="width:${sceneWidth}px; height:${sceneHeight}px;">
+              ${renderedTiles}
+            </div>
           </div>
           <div class="camp-map-legend">${mapState.interactionHint}</div>
         </div>
@@ -632,6 +630,9 @@ class UI {
       }
 
       button.addEventListener("click", () => {
+        const wasDrag = this._mapDragMoved;
+        this._mapDragMoved = false;
+        if (wasDrag) return;
         if (tile.state === "hidden") return;
         const wasSelected = this.game.getSelectedCampTileId() === tile.id;
         this.game.selectCampTile(tile.id);
@@ -654,6 +655,52 @@ class UI {
           return;
         }
         this.render({ forcePanels: true });
+      });
+    }
+
+    // ── Map pan: apply stored transform, init centering on first render ──────
+    const sceneEl = document.getElementById("camp-map-scene");
+    const canvasEl = document.getElementById("camp-map-canvas");
+    if (sceneEl && canvasEl) {
+      if (this._mapPanX === undefined) {
+        this._mapPanX = Math.round((sceneEl.clientWidth  - sceneWidth)  / 2);
+        this._mapPanY = Math.round((sceneEl.clientHeight - sceneHeight) / 2);
+      }
+      canvasEl.style.transform = `translate(${this._mapPanX}px, ${this._mapPanY}px)`;
+    }
+
+    // ── Bind drag events once (survive innerHTML rebuilds) ───────────────────
+    if (!this._mapPanBound) {
+      this._mapPanBound = true;
+
+      container.addEventListener("mousedown", (e) => {
+        const scene = document.getElementById("camp-map-scene");
+        if (!scene || !scene.contains(e.target)) return;
+        // LMB on named tile → normal click, not drag
+        if (e.button === 0 && e.target.closest("[data-tile-id]")) return;
+        if (e.button !== 0 && e.button !== 1) return;
+        if (e.button === 1) e.preventDefault();
+        this._mapDragging  = true;
+        this._mapDragMoved = false;
+        this._mapDragSX    = e.clientX - (this._mapPanX ?? 0);
+        this._mapDragSY    = e.clientY - (this._mapPanY ?? 0);
+        scene.classList.add("is-dragging");
+      });
+
+      document.addEventListener("mousemove", (e) => {
+        if (!this._mapDragging) return;
+        this._mapDragMoved = true;
+        this._mapPanX = e.clientX - this._mapDragSX;
+        this._mapPanY = e.clientY - this._mapDragSY;
+        const cv = document.getElementById("camp-map-canvas");
+        if (cv) cv.style.transform = `translate(${this._mapPanX}px, ${this._mapPanY}px)`;
+      });
+
+      document.addEventListener("mouseup", () => {
+        if (!this._mapDragging) return;
+        this._mapDragging = false;
+        const scene = document.getElementById("camp-map-scene");
+        if (scene) scene.classList.remove("is-dragging");
       });
     }
   }
