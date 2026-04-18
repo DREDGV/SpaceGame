@@ -13,7 +13,7 @@
   const ui = new UI(game);
 
   // Initial render
-  ui.render();
+  ui.render({ forcePanels: true });
 
   // Tick intervals
   const UI_TICK = 200; // UI refresh every 200ms
@@ -38,6 +38,7 @@
       game.tickCraftQueue();
       game.tickConstruction();
       game.tickResearch();
+      game.syncCampMap();
       lastWorkTick = timestamp;
     }
 
@@ -58,13 +59,13 @@
   requestAnimationFrame(tick);
 
   if (!game.loadedFromSave) {
-    game.addLog("🌍 Добро пожаловать на заре цивилизации!");
-    game.addLog("💡 Собирайте ресурсы, создавайте предметы, стройте здания!");
-    game.addLog("⚡ Ваша энергия ограничена — планируйте действия!");
+    game.addLog("🌍 Путь начинается с голых рук и первых наблюдений.");
+    game.addLog("🖐️ Собирайте ветки, камни и волокно, чтобы открыть первые озарения.");
+    game.addLog("📚 Первые открытия будут складываться в Книгу знаний.");
     game.markDirty();
     game.saveGame(true);
   }
-  ui.render();
+  ui.render({ forcePanels: true });
 
   window.addEventListener("beforeunload", () => {
     game.autoSaveIfNeeded(true);

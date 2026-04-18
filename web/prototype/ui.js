@@ -559,7 +559,6 @@ class UI {
         <div class="camp-map-chips">
           <span class="camp-map-chip">Открыто ${mapState.discoveredCount}/${mapState.totalCount}</span>
           <span class="camp-map-chip">Освоено ${mapState.settledCount}</span>
-          <span class="camp-map-chip">Туман ${mapState.totalCount - mapState.discoveredCount}</span>
         </div>
       </div>
       <div class="camp-map-body">

@@ -56,6 +56,11 @@ class GameState {
     this.researchQueue = [];  // max 1 queued item
 
     this.onboarding = this._getDefaultOnboardingState();
+    this.insights = this._getDefaultInsightState();
+    this.knowledgeEntries = this._getDefaultKnowledgeState();
+    this.localCampMap = this._getDefaultLocalCampMapState();
+    this.storyEvents = [];
+    this.storyEventCounter = 0;
     this.currentGoalIndex = 0;
     this.completedGoals = [];
     this.allGoalsComplete = false;
@@ -84,6 +89,7 @@ class GameState {
     this._ensureBaseRecipeUnlocks();
     this._loadGameState();
     this._recalculateDerivedState();
+    this._syncLocalCampMap();
 
     if (this.loadErrorMessage) {
       this.addLog(this.loadErrorMessage);
@@ -108,6 +114,139 @@ class GameState {
       completed: !!raw?.completed,
       currentStep: Number.isFinite(raw?.currentStep) ? raw.currentStep : 0,
     };
+  }
+
+  _getDefaultInsightState() {
+    const state = {};
+    for (const id of Object.keys(this.data.prologue?.insights || {})) {
+      state[id] = false;
+    }
+    return state;
+  }
+
+  _getDefaultKnowledgeState() {
+    const state = {};
+    for (const id of Object.keys(this.data.prologue?.knowledgeEntries || {})) {
+      state[id] = false;
+    }
+    return state;
+  }
+
+  _getDefaultLocalCampMapState() {
+    const tileStates = {};
+    const tileResourceRemaining = {};
+    const tiles = this.data.localCampMap?.tiles || {};
+
+    for (const [tileId, tile] of Object.entries(tiles)) {
+      tileStates[tileId] = tile.state || "hidden";
+      if (tile.resourceType) {
+        tileResourceRemaining[tileId] = Number.isFinite(tile.resourceAmount)
+          ? tile.resourceAmount
+          : null;
+      }
+    }
+
+    return {
+      tileStates,
+      tileResourceRemaining,
+      buildingPlacements: {},
+      selectedTileId: "camp_clearing",
+    };
+  }
+
+  _sanitizeCampMapState(raw) {
+    const defaults = this._getDefaultLocalCampMapState();
+    const tiles = this.data.localCampMap?.tiles || {};
+    const validStates = new Set(["hidden", "discovered", "exploited", "settled"]);
+
+    for (const tileId of Object.keys(defaults.tileStates)) {
+      const state = raw?.tileStates?.[tileId];
+      if (typeof state === "string" && validStates.has(state)) {
+        defaults.tileStates[tileId] = state;
+      }
+
+      if (Object.prototype.hasOwnProperty.call(defaults.tileResourceRemaining, tileId)) {
+        const remaining = raw?.tileResourceRemaining?.[tileId];
+        defaults.tileResourceRemaining[tileId] = Number.isFinite(remaining)
+          ? Math.max(0, remaining)
+          : defaults.tileResourceRemaining[tileId];
+      }
+    }
+
+    for (const [buildingId, tileId] of Object.entries(
+      raw?.buildingPlacements || {},
+    )) {
+      if (!this.data.buildings[buildingId] || !tiles[tileId]) continue;
+      defaults.buildingPlacements[buildingId] = tileId;
+    }
+
+    if (tiles[raw?.selectedTileId]) {
+      defaults.selectedTileId = raw.selectedTileId;
+    }
+
+    return defaults;
+  }
+
+  _getCampTileStateRank(state) {
+    switch (state) {
+      case "settled":
+        return 3;
+      case "exploited":
+        return 2;
+      case "discovered":
+        return 1;
+      default:
+        return 0;
+    }
+  }
+
+  _getHigherCampTileState(currentState, nextState) {
+    return this._getCampTileStateRank(nextState) >
+      this._getCampTileStateRank(currentState)
+      ? nextState
+      : currentState;
+  }
+
+  _setCampTileState(tileId, nextState) {
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        this.localCampMap.tileStates,
+        tileId,
+      )
+    ) {
+      return false;
+    }
+    const currentState = this.localCampMap.tileStates[tileId];
+    const mergedState = this._getHigherCampTileState(currentState, nextState);
+    if (mergedState === currentState) return false;
+    this.localCampMap.tileStates[tileId] = mergedState;
+    return true;
+  }
+
+  _markCampTileExploited(tileId) {
+    if (!tileId) return false;
+    return this._setCampTileState(tileId, "exploited");
+  }
+
+  _serializeCampMap() {
+    return {
+      tileStates: { ...this.localCampMap.tileStates },
+      tileResourceRemaining: { ...this.localCampMap.tileResourceRemaining },
+      buildingPlacements: { ...this.localCampMap.buildingPlacements },
+      selectedTileId: this.localCampMap.selectedTileId || null,
+    };
+  }
+
+  _restoreCampMap(savedCampMap) {
+    this.localCampMap = this._sanitizeCampMapState(savedCampMap);
+  }
+
+  _sanitizeBooleanMap(raw, defs) {
+    const state = {};
+    for (const id of Object.keys(defs || {})) {
+      state[id] = !!raw?.[id];
+    }
+    return state;
   }
 
   _cloneMapFromSource(target, source) {
@@ -183,6 +322,355 @@ class GameState {
     this.automationIntervalMultiplier = automationIntervalMultiplier;
     this._recalculateEnergyStats();
     this._recalculateEraProgress();
+  }
+
+  _ensureCampBuildingPlacements() {
+    const mapTiles = this.data.localCampMap?.tiles || {};
+
+    for (const buildingId of Object.keys(this.buildings)) {
+      if (this.localCampMap.buildingPlacements[buildingId]) continue;
+      const tileId = this._getPreferredCampBuildTile(buildingId);
+      if (tileId && mapTiles[tileId]) {
+        this.localCampMap.buildingPlacements[buildingId] = tileId;
+      }
+    }
+
+    if (
+      this.activeConstruction?.buildingId &&
+      !this.activeConstruction.tileId
+    ) {
+      this.activeConstruction.tileId = this._getPreferredCampBuildTile(
+        this.activeConstruction.buildingId,
+      );
+    }
+  }
+
+  _syncLocalCampMap({ pushStory = false } = {}) {
+    const tiles = this.data.localCampMap?.tiles || {};
+    const newlyDiscovered = [];
+
+    this._ensureCampBuildingPlacements();
+
+    for (const [tileId, tile] of Object.entries(tiles)) {
+      const previousState =
+        this.localCampMap.tileStates[tileId] || tile.state || "hidden";
+
+      let desiredState = tile.state || "hidden";
+      if (
+        tile.discoveryRequirements &&
+        typeof tile.discoveryRequirements === "function" &&
+        tile.discoveryRequirements(this)
+      ) {
+        desiredState = "discovered";
+      }
+
+      const placedBuildingId = this.getCampPlacedBuildingId(tileId);
+      if (placedBuildingId) {
+        desiredState = "settled";
+      } else if (this.activeConstruction?.tileId === tileId) {
+        desiredState = this._getHigherCampTileState(desiredState, "exploited");
+      }
+
+      const nextState = this._getHigherCampTileState(previousState, desiredState);
+      this.localCampMap.tileStates[tileId] = nextState;
+
+      if (
+        previousState === "hidden" &&
+        this._getCampTileStateRank(nextState) >=
+          this._getCampTileStateRank("discovered")
+      ) {
+        newlyDiscovered.push(tile.name);
+      }
+    }
+
+    this._ensureSelectedCampTile();
+
+    if (pushStory && newlyDiscovered.length > 0) {
+      const names = newlyDiscovered.slice(0, 3).join(", ");
+      this.addLog(`🧭 Замечены новые места вокруг лагеря: ${names}.`);
+      this._pushStoryEvent({
+        type: "map",
+        icon: "🧭",
+        title: "Открыты новые клетки лагеря",
+        text:
+          newlyDiscovered.length > 3
+            ? `${names} и ещё ${newlyDiscovered.length - 3} участка.`
+            : names,
+        ttlMs: 6500,
+      });
+      this.markDirty();
+    }
+  }
+
+  syncCampMap() {
+    this._syncLocalCampMap({ pushStory: true });
+  }
+
+  _ensureSelectedCampTile() {
+    const tiles = this.data.localCampMap?.tiles || {};
+    const currentId = this.localCampMap.selectedTileId;
+    if (
+      currentId &&
+      tiles[currentId] &&
+      this.getCampTileState(currentId) !== "hidden"
+    ) {
+      return;
+    }
+
+    const discovered = Object.values(tiles)
+      .filter((tile) => this.getCampTileState(tile.id) !== "hidden")
+      .sort(
+        (a, b) =>
+          (a.distanceFromCamp || 0) - (b.distanceFromCamp || 0) ||
+          (a.r || 0) - (b.r || 0) ||
+          (a.q || 0) - (b.q || 0),
+      );
+
+    this.localCampMap.selectedTileId = discovered[0]?.id || null;
+  }
+
+  getCampTileState(tileId) {
+    return this.localCampMap.tileStates[tileId] || "hidden";
+  }
+
+  getCampPlacedBuildingId(tileId) {
+    for (const [buildingId, placedTileId] of Object.entries(
+      this.localCampMap.buildingPlacements,
+    )) {
+      if (placedTileId === tileId && this.buildings[buildingId]) {
+        return buildingId;
+      }
+    }
+    return null;
+  }
+
+  getBuildingPlacement(buildingId) {
+    return this.localCampMap.buildingPlacements[buildingId] || null;
+  }
+
+  _getMappedCampTilesForAction(actionId) {
+    return Object.values(this.data.localCampMap?.tiles || {})
+      .filter((tile) => tile.actionId === actionId)
+      .sort(
+        (a, b) =>
+          (a.distanceFromCamp || 0) - (b.distanceFromCamp || 0) ||
+          (a.r || 0) - (b.r || 0) ||
+          (a.q || 0) - (b.q || 0),
+      );
+  }
+
+  _getCampTileResourceRemaining(tileId) {
+    return Object.prototype.hasOwnProperty.call(
+      this.localCampMap.tileResourceRemaining,
+      tileId,
+    )
+      ? this.localCampMap.tileResourceRemaining[tileId]
+      : null;
+  }
+
+  _isCampTileResourceDepleted(tileId) {
+    const remaining = this._getCampTileResourceRemaining(tileId);
+    return Number.isFinite(remaining) && remaining <= 0;
+  }
+
+  _getPreferredCampGatherTile(actionId, preferredTileId = null) {
+    const tiles = this._getMappedCampTilesForAction(actionId);
+    if (!tiles.length) return null;
+
+    const canUseTile = (tile) =>
+      tile &&
+      this.getCampTileState(tile.id) !== "hidden" &&
+      !this._isCampTileResourceDepleted(tile.id);
+
+    if (preferredTileId) {
+      const preferred = tiles.find((tile) => tile.id === preferredTileId);
+      if (canUseTile(preferred)) return preferred;
+    }
+
+    const selected = tiles.find(
+      (tile) => tile.id === this.getSelectedCampTileId(),
+    );
+    if (canUseTile(selected)) return selected;
+
+    return tiles.find((tile) => canUseTile(tile)) || null;
+  }
+
+  _getMappedCampTileForAction(actionId) {
+    return this._getPreferredCampGatherTile(actionId);
+  }
+
+  _canBuildOnTile(buildingId, tileId) {
+    const tile = this.data.localCampMap?.tiles?.[tileId];
+    if (!tile) return false;
+    if (!Array.isArray(tile.buildOptions) || !tile.buildOptions.includes(buildingId)) {
+      return false;
+    }
+    if (this.getCampTileState(tileId) === "hidden") return false;
+    if (
+      this.activeConstruction?.tileId &&
+      this.activeConstruction.tileId !== tileId
+    ) {
+      return false;
+    }
+
+    const placedBuildingId = this.getCampPlacedBuildingId(tileId);
+    if (placedBuildingId && placedBuildingId !== buildingId) return false;
+    return true;
+  }
+
+  _getPreferredCampBuildTile(buildingId, preferredTileId = null) {
+    const tiles = Object.values(this.data.localCampMap?.tiles || {});
+    if (!tiles.length) return null;
+
+    if (preferredTileId && this._canBuildOnTile(buildingId, preferredTileId)) {
+      return preferredTileId;
+    }
+
+    const placed = this.getBuildingPlacement(buildingId);
+    if (placed && this._canBuildOnTile(buildingId, placed)) {
+      return placed;
+    }
+
+    const match = tiles
+      .filter((tile) => this._canBuildOnTile(buildingId, tile.id))
+      .sort(
+        (a, b) =>
+          (a.distanceFromCamp || 0) - (b.distanceFromCamp || 0) ||
+          (a.r || 0) - (b.r || 0) ||
+          (a.q || 0) - (b.q || 0),
+      )[0];
+
+    return match?.id || null;
+  }
+
+  selectCampTile(tileId) {
+    const tile = this.data.localCampMap?.tiles?.[tileId];
+    if (!tile || this.getCampTileState(tileId) === "hidden") return false;
+    this.localCampMap.selectedTileId = tileId;
+    return true;
+  }
+
+  getSelectedCampTileId() {
+    this._ensureSelectedCampTile();
+    return this.localCampMap.selectedTileId;
+  }
+
+  getSelectedCampTile() {
+    const tileId = this.getSelectedCampTileId();
+    return tileId ? this.data.localCampMap?.tiles?.[tileId] || null : null;
+  }
+
+  getCampMapState() {
+    const mapData = this.data.localCampMap || {};
+    const selectedTileId = this.getSelectedCampTileId();
+    const tiles = Object.values(mapData.tiles || {})
+      .sort(
+        (a, b) =>
+          (a.distanceFromCamp || 0) - (b.distanceFromCamp || 0) ||
+          (a.r || 0) - (b.r || 0) ||
+          (a.q || 0) - (b.q || 0),
+      )
+      .map((tile) => {
+        const state = this.getCampTileState(tile.id);
+        const buildingId = this.getCampPlacedBuildingId(tile.id);
+        const building = buildingId ? this.data.buildings[buildingId] : null;
+        const construction =
+          this.activeConstruction?.tileId === tile.id
+            ? this.getConstructionState()
+            : null;
+
+        return {
+          ...tile,
+          state,
+          selected: tile.id === selectedTileId,
+          buildingId,
+          building,
+          construction,
+          resourceRemaining: this._getCampTileResourceRemaining(tile.id),
+          resourceCapacity: Number.isFinite(tile.resourceAmount)
+            ? tile.resourceAmount
+            : null,
+          isDepleted: this._isCampTileResourceDepleted(tile.id),
+        };
+      });
+
+    return {
+      title: mapData.title || "Локальная карта лагеря",
+      description: mapData.description || "",
+      interactionHint: mapData.interactionHint || "",
+      selectedTileId,
+      discoveredCount: tiles.filter((tile) => tile.state !== "hidden").length,
+      settledCount: tiles.filter((tile) => tile.state === "settled").length,
+      totalCount: tiles.length,
+      tiles,
+    };
+  }
+
+  getCampMapTileDetails(tileId = this.getSelectedCampTileId()) {
+    const tile = this.data.localCampMap?.tiles?.[tileId];
+    if (!tile) return null;
+
+    const state = this.getCampTileState(tileId);
+    const placedBuildingId = this.getCampPlacedBuildingId(tileId);
+    const placedBuilding = placedBuildingId
+      ? this.data.buildings[placedBuildingId]
+      : null;
+    const construction =
+      this.activeConstruction?.tileId === tileId
+        ? this.getConstructionState()
+        : null;
+    const action = tile.actionId ? this.data.gatherActions[tile.actionId] : null;
+
+    let nextBuildId = null;
+    if (Array.isArray(tile.buildOptions)) {
+      nextBuildId =
+        tile.buildOptions.find((buildingId) => !this.buildings[buildingId]) ||
+        tile.buildOptions[0] ||
+        null;
+    }
+    const nextBuilding = nextBuildId ? this.data.buildings[nextBuildId] : null;
+
+    return {
+      ...tile,
+      state,
+      action,
+      placedBuildingId,
+      placedBuilding,
+      construction,
+      nextBuildId,
+      nextBuilding,
+      resourceRemaining: this._getCampTileResourceRemaining(tileId),
+      resourceCapacity: Number.isFinite(tile.resourceAmount)
+        ? tile.resourceAmount
+        : null,
+      isDepleted: this._isCampTileResourceDepleted(tileId),
+      canGather: action ? this.canGather(action.id, { tileId }) : false,
+      canBuild:
+        nextBuildId && !placedBuildingId
+          ? this._canBuildOnTile(nextBuildId, tileId) && this.canBuild(nextBuildId)
+          : false,
+    };
+  }
+
+  performCampTileAction(tileId) {
+    const details = this.getCampMapTileDetails(tileId);
+    if (!details || details.state === "hidden") return false;
+
+    if (details.action) {
+      this.selectCampTile(tileId);
+      return this.gather(details.action.id, { tileId });
+    }
+
+    if (
+      details.nextBuildId &&
+      !details.placedBuildingId &&
+      this._canBuildOnTile(details.nextBuildId, tileId)
+    ) {
+      this.selectCampTile(tileId);
+      return this.build(details.nextBuildId);
+    }
+
+    return false;
   }
 
   _getEraData(eraId = this.currentEra) {
@@ -351,6 +839,7 @@ class GameState {
 
     return {
       buildingId: this.activeConstruction.buildingId,
+      tileId: this.activeConstruction.tileId || null,
       durationMs: this.activeConstruction.durationMs,
       remainingMs,
     };
@@ -374,6 +863,10 @@ class GameState {
 
     this.activeConstruction = {
       buildingId: savedConstruction.buildingId,
+      tileId:
+        typeof savedConstruction.tileId === "string"
+          ? savedConstruction.tileId
+          : null,
       durationMs,
       startedAt: Date.now() - (durationMs - remainingMs),
     };
@@ -498,6 +991,8 @@ class GameState {
         energy: this.energy,
         energyRegenRemainingMs: this.getEnergyRegenRemaining(),
         onboarding: { ...this.onboarding },
+        insights: { ...this.insights },
+        knowledgeEntries: { ...this.knowledgeEntries },
         currentGoalIndex: this.currentGoalIndex,
         completedGoals: [...this.completedGoals],
         allGoalsComplete: this.allGoalsComplete,
@@ -505,6 +1000,7 @@ class GameState {
         eraProgress: {
           completedMilestones: Array.from(this.eraProgress.completedMilestones),
         },
+        campMap: this._serializeCampMap(),
         craftQueue: this._serializeCraftQueue(),
         construction: this._serializeConstruction(),
         researchTask: this._serializeResearchTask(),
@@ -554,6 +1050,14 @@ class GameState {
       : 0;
 
     this.onboarding = this._sanitizeOnboarding(state.onboarding);
+    this.insights = this._sanitizeBooleanMap(
+      state.insights,
+      this.data.prologue?.insights,
+    );
+    this.knowledgeEntries = this._sanitizeBooleanMap(
+      state.knowledgeEntries,
+      this.data.prologue?.knowledgeEntries,
+    );
     this.currentGoalIndex = Number.isFinite(state.currentGoalIndex)
       ? Math.max(0, Math.min(this.data.goals.length, state.currentGoalIndex))
       : 0;
@@ -579,6 +1083,7 @@ class GameState {
     this.log = Array.isArray(state.log)
       ? state.log.slice(0, MAX_SAVED_LOGS)
       : [];
+    this._restoreCampMap(state.campMap);
 
     this._recalculateDerivedState();
 
@@ -788,6 +1293,38 @@ class GameState {
     return !this.onboarding.skipped && !this.onboarding.completed;
   }
 
+  isPrologueActive() {
+    return this.isOnboardingActive();
+  }
+
+  _pushStoryEvent(event) {
+    if (!event) return;
+    this.storyEventCounter += 1;
+    this.storyEvents.push({
+      id: `story-${Date.now()}-${this.storyEventCounter}`,
+      createdAt: Date.now(),
+      ttlMs: event.ttlMs || 7000,
+      ...event,
+    });
+  }
+
+  _pruneStoryEvents() {
+    const now = Date.now();
+    this.storyEvents = this.storyEvents.filter(
+      (event) => now - event.createdAt < event.ttlMs,
+    );
+  }
+
+  getActiveStoryEvent() {
+    this._pruneStoryEvents();
+    return this.storyEvents[0] || null;
+  }
+
+  dismissStoryEvent(eventId) {
+    if (!eventId) return;
+    this.storyEvents = this.storyEvents.filter((event) => event.id !== eventId);
+  }
+
   shouldShowOnboardingIntro() {
     return this.isOnboardingActive() && !this.onboarding.started;
   }
@@ -795,7 +1332,21 @@ class GameState {
   startOnboarding() {
     if (!this.isOnboardingActive()) return;
     this.onboarding.started = true;
-    this.addLog("📘 Обучение начато");
+    if (this.data.prologue?.startKnowledgeEntryId) {
+      this._unlockKnowledgeEntry(this.data.prologue.startKnowledgeEntryId, {
+        pushStory: false,
+      });
+    }
+    this.addLog("🌄 Начались первые поиски.");
+    this._pushStoryEvent({
+      type: "prologue",
+      icon: "🌄",
+      title: "Холодная стоянка и первые поиски",
+      text:
+        "Около 12 тысяч лет назад мир уже меняется после льда, но ночь всё ещё холодна. Сначала нужно понять, что можно удержать в руках и что поможет пережить темноту.",
+      ttlMs: 7000,
+    });
+    this._syncLocalCampMap();
     this.markDirty();
     this.saveGame(true);
   }
@@ -803,7 +1354,8 @@ class GameState {
   skipOnboarding() {
     this.onboarding.started = false;
     this.onboarding.skipped = true;
-    this.addLog("⏭️ Обучение пропущено");
+    this.addLog("⏭️ Пролог пропущен — переход к primitive-эпохе");
+    this._syncLocalCampMap();
     this.markDirty();
     this.saveGame(true);
   }
@@ -811,7 +1363,19 @@ class GameState {
   completeOnboarding() {
     this.onboarding.started = false;
     this.onboarding.completed = true;
-    this.addLog("🎉 Обучение завершено!");
+    this.addLog("🌄 Пролог завершён");
+    this.addLog("→ Теперь община готова к более оформленной primitive-эпохе.");
+    this._pushStoryEvent({
+      type: "transition",
+      icon: "🔥",
+      title: this.data.prologue?.transitionTitle || "Начинается новая стадия",
+      text:
+        this.data.prologue?.postTransitionText ||
+        this.data.prologue?.transitionText ||
+        "Первый костёр превращает случайное выживание в более организованную жизнь.",
+      ttlMs: 9000,
+    });
+    this._syncLocalCampMap({ pushStory: true });
     this.markDirty();
   }
 
@@ -822,9 +1386,301 @@ class GameState {
       completed: false,
       currentStep: 0,
     };
-    this.addLog("📘 Обучение запущено заново");
+    this.storyEvents = [];
+    this.addLog("🌄 Пролог запущен заново");
+    this._syncLocalCampMap();
     this.markDirty();
     this.saveGame(true);
+  }
+
+  getPrologueInsights() {
+    return Object.values(this.data.prologue?.insights || {}).sort(
+      (a, b) => (a.order || 0) - (b.order || 0),
+    );
+  }
+
+  getPrologueInsightsState() {
+    return this.getPrologueInsights().map((insight) => ({
+      ...insight,
+      unlocked: !!this.insights[insight.id],
+    }));
+  }
+
+  getUnlockedInsightsCount() {
+    return this.getPrologueInsightsState().filter((insight) => insight.unlocked)
+      .length;
+  }
+
+  getKnowledgeEntries() {
+    const defs = Object.values(this.data.prologue?.knowledgeEntries || {}).sort(
+      (a, b) => (a.order || 0) - (b.order || 0),
+    );
+    return defs.filter((entry) => this.knowledgeEntries[entry.id]);
+  }
+
+  _unlockKnowledgeEntry(entryId, { pushStory = true } = {}) {
+    const entry = this.data.prologue?.knowledgeEntries?.[entryId];
+    if (!entry || this.knowledgeEntries[entryId]) return false;
+    this.knowledgeEntries[entryId] = true;
+    this.addLog(`📚 В Книге знаний появилась запись «${entry.title}».`);
+    if (pushStory) {
+      this._pushStoryEvent({
+        type: "knowledge",
+        icon: "📚",
+        title: "Новая запись в Книге знаний",
+        text: `Записано: ${entry.title}. Короткое наблюдение закрепляет то, что стало понятно в эти ранние шаги.`,
+        action: "knowledge",
+        ttlMs: 7000,
+      });
+    }
+    this.markDirty();
+    return true;
+  }
+
+  _unlockInsight(insightId) {
+    const insight = this.data.prologue?.insights?.[insightId];
+    if (!insight || this.insights[insightId]) return false;
+
+    this.insights[insightId] = true;
+    this.addLog(`✨ Пришло озарение: ${insight.name}.`);
+    if (insight.unlockText) {
+      this.addLog(`→ ${insight.unlockText}`);
+    }
+    if (insight.knowledgeEntry) {
+      this._unlockKnowledgeEntry(insight.knowledgeEntry, { pushStory: false });
+    }
+    this._pushStoryEvent({
+      type: "insight",
+      icon: insight.icon,
+      title: `Озарение: ${insight.name}`,
+      text:
+        insight.momentText ||
+        insight.unlockText ||
+        insight.description,
+      action: "insights",
+      ttlMs: 8000,
+    });
+    this._syncLocalCampMap({ pushStory: true });
+    this.markDirty();
+    return true;
+  }
+
+  _checkPrologueInsights() {
+    if (!this.isPrologueActive()) return false;
+
+    for (const insight of this.getPrologueInsights()) {
+      if (this.insights[insight.id]) continue;
+      if (!insight.condition || !insight.condition(this)) continue;
+      if (this._unlockInsight(insight.id)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  getVisibleResourceIds() {
+    if (!this.isPrologueActive()) {
+      return Object.keys(this.data.resources);
+    }
+    if (!this.getPrologueRevealState().showResources) {
+      return [];
+    }
+
+    const visible = new Set(this.data.prologue?.visibleResourceIds || []);
+    for (const [id, amount] of Object.entries(this.resources)) {
+      if (amount > 0) visible.add(id);
+    }
+    return Array.from(visible);
+  }
+
+  getVisibleGatherActions() {
+    if (!this.isPrologueActive()) {
+      return Object.keys(this.data.gatherActions);
+    }
+    return [...(this.data.prologue?.gatherActionIds || [])];
+  }
+
+  getVisibleRecipeIds() {
+    if (!this.isPrologueActive()) {
+      return Object.keys(this.data.recipes);
+    }
+    if (!this.getPrologueRevealState().showCraft) {
+      return [];
+    }
+    return [...(this.data.prologue?.recipeIds || [])];
+  }
+
+  getVisibleBuildingIds() {
+    if (!this.isPrologueActive()) {
+      return Object.keys(this.data.buildings);
+    }
+    if (!this.getPrologueRevealState().showBuildings) {
+      return [];
+    }
+    return [...(this.data.prologue?.buildingIds || [])];
+  }
+
+  getPrologueRevealState() {
+    const unlockedInsights = this.getUnlockedInsightsCount();
+    const hasTool =
+      (this.resources.crude_tools || 0) >= 1 ||
+      (this.resourceTotals.crude_tools || 0) >= 1;
+    const nearFinalSteps =
+      this.onboarding.currentStep >= Math.max(0, this.data.onboarding.steps.length - 2);
+    const campfireSeen =
+      this.activeConstruction?.buildingId === "campfire" ||
+      !!this.buildings.campfire;
+
+    let stage = 0;
+    if (unlockedInsights >= 1) stage = 1;
+    if (unlockedInsights >= 4 || hasTool) stage = 2;
+    if (unlockedInsights >= 6 || nearFinalSteps || campfireSeen) stage = 3;
+
+    return {
+      stage,
+      unlockedInsights,
+      showInsights: true,
+      showResources: stage >= 1,
+      showCraft: stage >= 2,
+      showBuildings: stage >= 3,
+    };
+  }
+
+  getPrologueCampfireState() {
+    const building = this.data.buildings.campfire;
+    if (!building) return null;
+
+    const missingInsights = (building.requiresInsights || []).filter(
+      (insightId) => !this.insights[insightId],
+    );
+    const hasTool = (this.resources.crude_tools || 0) >= 1;
+    const cost = this.getBuildingCost("campfire");
+    const missingResources = this.getMissingResources(cost);
+    const built = !!this.buildings.campfire;
+    const constructing = this.activeConstruction?.buildingId === "campfire";
+    const readyParts =
+      this.getUnlockedInsightsCount() +
+      (hasTool ? 1 : 0) +
+      (built ? 1 : 0);
+    const totalParts = this.getPrologueInsights().length + 2;
+
+    return {
+      title: this.data.prologue?.campfireTitle || "Путь к первому костру",
+      text:
+        built
+          ? this.data.prologue?.campfireBuiltText ||
+            "Костёр уже стал точкой возвращения."
+          : this.data.prologue?.campfireText ||
+            "Костёр должен стать первым центром жизни.",
+      built,
+      constructing,
+      hasTool,
+      unlockedInsights: this.getUnlockedInsightsCount(),
+      totalInsights: this.getPrologueInsights().length,
+      missingInsights,
+      missingResources,
+      canBuild: this.canBuild("campfire"),
+      readiness: totalParts > 0 ? readyParts / totalParts : 0,
+      cost,
+    };
+  }
+
+  _pluralizeRu(amount, [one, few, many]) {
+    const abs = Math.abs(amount) % 100;
+    const last = abs % 10;
+    if (abs > 10 && abs < 20) return many;
+    if (last > 1 && last < 5) return few;
+    if (last === 1) return one;
+    return many;
+  }
+
+  _formatPrologueAmount(resourceId, amount) {
+    const forms = {
+      wood: ["ветка", "ветки", "веток"],
+      stone: ["камень", "камня", "камней"],
+      fiber: ["связка волокон", "связки волокон", "связок волокон"],
+      crude_tools: ["грубое орудие", "грубых орудия", "грубых орудий"],
+    };
+    const fallback = this.data.resources[resourceId]?.name || resourceId;
+    const noun = forms[resourceId]
+      ? this._pluralizeRu(amount, forms[resourceId])
+      : fallback.toLowerCase();
+    return `${amount} ${noun}`;
+  }
+
+  _formatPrologueOutput(output) {
+    return Object.entries(output)
+      .map(([id, amount]) => this._formatPrologueAmount(id, amount))
+      .join(", ");
+  }
+
+  _getPrologueGatherLog(actionId, output) {
+    const found = this._formatPrologueOutput(output);
+    switch (actionId) {
+      case "gather_wood":
+        return `🌿 В сухостое удалось собрать ${found}.`;
+      case "gather_stone":
+        return `🪨 Среди россыпи удалось подобрать ${found}.`;
+      case "gather_fiber":
+        return `🌾 В траве нашлись ${found}.`;
+      default:
+        return `👣 Руками найдено: ${found}.`;
+    }
+  }
+
+  _getPrologueCraftStartLog(recipeId) {
+    if (recipeId === "craft_crude_tools") {
+      return "🪢 Материалы сложены в первую связку. Скоро получится грубое орудие.";
+    }
+    return null;
+  }
+
+  _getPrologueCraftCompleteLog(recipeId) {
+    if (recipeId === "craft_crude_tools") {
+      return "🔨 Грубое орудие готово. Руки уже не совсем голые.";
+    }
+    return null;
+  }
+
+  _getPrologueBuildStartLog(buildingId) {
+    if (buildingId === "campfire") {
+      return "🔥 Начали складывать первый костёр. Огонь уже близко.";
+    }
+    return null;
+  }
+
+  _getPrologueBuildCompleteLog(buildingId) {
+    if (buildingId === "campfire") {
+      return "🔥 Первый костёр разгорелся. У общины появилось место, к которому можно возвращаться.";
+    }
+    return null;
+  }
+
+  getRecipeCost(recipeId) {
+    const recipe = this.data.recipes[recipeId];
+    if (!recipe) return {};
+
+    const baseCost =
+      this.isPrologueActive() && recipe.prologueIngredients
+        ? recipe.prologueIngredients
+        : recipe.ingredients;
+
+    return this.isPrologueActive()
+      ? { ...baseCost }
+      : this._getDiscountedCost(baseCost);
+  }
+
+  getBuildingCost(buildingId) {
+    const building = this.data.buildings[buildingId];
+    if (!building) return {};
+
+    const baseCost =
+      this.isPrologueActive() && building.prologueCost
+        ? building.prologueCost
+        : building.cost;
+
+    return { ...baseCost };
   }
 
   getCurrentOnboardingStep() {
@@ -903,8 +1759,10 @@ class GameState {
     );
     this.lastEnergyRegen = now;
 
-    if (this.energy !== before) {
+    if (this.energy !== before && !this.isPrologueActive()) {
       this.addLog(`⚡ +${this.energy - before} энергии`);
+      this.markDirty();
+    } else if (this.energy !== before) {
       this.markDirty();
     }
   }
@@ -962,18 +1820,30 @@ class GameState {
     return Math.max(0, this.energyRegenInterval - elapsed);
   }
 
-  canGather(actionId) {
+  canGather(actionId, options = {}) {
     const action = this.data.gatherActions[actionId];
     if (!action) return false;
+    if (this.isPrologueActive()) {
+      const allowedIds = this.data.prologue?.gatherActionIds || [];
+      if (!allowedIds.includes(actionId) || action.hiddenInPrologue) return false;
+    }
     if (action.unlockedBy && !this.researched[action.unlockedBy]) return false;
     if (this.cooldowns[actionId] && Date.now() < this.cooldowns[actionId])
       return false;
     if (!this.hasEnergy(action.energyCost)) return false;
+    const mappedTiles = this._getMappedCampTilesForAction(actionId);
+    if (
+      mappedTiles.length > 0 &&
+      !this._getPreferredCampGatherTile(actionId, options.tileId)
+    ) {
+      return false;
+    }
     return true;
   }
 
-  gather(actionId) {
-    if (!this.canGather(actionId)) return false;
+  gather(actionId, options = {}) {
+    const mappedTile = this._getPreferredCampGatherTile(actionId, options.tileId);
+    if (!this.canGather(actionId, options)) return false;
 
     const action = this.data.gatherActions[actionId];
     if (!this.spendEnergy(action.energyCost)) return false;
@@ -982,16 +1852,37 @@ class GameState {
     for (const [id, amount] of Object.entries(output)) {
       this.addResource(id, amount);
     }
+    if (mappedTile) {
+      this._markCampTileExploited(mappedTile.id);
+      if (
+        Number.isFinite(this.localCampMap.tileResourceRemaining[mappedTile.id])
+      ) {
+        const before = this.localCampMap.tileResourceRemaining[mappedTile.id];
+        this.localCampMap.tileResourceRemaining[mappedTile.id] = Math.max(
+          0,
+          before - 1,
+        );
+        if (before > 0 && this.localCampMap.tileResourceRemaining[mappedTile.id] === 0) {
+          this.addLog(`🗺️ Участок "${mappedTile.name}" истощён.`);
+        }
+      }
+    }
 
     this.cooldowns[actionId] = Date.now() + action.cooldown;
-    this.addLog(
-      `+${Object.entries(output)
-        .map(([id, amount]) => `${this.data.resources[id].icon}${amount}`)
-        .join(" ")} (⚡-${action.energyCost})`,
-    );
+    if (this.isPrologueActive()) {
+      this.addLog(this._getPrologueGatherLog(actionId, output));
+    } else {
+      this.addLog(
+        `+${Object.entries(output)
+          .map(([id, amount]) => `${this.data.resources[id].icon}${amount}`)
+          .join(" ")} (⚡-${action.energyCost})`,
+      );
+    }
 
+    this._checkPrologueInsights();
     this._checkOnboarding();
     this._checkGoals();
+    this._syncLocalCampMap({ pushStory: true });
     this.markDirty();
     return true;
   }
@@ -1033,9 +1924,15 @@ class GameState {
   canCraft(recipeId) {
     const recipe = this.data.recipes[recipeId];
     if (!recipe) return false;
+    if (this.isPrologueActive()) {
+      const allowedIds = this.data.prologue?.recipeIds || [];
+      if (!allowedIds.includes(recipeId) || recipe.hiddenInPrologue) return false;
+      const requiredInsights = recipe.requiresInsights || [];
+      if (requiredInsights.some((id) => !this.insights[id])) return false;
+    }
     if (!this.unlockedRecipes.has(recipeId)) return false;
     if (recipe.requires && !this.buildings[recipe.requires]) return false;
-    return this.hasResources(this._getDiscountedCost(recipe.ingredients));
+    return this.hasResources(this.getRecipeCost(recipeId));
   }
 
   canQueueCraft(recipeId) {
@@ -1048,7 +1945,7 @@ class GameState {
     if (!this.canQueueCraft(recipeId)) return false;
 
     const recipe = this.data.recipes[recipeId];
-    const cost = this._getDiscountedCost(recipe.ingredients);
+    const cost = this.getRecipeCost(recipeId);
     if (!this.spendResources(cost)) return false;
 
     this.craftQueue.push({
@@ -1057,7 +1954,12 @@ class GameState {
       startedAt: this.craftQueue.length === 0 ? Date.now() : null,
     });
 
-    this.addLog(`🧰 В очередь: ${recipe.icon} ${recipe.name}`);
+    this.addLog(
+      this.isPrologueActive()
+        ? this._getPrologueCraftStartLog(recipeId) ||
+            `🧰 В очередь: ${recipe.icon} ${recipe.name}`
+        : `🧰 В очередь: ${recipe.icon} ${recipe.name}`,
+    );
     this._checkGoals();
     this.markDirty();
     return true;
@@ -1080,14 +1982,21 @@ class GameState {
       this.addResource(id, amount);
     }
 
-    this.addLog(`⚒️ Готово: ${recipe.icon} ${recipe.name}`);
+    this.addLog(
+      this.isPrologueActive()
+        ? this._getPrologueCraftCompleteLog(current.recipeId) ||
+            `⚒️ Готово: ${recipe.icon} ${recipe.name}`
+        : `⚒️ Готово: ${recipe.icon} ${recipe.name}`,
+    );
     this.craftQueue.shift();
     if (this.craftQueue.length > 0) {
       this.craftQueue[0].startedAt = Date.now();
     }
 
+    this._checkPrologueInsights();
     this._checkOnboarding();
     this._checkGoals();
+    this._syncLocalCampMap({ pushStory: true });
     this.markDirty();
   }
 
@@ -1155,6 +2064,7 @@ class GameState {
 
     return {
       buildingId: this.activeConstruction.buildingId,
+      tileId: this.activeConstruction.tileId || null,
       name: building.name,
       icon: building.icon,
       description: building.description,
@@ -1171,29 +2081,65 @@ class GameState {
     const building = this.data.buildings[buildingId];
     if (!building) return false;
     if (this.activeConstruction) return false;
+    if (this.isPrologueActive()) {
+      const allowedIds = this.data.prologue?.buildingIds || [];
+      if (!allowedIds.includes(buildingId) || building.hiddenInPrologue)
+        return false;
+      const requiredInsights = building.requiresInsights || [];
+      if (requiredInsights.some((id) => !this.insights[id])) return false;
+      if (
+        building.requiresPrologueTool &&
+        (this.resources.crude_tools || 0) < 1
+      ) {
+        return false;
+      }
+    }
     if (building.unlockedBy && !this.researched[building.unlockedBy])
       return false;
     if (building.requires && !this.buildings[building.requires]) return false;
     if (this.buildings[buildingId]) return false;
-    return this.hasResources(building.cost);
+    const hasMappedSite = Object.values(this.data.localCampMap?.tiles || {}).some(
+      (tile) =>
+        Array.isArray(tile.buildOptions) && tile.buildOptions.includes(buildingId),
+    );
+    if (
+      hasMappedSite &&
+      !this._getPreferredCampBuildTile(buildingId, this.getSelectedCampTileId())
+    ) {
+      return false;
+    }
+    return this.hasResources(this.getBuildingCost(buildingId));
   }
 
   build(buildingId) {
     if (!this.canBuild(buildingId)) return false;
 
     const building = this.data.buildings[buildingId];
-    if (!this.spendResources(building.cost)) return false;
+    const cost = this.getBuildingCost(buildingId);
+    if (!this.spendResources(cost)) return false;
+    const tileId = this._getPreferredCampBuildTile(
+      buildingId,
+      this.getSelectedCampTileId(),
+    );
 
     const durationMs = this.getBuildDuration(buildingId);
     this.activeConstruction = {
       buildingId,
+      tileId,
       durationMs,
       startedAt: Date.now(),
     };
 
     this.addLog(
-      `🏗️ Начато строительство: ${building.icon} ${building.name} (${Math.ceil(durationMs / 1000)}с)`,
+      this.isPrologueActive()
+        ? this._getPrologueBuildStartLog(buildingId) ||
+            `🏗️ Начато строительство: ${building.icon} ${building.name} (${Math.ceil(durationMs / 1000)}с)`
+        : `🏗️ Начато строительство: ${building.icon} ${building.name} (${Math.ceil(durationMs / 1000)}с)`,
     );
+    if (tileId) {
+      this.localCampMap.buildingPlacements[buildingId] = tileId;
+      this._markCampTileExploited(tileId);
+    }
     this.markDirty();
     this.saveGame(true);
     return true;
@@ -1209,6 +2155,10 @@ class GameState {
       count: 1,
       isAutomationRunning: true,
     };
+    if (current.tileId) {
+      this.localCampMap.buildingPlacements[current.buildingId] = current.tileId;
+      this._setCampTileState(current.tileId, "settled");
+    }
     if (building.effect?.automation) {
       this.automation[building.effect.automation.id] = {
         lastRun: 0,
@@ -1217,9 +2167,28 @@ class GameState {
     }
 
     this._recalculateDerivedState();
-    this.addLog(`🏗️ Построено: ${building.icon} ${building.name}`);
+    if (current.buildingId === "campfire") {
+      this._unlockKnowledgeEntry("campfire_center");
+      this._pushStoryEvent({
+        type: "campfire",
+        icon: "🔥",
+        title: "Первый костёр разгорелся",
+        text:
+          this.data.prologue?.campfireBuiltText ||
+          "У общины появился первый центр жизни: свет, тепло и место, к которому можно возвращаться.",
+        ttlMs: 8500,
+      });
+    }
+    this.addLog(
+      this.isPrologueActive()
+        ? this._getPrologueBuildCompleteLog(current.buildingId) ||
+            `🏗️ Построено: ${building.icon} ${building.name}`
+        : `🏗️ Построено: ${building.icon} ${building.name}`,
+    );
+    this._checkPrologueInsights();
     this._checkOnboarding();
     this._checkGoals();
+    this._syncLocalCampMap({ pushStory: true });
     this.markDirty();
     this.saveGame(true);
   }
@@ -1491,12 +2460,12 @@ class GameState {
 
     if (!step.check(this)) return;
 
-    this.addLog(`✅ Обучение: ${step.text}`);
+    this.addLog(`🌿 Освоено: ${step.text}.`);
     this.advanceOnboardingStep();
 
     const nextStep = this.getCurrentOnboardingStep();
     if (nextStep) {
-      this.addLog(`📖 Далее: ${nextStep.text}`);
+      this.addLog(`→ Теперь главное: ${nextStep.text}.`);
     } else {
       this.completeOnboarding();
       this.addLog(this.data.onboarding.completeMessage);
@@ -1638,6 +2607,7 @@ class GameState {
   canResearch(techId) {
     const tech = this.data.tech[techId];
     if (!tech) return false;
+    if (this.isPrologueActive()) return false;
     if (this.activeResearch) return false;
     if (this.researched[techId]) return false;
     const prereqs = this.getTechPrerequisites(techId);
@@ -1696,6 +2666,7 @@ class GameState {
   }
 
   canQueueResearch(techId) {
+    if (this.isPrologueActive()) return false;
     if (!this.activeResearch) return false; // queue only relevant when busy
     const tech = this.data.tech[techId];
     if (!tech) return false;
@@ -1767,6 +2738,7 @@ class GameState {
       }
     }
 
+    this._syncLocalCampMap({ pushStory: true });
     this.markDirty();
     this.saveGame(true);
   }
