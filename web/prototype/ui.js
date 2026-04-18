@@ -7,6 +7,7 @@ class UI {
     this.game = game;
     this.data = game.data;
     this.lastResourcesRenderKey = "";
+    this.lastStoryEventId = "";
     this.isPointerDown = false;
     this.bindStaticControls();
   }
@@ -97,6 +98,7 @@ class UI {
 
     this.bindChangelogModal();
     this.bindResearchModal();
+    this.bindKnowledgeModal();
   }
 
   bindChangelogModal() {
@@ -184,9 +186,491 @@ class UI {
     });
   }
 
+  openResearchModal() {
+    const modal = document.getElementById("research-modal");
+    if (!modal) return;
+    this.renderResearchModalContent();
+    modal.style.display = "flex";
+    document.body.style.overflow = "hidden";
+    document.getElementById("research-modal-close-btn")?.focus();
+  }
+
+  bindKnowledgeModal() {
+    const btn = document.getElementById("knowledge-book-btn");
+    const modal = document.getElementById("knowledge-modal");
+    const closeBtn = document.getElementById("knowledge-modal-close-btn");
+    if (!btn || !modal || !closeBtn) return;
+
+    const open = () => this.openKnowledgeModal();
+
+    const close = () => {
+      modal.style.display = "none";
+      document.body.style.overflow = "";
+      btn.focus();
+    };
+
+    btn.addEventListener("click", open);
+    closeBtn.addEventListener("click", close);
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) close();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && modal.style.display === "flex") close();
+    });
+  }
+
+  openKnowledgeModal() {
+    const modal = document.getElementById("knowledge-modal");
+    const closeBtn = document.getElementById("knowledge-modal-close-btn");
+    if (!modal || !closeBtn) return;
+    this.renderKnowledgeModalContent();
+    modal.style.display = "flex";
+    document.body.style.overflow = "hidden";
+    closeBtn.focus();
+  }
+
+  renderHeaderModeState() {
+    const isPrologue = this.game.isPrologueActive();
+    document.body.classList.toggle("is-prologue-active", isPrologue);
+
+    const bookBtn = document.getElementById("knowledge-book-btn");
+    if (bookBtn) {
+      const entries = this.game.getKnowledgeEntries().length;
+      if (entries > 0) {
+        bookBtn.setAttribute("data-badge", String(entries));
+      } else {
+        bookBtn.removeAttribute("data-badge");
+      }
+      bookBtn.classList.toggle("has-badge", entries > 0);
+      bookBtn.classList.toggle(
+        "is-highlighted",
+        this.game.getActiveStoryEvent()?.type === "knowledge",
+      );
+    }
+  }
+
+  renderPrologueLayoutState() {
+    const resourcesPanel = document.getElementById("resources-panel");
+    const craftPanel = document.getElementById("craft-panel");
+    const buildingsPanel = document.getElementById("buildings-panel");
+    const actionsRow = document.getElementById("actions-row");
+    const systemsRow = document.getElementById("systems-row");
+    const researchWidget = document.getElementById("research-widget");
+
+    if (!this.game.isPrologueActive()) {
+      resourcesPanel?.style.removeProperty("display");
+      craftPanel?.style.removeProperty("display");
+      buildingsPanel?.style.removeProperty("display");
+      systemsRow?.style.removeProperty("display");
+      researchWidget?.style.removeProperty("display");
+      actionsRow?.classList.remove("is-single");
+      systemsRow?.classList.remove("is-single");
+      return;
+    }
+
+    const reveal = this.game.getPrologueRevealState();
+
+    if (resourcesPanel) {
+      resourcesPanel.style.display = reveal.showResources ? "" : "none";
+    }
+    if (craftPanel) {
+      craftPanel.style.display = reveal.showCraft ? "" : "none";
+    }
+    if (buildingsPanel) {
+      buildingsPanel.style.display = reveal.showBuildings ? "" : "none";
+    }
+    if (researchWidget) {
+      researchWidget.style.display = reveal.showInsights ? "" : "none";
+    }
+    if (actionsRow) {
+      actionsRow.classList.toggle("is-single", !reveal.showCraft);
+    }
+    if (systemsRow) {
+      systemsRow.style.display = reveal.showBuildings ? "" : "none";
+      systemsRow.classList.toggle("is-single", reveal.showBuildings);
+    }
+  }
+
+  getCampTileStateLabel(state) {
+    switch (state) {
+      case "settled":
+        return "Освоено";
+      case "exploited":
+        return "Используется";
+      case "discovered":
+        return "Замечено";
+      default:
+        return "Туман";
+    }
+  }
+
+  renderCampMap() {
+    const container = document.getElementById("camp-map-panel");
+    if (!container) return;
+
+    const mapState = this.game.getCampMapState();
+    const selected = this.game.getCampMapTileDetails(mapState.selectedTileId);
+    if (!selected) {
+      container.innerHTML = "";
+      return;
+    }
+
+    // Flat-top hexagon layout: tileWidth = 2R, tileHeight = √3·R
+    // Adjacent centers are √3·R apart; column step = 1.5R, row step = √3·R
+    const hexRadius = 60;
+    const tileWidth = hexRadius * 2;                             // 120
+    const tileHeight = Math.round(Math.sqrt(3) * hexRadius);     // 104
+    const horizontalStep = Math.round(hexRadius * 1.5);          // 90
+    const verticalStep = tileHeight;                             // 104
+    const scenePadding = 24;
+
+    const tileLayouts = mapState.tiles.map((tile) => {
+      const centerX = tile.q * horizontalStep;
+      const centerY = Math.round((tile.r + tile.q * 0.5) * verticalStep);
+      return {
+        ...tile,
+        left: centerX - tileWidth / 2,
+        top: centerY - tileHeight / 2,
+      };
+    });
+
+    const minX = Math.min(...tileLayouts.map((tile) => tile.left));
+    const maxX = Math.max(...tileLayouts.map((tile) => tile.left + tileWidth));
+    const minY = Math.min(...tileLayouts.map((tile) => tile.top));
+    const maxY = Math.max(...tileLayouts.map((tile) => tile.top + tileHeight));
+    const sceneWidth = Math.ceil(maxX - minX + scenePadding * 2);
+    const sceneHeight = Math.ceil(maxY - minY + scenePadding * 2);
+
+    const renderedTiles = tileLayouts
+      .map((tile) => {
+        const left = tile.left - minX + scenePadding;
+        const top = tile.top - minY + scenePadding;
+        const tileStateLabel = this.getCampTileStateLabel(tile.state);
+        const displayIcon =
+          tile.construction?.icon ||
+          tile.building?.icon ||
+          tile.icon ||
+          "•";
+        const classes = [
+          "camp-tile",
+          `is-${tile.state}`,
+          `terrain-${tile.terrainType || "plain"}`,
+          `zone-${tile.distanceFromCamp ?? 0}`,
+        ];
+        if (tile.selected) classes.push("is-selected");
+        if (tile.building) classes.push("has-building");
+        if (tile.construction) classes.push("is-constructing");
+        if (tile.isDepleted) classes.push("is-depleted");
+        if (tile.resourceType && Number.isFinite(tile.resourceRemaining) && tile.state !== "hidden") {
+          const cap = tile.resourceCapacity || 1;
+          const pct = tile.resourceRemaining / cap;
+          if (pct >= 0.67) classes.push("res-rich");
+          else if (pct >= 0.34) classes.push("res-medium");
+          else classes.push("res-sparse");
+        }
+
+        return `
+          <button
+            class="${classes.join(" ")}"
+            type="button"
+            data-tile-id="${tile.id}"
+            style="left:${left}px; top:${top}px; width:${tileWidth}px; height:${tileHeight}px;"
+            aria-label="${tile.name}"
+          >
+            <span class="camp-tile-inner">
+              <span class="camp-tile-icon">${tile.state === "hidden" ? "·" : displayIcon}</span>
+              ${
+                tile.state === "hidden"
+                  ? '<span class="camp-tile-state">Туман</span>'
+                  : `
+                    <span class="camp-tile-name">${tile.name}</span>
+                    <span class="camp-tile-state">${tileStateLabel}</span>
+                  `
+              }
+            </span>
+          </button>
+        `;
+      })
+      .join("");
+
+    const selectedStateLabel = this.getCampTileStateLabel(selected.state);
+    const selectedActionCopy = selected.action
+      ? this.getGatherActionCopy(selected.action)
+      : null;
+    const selectedBuildingCopy = selected.nextBuilding
+      ? this.getBuildingCopy(selected.nextBuilding)
+      : null;
+    const selectedPlacedBuildingCopy = selected.placedBuilding
+      ? this.getBuildingCopy(selected.placedBuilding)
+      : null;
+    const selectedActionOutput = selected.action
+      ? this.formatResourcePairs(this.game.getGatherOutput(selected.action.id), {
+          plus: true,
+        })
+      : "";
+    const selectedResourceStock = Number.isFinite(selected.resourceRemaining)
+      ? `${selected.resourceRemaining}/${selected.resourceCapacity}`
+      : "";
+    const selectedActionCooldown = selected.action
+      ? this.game.getCooldownRemaining(selected.action.id)
+      : 0;
+
+    let detailsActionBlock = "";
+    if (selected.construction) {
+      detailsActionBlock = `
+        <div class="camp-map-note is-progress">
+          Строится: ${selected.construction.icon} ${selected.construction.name}
+          · ${this.formatSeconds(selected.construction.remainingMs)}
+        </div>
+      `;
+    } else if (selected.placedBuilding && selectedPlacedBuildingCopy) {
+      detailsActionBlock = `
+        <div class="camp-map-note is-built">
+          Постройка на месте: ${selectedPlacedBuildingCopy.icon} ${selectedPlacedBuildingCopy.name}
+        </div>
+        <div class="camp-map-note">
+          ${selectedPlacedBuildingCopy.description || "Этот участок уже включён в лагерь."}
+        </div>
+      `;
+    } else if (selected.action && selectedActionCopy) {
+      detailsActionBlock = `
+        <div class="camp-map-action-meta">
+          <span>Находка: ${selectedActionOutput}</span>
+          <span>Энергия: -${selected.action.energyCost}</span>
+          <span>Зона: ${selected.distanceFromCamp === 0 ? "центр" : selected.distanceFromCamp === 1 ? "ближняя" : "дальняя"}</span>
+        </div>
+        ${
+          selectedActionCooldown > 0
+            ? `<div class="camp-map-note is-waiting">Нужно подождать ещё ${this.formatCooldownMs(selectedActionCooldown)}.</div>`
+            : ""
+        }
+        <button
+          id="camp-map-primary-action"
+          class="camp-map-primary-btn${selected.canGather ? "" : " disabled"}"
+          type="button"
+          aria-disabled="${selected.canGather ? "false" : "true"}"
+        >
+          ${selectedActionCopy.icon} ${selectedActionCopy.name}
+        </button>
+      `;
+      if (selectedResourceStock) {
+        detailsActionBlock += `<div class="camp-map-note">Запас участка: ${selectedResourceStock}</div>`;
+      }
+      if (selected.isDepleted) {
+        detailsActionBlock += `<div class="camp-map-note is-empty">Этот участок уже вычищен. Полезного сырья здесь пока не осталось.</div>`;
+      }
+    } else if (selected.nextBuilding && selectedBuildingCopy) {
+      const missingInsights = (selected.nextBuilding.requiresInsights || []).filter(
+        (insightId) => !this.game.insights[insightId],
+      );
+      const blockedByTech =
+        selected.nextBuilding.unlockedBy &&
+        !this.game.researched[selected.nextBuilding.unlockedBy];
+      const blockedByBuilding =
+        selected.nextBuilding.requires &&
+        !this.game.buildings[selected.nextBuilding.requires];
+      const blockedByTool =
+        this.game.isPrologueActive() &&
+        selected.nextBuilding.requiresPrologueTool &&
+        (this.game.resources.crude_tools || 0) < 1;
+      const buildCost = this.formatResourcePairs(
+        this.game.getBuildingCost(selected.nextBuildId),
+      );
+
+      let buildBlockerText = "";
+      if (missingInsights.length > 0) {
+        buildBlockerText = `Нужно озарение: ${missingInsights
+          .map(
+            (insightId) =>
+              this.data.prologue?.insights?.[insightId]?.name || insightId,
+          )
+          .join(", ")}`;
+      } else if (blockedByTool) {
+        buildBlockerText = "Сначала нужно грубое орудие.";
+      } else if (blockedByTech) {
+        buildBlockerText = `Сначала нужно исследование: ${
+          this.data.tech[selected.nextBuilding.unlockedBy]?.name ||
+          selected.nextBuilding.unlockedBy
+        }.`;
+      } else if (blockedByBuilding) {
+        buildBlockerText = `Сначала нужно здание: ${
+          this.data.buildings[selected.nextBuilding.requires]?.name ||
+          selected.nextBuilding.requires
+        }.`;
+      } else if (!selected.canBuild) {
+        buildBlockerText = "Пока не хватает ресурсов для строительства.";
+      }
+
+      detailsActionBlock = `
+        <div class="camp-map-action-meta">
+          <span>Место под: ${selectedBuildingCopy.icon} ${selectedBuildingCopy.name}</span>
+          <span>Стоимость: ${buildCost}</span>
+          <span>Стройка: ${this.formatSeconds(
+            this.game.getBuildDuration(selected.nextBuildId),
+          )}</span>
+        </div>
+        ${
+          buildBlockerText
+            ? `<div class="camp-map-note is-waiting">${buildBlockerText}</div>`
+            : ""
+        }
+        <button
+          id="camp-map-primary-action"
+          class="camp-map-primary-btn${selected.canBuild ? "" : " disabled"}"
+          type="button"
+          aria-disabled="${selected.canBuild ? "false" : "true"}"
+        >
+          ${selectedBuildingCopy.icon} ${selectedBuildingCopy.name}
+        </button>
+      `;
+    } else {
+      detailsActionBlock = `
+        <div class="camp-map-note">
+          Этот участок пока важен как часть местности. Позже он может дать новую опору лагерю.
+        </div>
+      `;
+    }
+
+    container.innerHTML = `
+      <div class="camp-map-header">
+        <div>
+          <h3>${mapState.title}</h3>
+          <div class="camp-map-description">${mapState.description}</div>
+        </div>
+        <div class="camp-map-chips">
+          <span class="camp-map-chip">Открыто ${mapState.discoveredCount}/${mapState.totalCount}</span>
+          <span class="camp-map-chip">Освоено ${mapState.settledCount}</span>
+          <span class="camp-map-chip">Туман ${mapState.totalCount - mapState.discoveredCount}</span>
+        </div>
+      </div>
+      <div class="camp-map-body">
+        <div class="camp-map-scene-wrap">
+          <div class="camp-map-scene" style="height:${sceneHeight}px; min-width:${sceneWidth}px;">
+            ${renderedTiles}
+          </div>
+          <div class="camp-map-legend">${mapState.interactionHint}</div>
+        </div>
+        <aside class="camp-map-details">
+          <div class="camp-map-details-top">
+            <div class="camp-map-details-name">${selected.icon || "•"} ${selected.name}</div>
+            <div class="camp-map-details-meta">
+              <span class="camp-map-chip">${selectedStateLabel}</span>
+              <span class="camp-map-chip">Дистанция ${selected.distanceFromCamp}</span>
+            </div>
+          </div>
+          <div class="camp-map-details-text">${selected.description}</div>
+          ${detailsActionBlock}
+        </aside>
+      </div>
+    `;
+
+    for (const tile of mapState.tiles) {
+      const button = container.querySelector(`[data-tile-id="${tile.id}"]`);
+      if (!button) continue;
+
+      if (tile.state !== "hidden" && Number.isFinite(tile.resourceRemaining)) {
+        const tileInner = button.querySelector(".camp-tile-inner");
+        if (tileInner) {
+          const stock = document.createElement("span");
+          stock.className = `camp-tile-stock${tile.isDepleted ? " is-empty" : ""}`;
+          stock.textContent = String(tile.resourceRemaining);
+          tileInner.prepend(stock);
+        }
+      }
+
+      if (tile.state === "hidden") {
+        this.setTooltip(button, [
+          "Неизвестный участок",
+          tile.discoveryHint || "Пока эта часть местности скрыта туманом и откроется позже.",
+        ]);
+      } else {
+        const tooltipLines = [
+          tile.name,
+          tile.description,
+          `Состояние: ${this.getCampTileStateLabel(tile.state)}`,
+          `Дистанция от стоянки: ${tile.distanceFromCamp}`,
+        ];
+        if (tile.actionId) {
+          const action = this.data.gatherActions[tile.actionId];
+          const actionCopy = this.getGatherActionCopy(action);
+          tooltipLines.push(`Действие: ${actionCopy.icon} ${actionCopy.name}`);
+        }
+        if (tile.buildingId) {
+          tooltipLines.push(
+            `Постройка: ${tile.building.icon} ${tile.building.name}`,
+          );
+        } else if (Array.isArray(tile.buildOptions) && tile.buildOptions.length > 0) {
+          const optionNames = tile.buildOptions
+            .map((buildingId) => this.data.buildings[buildingId]?.name || buildingId)
+            .join(", ");
+          tooltipLines.push(`Участок: ${optionNames}`);
+        }
+        this.setTooltip(button, tooltipLines);
+      }
+
+      button.addEventListener("click", () => {
+        if (tile.state === "hidden") return;
+        const wasSelected = this.game.getSelectedCampTileId() === tile.id;
+        this.game.selectCampTile(tile.id);
+        if (wasSelected) {
+          this.game.performCampTileAction(tile.id);
+        }
+        this.render({ forcePanels: true });
+      });
+    }
+
+    const primaryAction = document.getElementById("camp-map-primary-action");
+    if (primaryAction) {
+      primaryAction.addEventListener("click", () => {
+        if (primaryAction.getAttribute("aria-disabled") === "true") {
+          this.render({ forcePanels: true });
+          return;
+        }
+        if (!this.game.performCampTileAction(selected.id)) {
+          this.render({ forcePanels: true });
+          return;
+        }
+        this.render({ forcePanels: true });
+      });
+    }
+  }
+
   renderResearchWidget() {
     const container = document.getElementById("research-widget");
     if (!container) return;
+
+    if (this.game.isPrologueActive()) {
+      const insights = this.game.getPrologueInsightsState();
+      const unlockedCount = insights.filter((insight) => insight.unlocked).length;
+      const hasAvailable = insights.some((insight) => !insight.unlocked);
+      const latestUnlocked = [...insights].reverse().find((insight) => insight.unlocked);
+
+      container.innerHTML = `
+        <div class="rw-header">
+          <div class="rw-title">
+            ✨ <span>${this.data.prologue?.insightsTitle || "Озарения"}</span>
+            ${hasAvailable ? '<span class="rw-dot has-available"></span>' : ""}
+          </div>
+          <div class="rw-chips">
+            <span class="research-summary-chip">Открыто: ${unlockedCount}/${insights.length}</span>
+            <span class="research-summary-chip">Книга: ${this.game.getKnowledgeEntries().length}</span>
+          </div>
+        </div>
+        <div class="research-overview-text">${this.data.prologue?.insightsHint || ""}</div>
+        ${
+          latestUnlocked
+            ? `<div class="prologue-inline-note">Последнее озарение: ${latestUnlocked.icon} ${latestUnlocked.name}</div>`
+            : `<div class="prologue-inline-note">Первые озарения придут не из меню, а из повторяющихся действий руками.</div>`
+        }
+        <button class="rw-open-btn js-research-open" type="button">Открыть озарения</button>
+      `;
+
+      container.querySelector(".js-research-open")?.addEventListener("click", () => {
+        this.openResearchModal();
+      });
+
+      return;
+    }
 
     const researchState = this.game.getResearchState();
     const branchState = this.game.getResearchBranchesState();
@@ -253,7 +737,102 @@ class UI {
   renderResearchModalContent() {
     const container = document.getElementById("research-modal-body");
     if (!container) return;
+    const title = document.getElementById("research-modal-title");
+    if (this.game.isPrologueActive()) {
+      if (title) title.textContent = "✨ Озарения";
+      this._renderPrologueInsightsBody(container);
+      return;
+    }
+    if (title) title.textContent = "🔬 Исследования эпохи";
     this._renderResearchBody(container);
+  }
+
+  renderKnowledgeModalContent() {
+    const container = document.getElementById("knowledge-modal-body");
+    if (!container) return;
+
+    const entries = this.game.getKnowledgeEntries();
+    if (entries.length === 0) {
+      container.innerHTML =
+        '<p class="knowledge-empty">Пока в Книге знаний нет записей. Первые наблюдения появятся во время пролога.</p>';
+      return;
+    }
+
+    const intro = this.data.prologue?.knowledgeIntro
+      ? `<div class="knowledge-intro">${this.data.prologue.knowledgeIntro}</div>`
+      : "";
+
+    container.innerHTML =
+      intro +
+      entries
+        .map(
+          (entry, index) => `
+          <article class="knowledge-entry">
+            <div class="knowledge-entry-meta">Запись ${index + 1}</div>
+            <h3 class="knowledge-entry-title">${entry.title}</h3>
+            <div class="knowledge-entry-body">
+              ${entry.lines.map((line) => `<p>${line}</p>`).join("")}
+            </div>
+          </article>
+        `,
+        )
+        .join("");
+  }
+
+  renderStoryEvent() {
+    const layer = document.getElementById("story-event-layer");
+    if (!layer) return;
+
+    const event = this.game.getActiveStoryEvent();
+    if (!event) {
+      this.lastStoryEventId = "";
+      layer.innerHTML = "";
+      layer.style.display = "none";
+      return;
+    }
+
+    if (event.id === this.lastStoryEventId) {
+      layer.style.display = "block";
+      return;
+    }
+
+    this.lastStoryEventId = event.id;
+
+    layer.style.display = "block";
+    layer.innerHTML = `
+      <article class="story-event story-event--${event.type || "default"}">
+        <div class="story-event-main">
+          <div class="story-event-kicker">${event.type === "transition" ? "Новый этап" : event.type === "campfire" ? "Рубеж пролога" : event.type === "knowledge" ? "Книга знаний" : event.type === "prologue" ? "Первые шаги" : "Озарение"}</div>
+          <div class="story-event-title">${event.icon || "✦"} ${event.title}</div>
+          <div class="story-event-text">${event.text || ""}</div>
+        </div>
+        <div class="story-event-actions">
+          ${
+            event.action === "insights"
+              ? '<button class="story-event-action js-story-action" type="button">Озарения</button>'
+              : event.action === "knowledge"
+                ? '<button class="story-event-action js-story-action" type="button">Книга знаний</button>'
+                : ""
+          }
+          <button class="story-event-close" type="button" aria-label="Закрыть">✕</button>
+        </div>
+      </article>
+    `;
+
+    layer.querySelector(".story-event-close")?.addEventListener("click", () => {
+      this.game.dismissStoryEvent(event.id);
+      this.render({ forcePanels: true });
+    });
+
+    layer.querySelector(".js-story-action")?.addEventListener("click", () => {
+      if (event.action === "insights") {
+        this.openResearchModal();
+      } else if (event.action === "knowledge") {
+        this.openKnowledgeModal();
+      }
+      this.game.dismissStoryEvent(event.id);
+      this.render({ forcePanels: true });
+    });
   }
 
   formatResourcePairs(resourceMap, { plus = false, decimals = 0 } = {}) {
@@ -299,6 +878,54 @@ class UI {
     button.setAttribute("aria-disabled", isAvailable ? "false" : "true");
   }
 
+  getGatherActionCopy(action) {
+    if (this.game.isPrologueActive()) {
+      return {
+        name: action.prologueName || action.name,
+        description: action.prologueDescription || action.description,
+        icon: action.prologueIcon || action.icon,
+      };
+    }
+
+    return {
+      name: action.name,
+      description: action.description,
+      icon: action.icon,
+    };
+  }
+
+  getRecipeCopy(recipe) {
+    if (this.game.isPrologueActive()) {
+      return {
+        name: recipe.prologueName || recipe.name,
+        description: recipe.prologueDescription || recipe.description,
+        icon: recipe.prologueIcon || recipe.icon,
+      };
+    }
+
+    return {
+      name: recipe.name,
+      description: recipe.description,
+      icon: recipe.icon,
+    };
+  }
+
+  getBuildingCopy(building) {
+    if (this.game.isPrologueActive()) {
+      return {
+        name: building.prologueName || building.name,
+        description: building.prologueDescription || building.description,
+        icon: building.prologueIcon || building.icon,
+      };
+    }
+
+    return {
+      name: building.name,
+      description: building.description,
+      icon: building.icon,
+    };
+  }
+
   isPanelHovered(panelId) {
     if (!panelId) return false;
     const panel = document.getElementById(panelId);
@@ -306,6 +933,10 @@ class UI {
   }
 
   render({ forcePanels = false } = {}) {
+    this.renderHeaderModeState();
+    this.renderPrologueLayoutState();
+    this.renderStoryEvent();
+
     // Prevent click loss when DOM is rebuilt between pointer down/up.
     if (this.isPointerDown) {
       this.renderEnergy();
@@ -326,6 +957,9 @@ class UI {
     if (forcePanels || !this.isPanelHovered("energy-panel")) {
       this.renderEnergy();
     }
+    if (forcePanels || !this.isPanelHovered("camp-map-panel")) {
+      this.renderCampMap();
+    }
     if (forcePanels || !this.isPanelHovered("resources-panel")) {
       this.renderResources();
     }
@@ -336,15 +970,19 @@ class UI {
       this.renderCrafting();
     }
     if (forcePanels || !this.isPanelHovered("buildings-panel")) {
-      this.renderBuildings();
+      this.renderBuildingsPanel();
     }
     if (forcePanels || !this.isPanelHovered("automation-panel")) {
-      this.renderAutomation();
+      this.renderAutomationPanel();
     }
     this.renderResearchWidget();
     const _rModal = document.getElementById("research-modal");
     if (_rModal && _rModal.style.display !== "none" && !this.isPanelHovered("research-modal-body")) {
       this.renderResearchModalContent();
+    }
+    const _kModal = document.getElementById("knowledge-modal");
+    if (_kModal && _kModal.style.display !== "none" && !this.isPanelHovered("knowledge-modal-body")) {
+      this.renderKnowledgeModalContent();
     }
     this.renderLog();
     this.renderEraProgress();
@@ -357,18 +995,20 @@ class UI {
 
     container.style.display = "block";
     const lines = this.data.onboarding.introLines;
+    const prologue = this.data.prologue || {};
     container.innerHTML = `
       <img class="intro-hero-image" src="assets/intro-campfire.jpg" alt="" aria-hidden="true" onerror="this.src='assets/intro-campfire.svg'; this.onerror=null;">
       <div class="intro-hero-overlay"></div>
       <div class="onboarding-intro-content">
-        <p class="intro-era-label">— Начало пути —</p>
-        <h2 class="onboarding-intro-title">🌍 На заре человечества</h2>
+        <p class="intro-era-label">— Ранний пролог —</p>
+        <h2 class="onboarding-intro-title">🌍 ${prologue.title || "На заре человечества"}</h2>
+        ${prologue.subtitle ? `<p class="intro-era-label">${prologue.subtitle}</p>` : ""}
         <div class="onboarding-intro-text">
           ${lines.map((l) => `<p>${l}</p>`).join("")}
         </div>
         <div class="onboarding-intro-buttons">
-          <button id="obStartBtn" class="ob-btn ob-btn-start">📖 Начать обучение</button>
-          <button id="obSkipBtn" class="ob-btn ob-btn-skip">Пропустить</button>
+          <button id="obStartBtn" class="ob-btn ob-btn-start">🌄 Начать пролог</button>
+          <button id="obSkipBtn" class="ob-btn ob-btn-skip">Пропустить пролог</button>
         </div>
       </div>
     `;
@@ -399,17 +1039,67 @@ class UI {
     const steps = this.data.onboarding.steps;
     const currentIdx = this.game.onboarding.currentStep;
     const progressPct = Math.round((currentIdx / steps.length) * 100);
+    const campfireState = this.game.getPrologueCampfireState();
+    const insightsCount = this.game.getUnlockedInsightsCount();
+    const knowledgeCount = this.game.getKnowledgeEntries().length;
+    const campfireChecklist = [
+      {
+        done:
+          campfireState &&
+          campfireState.unlockedInsights >= campfireState.totalInsights,
+        text: `Замечены свойства материалов (${campfireState?.unlockedInsights || 0}/${campfireState?.totalInsights || 0})`,
+      },
+      {
+        done: !!campfireState?.hasTool,
+        text: "Связано первое грубое орудие",
+      },
+      {
+        done: !!campfireState?.built,
+        text: "Разведён первый костёр",
+      },
+    ];
 
     container.innerHTML = `
       <div class="onboarding-step-content">
         <div class="onboarding-step-header">
-          <h3>📖 Обучение — шаг ${currentIdx + 1} из ${steps.length}</h3>
-          <button id="obSkipStepBtn" class="ob-btn ob-btn-skip-small">Пропустить</button>
+          <h3>${this.data.prologue?.stepTitle || "Сейчас главное"}</h3>
+          <button id="obSkipStepBtn" class="ob-btn ob-btn-skip-small">Пропустить пролог</button>
         </div>
-        <div class="onboarding-step-text">${step.text}</div>
-        <div class="onboarding-step-hint">💡 ${step.hint}</div>
-        <div class="onboarding-step-bar">
-          <div class="onboarding-step-bar-fill" style="width:${progressPct}%"></div>
+        <div class="prologue-focus-layout">
+          <div class="prologue-focus-main">
+            <div class="prologue-focus-kicker">${this.data.prologue?.stepSubtitle || ""}</div>
+            <div class="onboarding-step-text">${step.text}</div>
+            <div class="onboarding-step-hint">💡 ${step.hint}</div>
+            ${
+              step.sceneText
+                ? `<div class="prologue-scene-text">${step.sceneText}</div>`
+                : ""
+            }
+            <div class="onboarding-step-bar">
+              <div class="onboarding-step-bar-fill" style="width:${progressPct}%"></div>
+            </div>
+            <div class="prologue-step-meta">
+              <span class="prologue-step-chip">Шаг ${currentIdx + 1}/${steps.length}</span>
+              <span class="prologue-step-chip">Озарения ${insightsCount}/${this.game.getPrologueInsights().length}</span>
+              <span class="prologue-step-chip">Книга ${knowledgeCount}</span>
+            </div>
+            <div class="prologue-step-actions">
+              <button id="prologueInsightsBtn" class="prologue-link-btn" type="button">✨ Озарения</button>
+              <button id="prologueBookBtn" class="prologue-link-btn" type="button">📚 Книга знаний</button>
+            </div>
+          </div>
+          <aside class="prologue-focus-aside">
+            <div class="prologue-focus-aside-title">${campfireState?.title || "Путь к костру"}</div>
+            <div class="prologue-focus-aside-text">${campfireState?.text || ""}</div>
+            <div class="prologue-fire-readiness">
+              ${campfireChecklist
+                .map(
+                  (item) =>
+                    `<div class="prologue-fire-item ${item.done ? "done" : ""}">${item.done ? "✓" : "•"} ${item.text}</div>`,
+                )
+                .join("")}
+            </div>
+          </aside>
         </div>
       </div>
     `;
@@ -417,6 +1107,12 @@ class UI {
     document.getElementById("obSkipStepBtn").addEventListener("click", () => {
       this.game.skipOnboarding();
       this.render({ forcePanels: true });
+    });
+    document.getElementById("prologueInsightsBtn")?.addEventListener("click", () => {
+      this.openResearchModal();
+    });
+    document.getElementById("prologueBookBtn")?.addEventListener("click", () => {
+      this.openKnowledgeModal();
     });
   }
 
@@ -454,16 +1150,17 @@ class UI {
       container.classList.add("is-low");
     }
 
+    const isPrologue = this.game.isPrologueActive();
     const warning =
       pct <= 10
-        ? `<span class="energy-warning">Нужна пауза: энергии почти не осталось</span>`
+        ? `<span class="energy-warning">${isPrologue ? "Нужна передышка: силы почти на исходе" : "Нужна пауза: энергии почти не осталось"}</span>`
         : pct < 20
-          ? `<span class="energy-warning">Мало энергии: выбирайте действия осторожно</span>`
+          ? `<span class="energy-warning">${isPrologue ? "Сил мало: выбирайте только самое важное" : "Мало энергии: выбирайте действия осторожно"}</span>`
           : "";
 
     container.innerHTML = `
       <div class="energy-topline">
-        <span class="energy-title">⚡ Энергия</span>
+        <span class="energy-title">${isPrologue ? "⚡ Силы" : "⚡ Энергия"}</span>
         <span class="energy-value">${this.game.energy} / ${this.game.maxEnergy}</span>
       </div>
       <div class="energy-bar-container">
@@ -471,7 +1168,7 @@ class UI {
         <span class="energy-bar-text">${Math.round(pct)}%</span>
       </div>
       <div class="energy-info">
-        <span>🔄 +${this.game.energyRegenPerTick} через ${regenSec}с</span>
+        <span>${isPrologue ? "🫀" : "🔄"} +${this.game.energyRegenPerTick} через ${regenSec}с</span>
         ${modifiers.maxBonus > 0 ? `<span class="energy-bonus">🔋 запас +${modifiers.maxBonus}</span>` : ""}
         ${modifiers.regenIntervalBonusMs > 0 ? `<span class="energy-bonus">⏱ восстановление -${regenDeltaSec}с</span>` : ""}
       </div>
@@ -490,6 +1187,85 @@ class UI {
   renderResources() {
     const container = document.getElementById("resources-panel");
     if (!container) return;
+
+    if (this.game.isPrologueActive() && !this.game.getPrologueRevealState().showResources) {
+      container.innerHTML = "";
+      this.lastResourcesRenderKey = "";
+      return;
+    }
+
+    if (this.game.isPrologueActive()) {
+      const visibleIds = this.game.getVisibleResourceIds();
+      const renderKey = JSON.stringify({
+        mode: "prologue",
+        resources: Object.fromEntries(
+          visibleIds.map((id) => [id, this.game.resources[id] || 0]),
+        ),
+      });
+      if (renderKey === this.lastResourcesRenderKey) {
+        return;
+      }
+      this.lastResourcesRenderKey = renderKey;
+
+      container.innerHTML = "";
+      const title = document.createElement("h3");
+      title.textContent = this.data.prologue?.resourcesTitle || "🌿 Найденные материалы";
+      container.appendChild(title);
+
+      const hint = document.createElement("div");
+      hint.className = "storage-summary";
+      hint.textContent = this.data.prologue?.resourcesHint ||
+        "Пока это не склад и не производство — только то, что удалось найти руками.";
+      container.appendChild(hint);
+
+      const list = document.createElement("div");
+      list.className = "storage-resource-list";
+
+      for (const id of visibleIds) {
+        const resource = this.data.resources[id];
+        if (!resource) continue;
+        const resourceName = id === "wood"
+          ? "Ветки"
+          : id === "stone"
+            ? "Камни"
+            : id === "fiber"
+              ? "Волокна"
+              : id === "crude_tools"
+                ? "Грубое орудие"
+                : resource.name;
+        const resourceDesc = id === "wood"
+          ? "Сухие ветви, которые можно унести руками и пустить на первое орудие или костёр."
+          : id === "stone"
+            ? "Подобранные камни и сколы. Среди них встречаются острые края."
+            : id === "fiber"
+              ? "Трава и волокна, пригодные для простых связок."
+              : id === "crude_tools"
+                ? "Первое связанное орудие, собранное из ветви, камня и волокна."
+                : resource.description;
+
+        const item = document.createElement("div");
+        item.className = "resource-item prologue-resource-item";
+        item.innerHTML = `
+          <span class="resource-icon" style="color:${resource.color}">${resource.icon}</span>
+          <div class="resource-text">
+            <span class="resource-name">${resourceName}</span>
+            <span class="resource-desc">${resourceDesc}</span>
+            <span class="prologue-resource-total">Найдено всего: ${this.game.resourceTotals[id] || 0}</span>
+          </div>
+          <span class="resource-count">${this.game.resources[id] || 0}</span>
+        `;
+        this.setTooltip(item, [
+          resourceName,
+          resourceDesc || "Материал раннего пролога",
+          `Сейчас при себе: ${this.game.resources[id] || 0}`,
+          `Всего найдено: ${this.game.resourceTotals[id] || 0}`,
+        ]);
+        list.appendChild(item);
+      }
+
+      container.appendChild(list);
+      return;
+    }
 
     const storageStatus = this.game.getStorageStatus();
     const storageTotals = this.game.getStorageTotals();
@@ -657,12 +1433,27 @@ class UI {
 
     container.innerHTML = "";
     const title = document.createElement("h3");
-    title.textContent = "🖐️ Сбор ресурсов";
+    title.textContent = this.game.isPrologueActive()
+      ? (this.data.prologue?.actionsTitle || "🖐️ Первые действия")
+      : "🖐️ Сбор ресурсов";
     container.appendChild(title);
 
-    for (const [id, action] of Object.entries(this.data.gatherActions)) {
+    if (this.game.isPrologueActive()) {
+      const hint = document.createElement("p");
+      hint.className = "hint";
+      hint.textContent =
+        this.data.prologue?.actionsHint ||
+        "Первые шаги — это не добыча, а поиск того, что можно подобрать, унести и использовать.";
+      container.appendChild(hint);
+    }
+
+    for (const id of this.game.getVisibleGatherActions()) {
+      const action = this.data.gatherActions[id];
+      if (!action) continue;
+
+      const copy = this.getGatherActionCopy(action);
       const btn = document.createElement("button");
-      btn.className = "action-btn";
+      btn.className = `action-btn${this.game.isPrologueActive() ? " action-btn--prologue" : ""}`;
       btn.type = "button";
 
       const cooldown = this.game.getCooldownRemaining(id);
@@ -671,20 +1462,40 @@ class UI {
       const outputStr = this.formatResourcePairs(output, { plus: true });
       const perAction = `Эффективность: ${outputStr} / действие`;
 
-      btn.innerHTML = `
-        <span class="btn-icon">${action.icon}</span>
-        <span class="btn-label">${action.name}</span>
-        ${action.description ? `<span class="btn-desc">${action.description}</span>` : ""}
-        <span class="btn-output">${outputStr}</span>
-        <span class="btn-efficiency">${perAction}</span>
-        <span class="btn-cost">⚡ -${action.energyCost}</span>
-        ${cooldown > 0 ? `<span class="btn-cooldown">⏳ ${this.formatCooldownMs(cooldown)}</span>` : ""}
-        ${!this.game.hasEnergy(action.energyCost) && cooldown === 0 ? '<span class="btn-cooldown">⚡ Нет энергии</span>' : ""}
-      `;
+      if (this.game.isPrologueActive()) {
+        btn.innerHTML = `
+          <span class="btn-icon">${copy.icon}</span>
+          <span class="btn-label">${copy.name}</span>
+          ${copy.description ? `<span class="btn-desc">${copy.description}</span>` : ""}
+          <div class="btn-meta-inline">
+            <span class="btn-output">Находка: ${outputStr}</span>
+            <span class="btn-cost">⚡ -${action.energyCost}</span>
+          </div>
+          ${cooldown > 0 ? `<span class="btn-cooldown">⏳ ${this.formatCooldownMs(cooldown)}</span>` : ""}
+          ${!this.game.hasEnergy(action.energyCost) && cooldown === 0 ? '<span class="btn-cooldown">⚡ Нет сил</span>' : ""}
+        `;
+      } else {
+        btn.innerHTML = `
+          <span class="btn-icon">${copy.icon}</span>
+          <span class="btn-label">${copy.name}</span>
+          ${copy.description ? `<span class="btn-desc">${copy.description}</span>` : ""}
+          <span class="btn-output">${outputStr}</span>
+          <span class="btn-efficiency">${perAction}</span>
+          <span class="btn-cost">⚡ -${action.energyCost}</span>
+          ${cooldown > 0 ? `<span class="btn-cooldown">⏳ ${this.formatCooldownMs(cooldown)}</span>` : ""}
+          ${!this.game.hasEnergy(action.energyCost) && cooldown === 0 ? '<span class="btn-cooldown">⚡ Нет энергии</span>' : ""}
+        `;
+      }
 
       btn.classList.toggle("cooldown", disabled);
       btn.classList.toggle("busy", cooldown > 0);
       btn.setAttribute("aria-disabled", disabled ? "true" : "false");
+      this.setTooltip(btn, [
+        copy.name,
+        copy.description,
+        `Выход: ${outputStr}`,
+        `Энергия: -${action.energyCost}`,
+      ]);
 
       btn.addEventListener("click", () => {
         if (!this.game.gather(id)) {
@@ -702,17 +1513,32 @@ class UI {
     const container = document.getElementById("craft-panel");
     if (!container) return;
 
+    if (this.game.isPrologueActive() && !this.game.getPrologueRevealState().showCraft) {
+      container.innerHTML = "";
+      return;
+    }
+
     container.innerHTML = "";
     const title = document.createElement("h3");
-    title.textContent = "⚒️ Крафт";
+    title.textContent = this.game.isPrologueActive()
+      ? "🪢 Первые предметы"
+      : "⚒️ Крафт";
     container.appendChild(title);
+
+    if (this.game.isPrologueActive()) {
+      const hint = document.createElement("p");
+      hint.className = "hint";
+      hint.textContent =
+        "Пока ещё нет мастерской и ремесла. Есть только одна полезная связка, которая помогает перейти от голых рук к первому орудию.";
+      container.appendChild(hint);
+    }
 
     const queueState = this.game.getCraftQueueState();
     const queueCard = document.createElement("div");
     queueCard.className = "craft-queue-card";
     queueCard.innerHTML = `
       <div class="craft-queue-header">
-        <span class="craft-queue-title">Очередь производства</span>
+        <span class="craft-queue-title">${this.game.isPrologueActive() ? "Текущее занятие" : "Очередь производства"}</span>
         <span class="craft-queue-capacity">${queueState.items.length} / ${queueState.capacity}</span>
       </div>
       <div class="craft-queue-slots">
@@ -749,37 +1575,57 @@ class UI {
         }).join("")}
       </div>
     `;
-    this.setTooltip(queueCard, [
-      "Очередь крафта: задания выполняются автоматически по порядку",
-      `Слотов занято: ${queueState.items.length} / ${queueState.capacity}`,
-      "В работе: текущий слот, Ожидает: ждёт своей очереди",
-    ]);
-    container.appendChild(queueCard);
+    if (!this.game.isPrologueActive() || queueState.items.length > 0) {
+      this.setTooltip(queueCard, [
+        "Очередь крафта: задания выполняются автоматически по порядку",
+        `Слотов занято: ${queueState.items.length} / ${queueState.capacity}`,
+        "В работе: текущий слот, Ожидает: ждёт своей очереди",
+      ]);
+      container.appendChild(queueCard);
+    }
 
-    for (const [id, recipe] of Object.entries(this.data.recipes)) {
+    for (const id of this.game.getVisibleRecipeIds()) {
+      const recipe = this.data.recipes[id];
+      if (!recipe) continue;
+
+      const copy = this.getRecipeCopy(recipe);
       const unlocked =
         this.game.unlockedRecipes.has(id) &&
         (!recipe.unlockedBy || this.game.researched[recipe.unlockedBy]);
       const meetsReqs =
         !recipe.requires || this.game.buildings[recipe.requires];
       const canQueue = this.game.canQueueCraft(id);
-      const effectiveCost = this.game._getDiscountedCost(recipe.ingredients);
+      const effectiveCost = this.game.getRecipeCost(id);
+      const missingInsights = (recipe.requiresInsights || []).filter(
+        (insightId) => !this.game.insights[insightId],
+      );
 
       const el = document.createElement("div");
       el.className = "recipe-card";
 
-      if (!unlocked || !meetsReqs) {
+      if (!unlocked || !meetsReqs || missingInsights.length > 0) {
         el.classList.add("locked");
-        const reqName = !unlocked && recipe.unlockedBy
+        const reqName = missingInsights.length > 0
+          ? missingInsights
+              .map(
+                (insightId) =>
+                  this.data.prologue?.insights?.[insightId]?.name || insightId,
+              )
+              .join(" · ")
+          : !unlocked && recipe.unlockedBy
           ? this.data.tech[recipe.unlockedBy]?.name || recipe.unlockedBy
           : recipe.requires
             ? this.data.buildings[recipe.requires]?.name || recipe.requires
             : null;
-        const reqType = !unlocked && recipe.unlockedBy ? "Исследование" : "Требуется";
+        const reqType = missingInsights.length > 0
+          ? "Озарения"
+          : !unlocked && recipe.unlockedBy
+            ? "Исследование"
+            : "Требуется";
         el.innerHTML = `
           <span class="btn-icon">🔒</span>
-          <span class="btn-label">${recipe.name}</span>
-          ${recipe.description ? `<span class="btn-desc">${recipe.description}</span>` : ""}
+          <span class="btn-label">${copy.name}</span>
+          ${copy.description ? `<span class="btn-desc">${copy.description}</span>` : ""}
           ${reqName ? `<span class="btn-cooldown">${reqType}: ${reqName}</span>` : ""}
         `;
         container.appendChild(el);
@@ -802,16 +1648,16 @@ class UI {
       }
 
       btn.innerHTML = `
-        <span class="btn-icon">${recipe.icon}</span>
-        <span class="btn-label">${recipe.name}</span>
+        <span class="btn-icon">${copy.icon}</span>
+        <span class="btn-label">${copy.name}</span>
         <span class="btn-flow">${costStr} → ${outStr}</span>
-        ${recipe.description ? `<span class="btn-desc">${recipe.description}</span>` : ""}
+        ${copy.description ? `<span class="btn-desc">${copy.description}</span>` : ""}
         <span class="btn-efficiency">Время производства: ${this.formatSeconds(recipe.craftTimeMs || 3000)}</span>
         <span class="btn-queue-status">${queueStateText}</span>
       `;
       this.setTooltip(btn, [
-        recipe.name,
-        recipe.description || "Производственный рецепт",
+        copy.name,
+        copy.description || "Производственный рецепт",
         "Добавляет задачу в очередь крафта",
       ]);
 
@@ -851,6 +1697,243 @@ class UI {
       </div>
     `;
     return card;
+  }
+
+  renderBuildingsPanel() {
+    const container = document.getElementById("buildings-panel");
+    if (!container) return;
+
+    if (this.game.isPrologueActive() && !this.game.getPrologueRevealState().showBuildings) {
+      container.innerHTML = "";
+      return;
+    }
+
+    container.innerHTML = "";
+    const title = document.createElement("h3");
+    title.textContent = this.game.isPrologueActive()
+      ? "🔥 Первый костёр"
+      : "🏗️ Здания";
+    container.appendChild(title);
+
+    if (this.game.isPrologueActive()) {
+      const campfireState = this.game.getPrologueCampfireState();
+      if (campfireState) {
+        const hint = document.createElement("div");
+        hint.className = "prologue-campfire-banner";
+        hint.innerHTML = `
+          <div class="prologue-campfire-title">${campfireState.title}</div>
+          <div class="prologue-campfire-text">${campfireState.text}</div>
+        `;
+        container.appendChild(hint);
+      }
+    }
+
+    const construction = this.game.getConstructionState();
+    if (construction) {
+      const card = this.createTimedStatusCard({
+        title: "Активное строительство",
+        icon: construction.icon,
+        name: construction.name,
+        remainingMs: construction.remainingMs,
+        progress: construction.progress,
+        note: "Эффект здания включится после завершения строительства.",
+        variant: "construction",
+      });
+      this.setTooltip(card, [
+        `${construction.name}: строительство в процессе`,
+        `Осталось: ${this.formatSeconds(construction.remainingMs)}`,
+        "После завершения постройка начнёт работать постоянно.",
+      ]);
+      container.appendChild(card);
+    }
+
+    for (const id of this.game.getVisibleBuildingIds()) {
+      const building = this.data.buildings[id];
+      if (!building) continue;
+
+      const copy = this.getBuildingCopy(building);
+      const alreadyBuilt = this.game.buildings[id];
+      const canDo = this.game.canBuild(id);
+      const unlockedByTech =
+        !building.unlockedBy || this.game.researched[building.unlockedBy];
+      const requiredBuildingReady =
+        !building.requires || this.game.buildings[building.requires];
+      const missingInsights = (building.requiresInsights || []).filter(
+        (insightId) => !this.game.insights[insightId],
+      );
+      const missingPrologueTool =
+        this.game.isPrologueActive() &&
+        building.requiresPrologueTool &&
+        (this.game.resources.crude_tools || 0) < 1;
+      const isConstructingThis = construction?.buildingId === id;
+
+      const el = document.createElement("div");
+      el.className = "building-card";
+
+      if (isConstructingThis) {
+        el.classList.add("in-progress");
+        el.innerHTML = `
+          <span class="building-icon">${building.icon}</span>
+          <span class="building-name">${copy.name}</span>
+          ${copy.description ? `<span class="btn-desc">${copy.description}</span>` : ""}
+          <span class="building-status is-pending">⏳ Строится — ${this.formatSeconds(construction.remainingMs)}</span>
+          <div class="project-mini-bar">
+            <div class="project-mini-bar-fill" style="width:${construction.progress * 100}%"></div>
+          </div>
+        `;
+      } else if (alreadyBuilt) {
+        el.classList.add("built");
+        let extraInfo = `<span class="building-status">✅ Построено</span>`;
+
+        if (this.game.isPrologueActive() && id === "campfire") {
+          extraInfo += `<span class="btn-desc">Огонь стал первой точкой, вокруг которой начинает складываться более устойчивый уклад.</span>`;
+        }
+
+        if (building.effect.automation) {
+          const auto = building.effect.automation;
+          const autoId = auto.id;
+          const state = this.game.getAutomationState(autoId);
+          const remaining = this.game.getAutomationRemaining(autoId);
+          const inputStr = this.formatResourcePairs(auto.input);
+          const outputStr = this.formatResourcePairs(auto.output, {
+            plus: true,
+          });
+          const efficiency = this.game.getAutomationEfficiency(autoId);
+          const perSecond = efficiency
+            ? this.formatResourcePairs(efficiency.outputPerSecond, {
+                decimals: 1,
+              })
+            : "";
+
+          let stateLabel = "";
+          let stateClass = "";
+          if (state === "running") {
+            stateLabel = `⏳ ${remaining.toFixed(1)}с до результата`;
+            stateClass = "state-running";
+          } else if (state === "waiting") {
+            stateLabel = `⚠️ Нет входа: ${inputStr}`;
+            stateClass = "state-waiting";
+          }
+
+          extraInfo += `
+            <div class="automation-inline">
+              <span class="automation-flow">${inputStr} → ${outputStr}</span>
+              <span class="automation-efficiency">${outputStr} / ${efficiency.cycleSeconds.toFixed(0)}с = ${perSecond} / с</span>
+              <span class="automation-state ${stateClass}">${stateLabel}</span>
+            </div>
+          `;
+        }
+
+        el.innerHTML = `
+          <span class="building-icon">${building.icon}</span>
+          <span class="building-name">${copy.name}</span>
+          ${copy.description ? `<span class="btn-desc">${copy.description}</span>` : ""}
+          ${extraInfo}
+        `;
+      } else if (
+        !unlockedByTech ||
+        !requiredBuildingReady ||
+        missingInsights.length > 0 ||
+        missingPrologueTool
+      ) {
+        const lockedByName = missingInsights.length > 0
+          ? missingInsights
+              .map(
+                (insightId) =>
+                  this.data.prologue?.insights?.[insightId]?.name || insightId,
+              )
+              .join(" · ")
+          : missingPrologueTool
+            ? "Грубое орудие"
+            : !unlockedByTech
+              ? this.data.tech[building.unlockedBy]?.name || building.unlockedBy
+              : this.data.buildings[building.requires]?.name || building.requires;
+        const lockedByType = missingInsights.length > 0
+          ? "озарения"
+          : missingPrologueTool
+            ? "предмет"
+            : !unlockedByTech
+              ? "исследование"
+              : "здание";
+
+        el.classList.add("locked");
+        el.innerHTML = `
+          <span class="btn-icon">🔒</span>
+          <span class="btn-label">${copy.name}</span>
+          ${copy.description ? `<span class="btn-desc">${copy.description}</span>` : ""}
+          <span class="btn-cooldown">Требуется: ${lockedByType} «${lockedByName}»</span>
+        `;
+      } else {
+        const costStr = this.formatResourcePairs(this.game.getBuildingCost(id));
+        const buildTime = this.formatSeconds(this.game.getBuildDuration(id));
+        const btn = document.createElement("button");
+        btn.className = "action-btn";
+        btn.type = "button";
+        this.setButtonAvailability(btn, canDo);
+
+        let unlocksInfo = "";
+        if (building.effect.unlocks && building.effect.unlocks.length > 0) {
+          const recipeNames = building.effect.unlocks
+            .map((rid) => this.data.recipes[rid]?.name || rid)
+            .join(", ");
+          unlocksInfo = `<span class="btn-desc">📖 Открывает: ${recipeNames}</span>`;
+        }
+
+        let buildStatus = `Строительство: ${buildTime}`;
+        if (construction) {
+          buildStatus = `Занято: ${construction.icon} ${construction.name}`;
+        } else if (this.game.isPrologueActive() && id === "campfire" && canDo) {
+          buildStatus = "Можно разжечь первый костёр";
+        } else if (!this.game.hasResources(this.game.getBuildingCost(id))) {
+          buildStatus = "Не хватает ресурсов";
+        }
+
+        btn.innerHTML = `
+          <span class="btn-icon">${building.icon}</span>
+          <span class="btn-label">${copy.name}</span>
+          ${copy.description ? `<span class="btn-desc">${copy.description}</span>` : ""}
+          ${unlocksInfo}
+          <span class="btn-cost">Стоимость: ${costStr}</span>
+          <span class="btn-efficiency">Время строительства: ${buildTime}</span>
+          <span class="btn-queue-status">${buildStatus}</span>
+        `;
+        this.setTooltip(btn, [
+          copy.name,
+          copy.description || "Ранняя постройка",
+          building.effect.automation
+            ? "После завершения откроет автоматический цикл"
+            : "После завершения даст постоянный эффект",
+        ]);
+
+        btn.addEventListener("click", () => {
+          if (!this.game.build(id)) {
+            this.render({ forcePanels: true });
+            return;
+          }
+          this.render({ forcePanels: true });
+        });
+
+        el.appendChild(btn);
+      }
+
+      this.setTooltip(el, [
+        copy.name,
+        copy.description || "Ранняя постройка",
+      ]);
+      container.appendChild(el);
+    }
+  }
+
+  renderAutomationPanel() {
+    if (this.game.isPrologueActive()) {
+      const container = document.getElementById("automation-panel");
+      if (!container) return;
+
+      container.innerHTML = "";
+      return;
+    }
+
+    this.renderAutomation();
   }
 
   renderBuildings() {
@@ -1326,6 +2409,52 @@ class UI {
     return el;
   }
 
+  _renderPrologueInsightsBody(container) {
+    container.innerHTML = "";
+
+    const insights = this.game.getPrologueInsightsState();
+    const unlockedCount = insights.filter((insight) => insight.unlocked).length;
+    const currentStep = this.game.getCurrentOnboardingStep();
+
+    const overview = document.createElement("div");
+    overview.className = "research-overview";
+    overview.innerHTML = `
+      <div class="research-overview-summary">
+        <span class="research-summary-chip">Озарения: ${unlockedCount}/${insights.length}</span>
+        <span class="research-summary-chip">Книга знаний: ${this.game.getKnowledgeEntries().length}</span>
+        <span class="research-summary-chip">Текущий шаг: ${this.game.onboarding.currentStep + 1}/${this.data.onboarding.steps.length}</span>
+      </div>
+      <div class="research-overview-text">${this.data.prologue?.insightsHint || ""}</div>
+      ${currentStep ? `<div class="research-overview-text">Сейчас: ${currentStep.text}</div>` : ""}
+    `;
+    container.appendChild(overview);
+
+    const grid = document.createElement("div");
+    grid.className = "research-branches-grid";
+
+    for (const insight of insights) {
+      const card = document.createElement("div");
+      card.className = `tech-card${insight.unlocked ? " done" : " locked"}`;
+      card.innerHTML = `
+        <span class="tech-icon">${insight.icon}</span>
+        <span class="tech-name">${insight.name}</span>
+        <span class="btn-desc">${insight.description}</span>
+        ${insight.unlocked && insight.unlockText ? `<div class="prologue-inline-note">${insight.unlockText}</div>` : ""}
+        ${Array.isArray(insight.outcomes) && insight.outcomes.length > 0 ? `<div class="tech-outcomes">${insight.outcomes.map((item) => `<span class="tech-outcome">${item}</span>`).join("")}</div>` : ""}
+        <span class="tech-status ${insight.unlocked ? "" : "is-pending"}">${insight.unlocked ? "✅ Озарение открыто" : `🔍 ${insight.conditionText || "Открывается через действия"}`}</span>
+      `;
+      this.setTooltip(card, [
+        insight.name,
+        insight.description,
+        insight.conditionText || "",
+        ...(insight.outcomes || []),
+      ]);
+      grid.appendChild(card);
+    }
+
+    container.appendChild(grid);
+  }
+
   _renderResearchBody(container) {
     container.innerHTML = "";
 
@@ -1493,6 +2622,34 @@ class UI {
     const container = document.getElementById("era-progress-panel");
     if (!container) return;
 
+    if (this.game.isPrologueActive()) {
+      const totalSteps = this.data.onboarding.steps.length;
+      const completedSteps = Math.min(this.game.onboarding.currentStep, totalSteps);
+      const progressPercent =
+        totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
+      const campfireState = this.game.getPrologueCampfireState();
+
+      container.innerHTML = `
+        <h3>🔥 ${campfireState?.title || "Путь к первому костру"}</h3>
+        <div class="era-description">${campfireState?.text || this.data.prologue?.subtitle || "Голые руки, первые материалы и первые озарения."}</div>
+        <div class="era-progress-bar">
+          <div class="era-progress-fill" style="width: ${progressPercent}%"></div>
+          <span class="era-progress-text">${progressPercent}% (${completedSteps}/${totalSteps})</span>
+        </div>
+        <div class="era-milestones">
+          <div class="era-milestone ${campfireState?.unlockedInsights >= campfireState?.totalInsights ? "completed" : "pending"}">${campfireState?.unlockedInsights >= campfireState?.totalInsights ? "✅" : "⏳"} Открыть все ранние озарения</div>
+          <div class="era-milestone ${campfireState?.hasTool ? "completed" : "pending"}">${campfireState?.hasTool ? "✅" : "⏳"} Связать первое грубое орудие</div>
+          <div class="era-milestone ${campfireState?.built ? "completed" : "pending"}">${campfireState?.built ? "✅" : "⏳"} Развести первый костёр</div>
+        </div>
+        <div class="era-stats">
+          <span>✨ ${campfireState?.unlockedInsights || 0}/${campfireState?.totalInsights || 0}</span>
+          <span>📚 ${this.game.getKnowledgeEntries().length}</span>
+          <span>⚡ ${this.game.energy}/${this.game.maxEnergy}</span>
+        </div>
+      `;
+      return;
+    }
+
     const eraData = this.game.getEraData();
     if (!eraData) {
       container.innerHTML = "";
@@ -1578,3 +2735,76 @@ class UI {
     }
   }
 }
+
+UI.prototype.getStoryEventKicker = function getStoryEventKicker(type) {
+  switch (type) {
+    case "transition":
+      return "Новый этап";
+    case "campfire":
+      return "Рубеж пролога";
+    case "knowledge":
+      return "Книга знаний";
+    case "prologue":
+      return "Первые шаги";
+    case "map":
+      return "Локальная карта";
+    default:
+      return "Озарение";
+  }
+};
+
+UI.prototype.renderStoryEvent = function renderStoryEvent() {
+  const layer = document.getElementById("story-event-layer");
+  if (!layer) return;
+
+  const event = this.game.getActiveStoryEvent();
+  if (!event) {
+    this.lastStoryEventId = "";
+    layer.innerHTML = "";
+    layer.style.display = "none";
+    return;
+  }
+
+  if (event.id === this.lastStoryEventId) {
+    layer.style.display = "block";
+    return;
+  }
+
+  this.lastStoryEventId = event.id;
+
+  layer.style.display = "block";
+  layer.innerHTML = `
+    <article class="story-event story-event--${event.type || "default"}">
+      <div class="story-event-main">
+        <div class="story-event-kicker">${this.getStoryEventKicker(event.type)}</div>
+        <div class="story-event-title">${event.icon || "✦"} ${event.title}</div>
+        <div class="story-event-text">${event.text || ""}</div>
+      </div>
+      <div class="story-event-actions">
+        ${
+          event.action === "insights"
+            ? '<button class="story-event-action js-story-action" type="button">Озарения</button>'
+            : event.action === "knowledge"
+              ? '<button class="story-event-action js-story-action" type="button">Книга знаний</button>'
+              : ""
+        }
+        <button class="story-event-close" type="button" aria-label="Закрыть">✕</button>
+      </div>
+    </article>
+  `;
+
+  layer.querySelector(".story-event-close")?.addEventListener("click", () => {
+    this.game.dismissStoryEvent(event.id);
+    this.render({ forcePanels: true });
+  });
+
+  layer.querySelector(".js-story-action")?.addEventListener("click", () => {
+    if (event.action === "insights") {
+      this.openResearchModal();
+    } else if (event.action === "knowledge") {
+      this.openKnowledgeModal();
+    }
+    this.game.dismissStoryEvent(event.id);
+    this.render({ forcePanels: true });
+  });
+};
