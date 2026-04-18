@@ -323,8 +323,7 @@ class UI {
     const horizontalStep = Math.round(hexRadius * 1.5);         // 60
     const verticalStep = tileHeight;                            // 69
     const scenePadding = 20;
-    const gridRadius = 4;
-    const maxPixelDist = hexRadius * 5; // circular boundary ≈ 200 px
+    const gridRadius = 3; // 37 cells — compact hexagonal ≈ circular shape
 
     // Index named tiles by "q,r" for O(1) lookup
     const namedByCoord = new Map();
@@ -332,18 +331,20 @@ class UI {
       namedByCoord.set(`${tile.q},${tile.r}`, tile);
     }
 
-    // Generate hex coords within circular pixel-distance boundary
+    // Generate every hex within gridRadius (axial coordinates)
     const allCoords = [];
-    const maxDistSq = maxPixelDist * maxPixelDist;
     for (let q = -gridRadius; q <= gridRadius; q++) {
       const rMin = Math.max(-gridRadius, -q - gridRadius);
       const rMax = Math.min(gridRadius, -q + gridRadius);
       for (let r = rMin; r <= rMax; r++) {
-        const cx = q * horizontalStep;
-        const cy = (r + q * 0.5) * verticalStep;
-        if (cx * cx + cy * cy <= maxDistSq || namedByCoord.has(`${q},${r}`)) {
-          allCoords.push({ q, r });
-        }
+        allCoords.push({ q, r });
+      }
+    }
+    // Force-add any named tiles outside gridRadius
+    for (const tile of mapState.tiles) {
+      const key = `${tile.q},${tile.r}`;
+      if (!allCoords.some(c => c.q === tile.q && c.r === tile.r)) {
+        allCoords.push({ q: tile.q, r: tile.r });
       }
     }
 
@@ -351,7 +352,7 @@ class UI {
     const allLayouts = allCoords.map(({ q, r }) => {
       const centerX = q * horizontalStep;
       const centerY = Math.round((r + q * 0.5) * verticalStep);
-      return { q, r, left: centerX - tileWidth / 2, top: centerY - tileHeight / 2 };
+      return { q, r, left: centerX - tileWidth / 2, top: Math.round(centerY - tileHeight / 2) };
     });
 
     const minX = Math.min(...allLayouts.map((t) => t.left));
@@ -361,9 +362,6 @@ class UI {
     const sceneWidth = Math.ceil(maxX - minX + scenePadding * 2);
     const sceneHeight = Math.ceil(maxY - minY + scenePadding * 2);
 
-    // Deterministic pseudo-random terrain for filler hexes
-    const FILLER_TERRAINS = ["void", "void", "filler-brush", "filler-rock", "void", "filler-grass"];
-
     const renderedTiles = allLayouts.map(({ q, r, left, top }) => {
       const px = left - minX + scenePadding;
       const py = top - minY + scenePadding;
@@ -371,8 +369,7 @@ class UI {
       const tile = namedByCoord.get(`${q},${r}`);
 
       if (!tile) {
-        const ti = Math.abs((q * 7 + r * 13 + q * r * 3) % FILLER_TERRAINS.length);
-        return `<div class="camp-tile camp-tile--filler terrain-${FILLER_TERRAINS[ti]}" style="${sizeStyle}" aria-hidden="true"></div>`;
+        return `<div class="camp-tile camp-tile--filler is-hidden" style="${sizeStyle}"><span class="camp-tile-inner"></span></div>`;
       }
 
       const tileStateLabel = this.getCampTileStateLabel(tile.state);

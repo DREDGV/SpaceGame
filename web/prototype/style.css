@@ -512,22 +512,16 @@ body {
   pointer-events: none;
 }
 
-/* ── Filler hexes (grid background fill) ──────────────── */
+/* ── Filler hexes — look like hidden fog tiles ────────── */
 .camp-tile--filler {
   pointer-events: none;
   cursor: default;
-  opacity: 1;
 }
 
 .camp-tile--filler:hover {
   transform: none;
   z-index: auto;
 }
-
-.camp-tile.terrain-void     { background: #252e44; }
-.camp-tile.terrain-filler-brush { background: #253528; }
-.camp-tile.terrain-filler-rock  { background: #302c26; }
-.camp-tile.terrain-filler-grass { background: #283526; }
 
 /* ── Animations ────────────────────────────────────────── */
 @keyframes campPulse {
