@@ -14,7 +14,6 @@
             <h1 id="game-title">🌌 SpaceGame</h1>
             <span id="version-badge" class="version-badge">v0.1.14</span>
           </div>
-          <section id="energy-panel" class="panel panel-energy panel-compact"></section>
           <div class="header-actions">
             <button id="changelog-btn" class="header-changelog-btn" type="button" title="История изменений">📋 v0.1.14</button>
             <div class="save-status-wrap">
@@ -26,7 +25,8 @@
                 </label>
               </div>
             </div>
-            <button id="restart-onboarding-btn" class="header-service-btn" type="button" title="Начать обучение заново">📖</button>
+            <button id="restart-onboarding-btn" class="header-service-btn" type="button" title="Начать пролог заново">🌄</button>
+            <button id="knowledge-book-btn" class="header-service-btn" type="button" title="Книга знаний">📚</button>
             <button id="reset-progress-btn" class="header-reset-btn" type="button">Новая игра</button>
           </div>
         </div>
@@ -47,13 +47,16 @@
 
         <!-- Main content: actions -->
         <main id="game-main">
+          <section id="character-panel" class="panel panel-character panel-compact"></section>
+          <section id="camp-founding-quest" class="panel panel-camp-quest" hidden></section>
+          <section id="camp-map-panel" class="panel panel-camp-map"></section>
 
-          <div class="panel-row">
+          <div id="actions-row" class="panel-row">
             <section id="gather-panel" class="panel"></section>
             <section id="craft-panel" class="panel"></section>
           </div>
 
-          <div class="panel-row">
+          <div id="systems-row" class="panel-row">
             <section id="buildings-panel" class="panel"></section>
             <section id="automation-panel" class="panel"></section>
           </div>
@@ -64,6 +67,8 @@
           <section id="log-panel" class="panel"></section>
         </main>
       </div>
+
+      <div id="story-event-layer" class="story-event-layer" aria-live="polite"></div>
     </div>
 
     <!-- Research modal -->
@@ -75,6 +80,71 @@
         </div>
         <div id="research-modal-body" class="modal-body"></div>
       </div>
+    </div>
+
+    <!-- Knowledge modal -->
+    <div id="knowledge-modal" class="modal-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="knowledge-modal-title">
+      <div class="modal-panel">
+        <div class="modal-header">
+          <h2 id="knowledge-modal-title">📚 Книга знаний</h2>
+          <button id="knowledge-modal-close-btn" class="modal-close-btn" type="button" aria-label="Закрыть">✕</button>
+        </div>
+        <div id="knowledge-modal-body" class="modal-body"></div>
+      </div>
+    </div>
+
+    <!-- Camp founding confirmation modal -->
+    <div id="camp-found-confirm-modal" class="modal-overlay modal-overlay--camp-found" style="display:none" role="dialog" aria-modal="true" aria-labelledby="camp-found-confirm-title">
+      <div class="modal-panel modal-panel--compact">
+        <div class="modal-header">
+          <h2 id="camp-found-confirm-title">🏕️ Основать лагерь здесь?</h2>
+          <button id="camp-found-confirm-close-btn" class="modal-close-btn" type="button" aria-label="Закрыть">✕</button>
+        </div>
+        <div id="camp-found-confirm-body" class="modal-body"></div>
+        <div class="modal-footer">
+          <button id="camp-found-confirm-gather-btn" class="modal-btn modal-btn--support" type="button" hidden>🧭 Собрать необходимые ресурсы</button>
+          <button id="camp-found-confirm-cancel-btn" class="modal-btn modal-btn--ghost" type="button">Отмена</button>
+          <button id="camp-found-confirm-ok-btn" class="modal-btn modal-btn--primary" type="button">🏕️ Основать лагерь</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Camp interior screen (full-viewport visual camp page) -->
+    <div id="camp-screen" class="camp-screen" style="display:none" role="dialog" aria-modal="true" aria-label="Управление лагерем">
+      <!-- A: Top status bar -->
+      <header class="cs-topbar">
+        <button id="cs-back-btn" class="cs-back-btn" type="button" aria-label="Вернуться на карту">← Карта</button>
+        <div class="cs-topbar-title">
+          <span class="cs-topbar-icon">🏕️</span>
+          <span id="cs-camp-name" class="cs-topbar-name">Лагерь</span>
+        </div>
+        <div id="cs-topbar-resources" class="cs-topbar-resources"></div>
+        <div id="cs-topbar-character" class="cs-topbar-character"></div>
+      </header>
+
+      <!-- Main area: scene + right panel -->
+      <div class="cs-main">
+        <!-- B: Central visual camp scene -->
+        <div class="cs-scene-wrap">
+          <div id="cs-scene" class="cs-scene">
+            <!-- Building slots rendered by JS -->
+          </div>
+          <div id="cs-scene-hint" class="cs-scene-hint">Нажмите на объект лагеря</div>
+        </div>
+
+        <!-- C: Right context panel -->
+        <aside id="cs-detail" class="cs-detail">
+          <div id="cs-detail-content" class="cs-detail-content">
+            <div class="cs-detail-empty">
+              <div class="cs-detail-empty-icon">🏕️</div>
+              <div class="cs-detail-empty-text">Выберите объект лагеря, чтобы увидеть подробности</div>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <!-- D: Bottom dock -->
+      <div id="cs-dock" class="cs-dock"></div>
     </div>
 
     <!-- Changelog modal -->

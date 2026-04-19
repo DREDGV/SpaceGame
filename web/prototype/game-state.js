@@ -17,6 +17,7 @@ const MAX_SAVED_LOGS = 15;
 const DEFAULT_SAVE_INTERVAL_MS = 15000;
 const MIN_SAVE_INTERVAL_MS = 5000;
 const MAX_SAVE_INTERVAL_MS = 300000;
+const BASE_RESOURCE_CAP = 15;
 
 class GameState {
   constructor(data) {
@@ -28,7 +29,7 @@ class GameState {
     this.buildings = {};
     this.researched = {};
     this.unlockedRecipes = new Set();
-    this.maxResourceCap = 50;
+    this.maxResourceCap = BASE_RESOURCE_CAP;
     this.craftDiscount = 0;
     this.buildTimeMultiplier = 1;
     this.automationIntervalMultiplier = 1;
@@ -48,12 +49,35 @@ class GameState {
     this.energyRegenIntervalBonusMs = 0;
     this.lastEnergyRegen = Date.now();
 
+    const characterConf = data.character || {};
+    const satietyConf = characterConf.satiety || {};
+    const carryConf = characterConf.carry || {};
+    this.characterTitle = characterConf.title || "Ведущий стоянки";
+    this.characterRole = characterConf.role || "";
+    this.baseSatietyMax = Number.isFinite(satietyConf.max)
+      ? satietyConf.max
+      : 10;
+    this.maxSatiety = this.baseSatietyMax;
+    this.satiety = this.maxSatiety;
+    this.satietyMaxBonus = 0;
+    this.characterRecoveryBonusPerTick = 0;
+    this.carryCapacityBonus = 0;
+    this.enduranceBonus = 0;
+    this.fieldcraftBonus = 0;
+    this.recoveryRatingBonus = 0;
+    this.baseCarryCapacity = Number.isFinite(carryConf.baseCapacity)
+      ? carryConf.baseCapacity
+      : 5;
+    this.carryCapacity = this.baseCarryCapacity;
+    this.lastCharacterConditionId = null;
+    this.lastManualRestAt = 0;
+
     this.automation = {};
     this.craftQueue = [];
     this.maxCraftQueueSize = 3;
     this.activeConstruction = null;
     this.activeResearch = null;
-    this.researchQueue = [];  // max 1 queued item
+    this.researchQueue = []; // max 1 queued item
 
     this.onboarding = this._getDefaultOnboardingState();
     this.insights = this._getDefaultInsightState();
@@ -90,6 +114,7 @@ class GameState {
     this._loadGameState();
     this._recalculateDerivedState();
     this._syncLocalCampMap();
+    this._syncCharacterConditionState({ pushLog: false, pushStory: false });
 
     if (this.loadErrorMessage) {
       this.addLog(this.loadErrorMessage);
@@ -132,14 +157,742 @@ class GameState {
     return state;
   }
 
+  _getCampMapRevision() {
+    return 4;
+  }
+
+  _getCampMapRadius() {
+    return 4;
+  }
+
+  _getCampHexDistance(q, r) {
+    return Math.max(Math.abs(q), Math.abs(r), Math.abs(-q - r));
+  }
+
+  // Live distance from the chosen camp origin (used in all game logic after chooseCamp)
+  _getCampTileLiveDist(tile) {
+    if (!tile) return 0;
+    const origin = this.localCampMap?.campOrigin || { q: 0, r: 0 };
+    const dq = (tile.q || 0) - origin.q;
+    const dr = (tile.r || 0) - origin.r;
+    return Math.max(Math.abs(dq), Math.abs(dr), Math.abs(-dq - dr));
+  }
+
+  isCampSetupDone() {
+    return !!this.localCampMap?.campSetupDone;
+  }
+
+  _getCampCandidateTileIds() {
+    return Object.entries(this._getCampMapTiles())
+      .filter(
+        ([, tile]) => tile.state === "camp_candidate" || tile.isCampCandidate,
+      )
+      .map(([id]) => id);
+  }
+
+  // ─── Camp founding intro (narrative overlay over the map) ───
+  getCampFoundingIntroSteps() {
+    return this.data.campFoundingIntro?.steps || [];
+  }
+
+  getCampIntroStep() {
+    if (this.isCampSetupDone()) return null;
+    const step = this.localCampMap?.introStep;
+    if (step === null || step === undefined) return null;
+    const steps = this.getCampFoundingIntroSteps();
+    if (!steps.length) return null;
+    return Math.max(0, Math.min(steps.length - 1, step));
+  }
+
+  getCampIntroStepData() {
+    const idx = this.getCampIntroStep();
+    if (idx === null) return null;
+    const step = this.getCampFoundingIntroSteps()[idx];
+    return step ? { ...step, index: idx } : null;
+  }
+
+  advanceCampIntro(targetStep = null) {
+    if (this.isCampSetupDone()) return false;
+    const steps = this.getCampFoundingIntroSteps();
+    if (!steps.length) return false;
+    const current = this.localCampMap.introStep;
+    if (current === null || current === undefined) return false;
+
+    let next;
+    if (Number.isFinite(targetStep)) {
+      next = Math.max(0, Math.min(steps.length - 1, targetStep));
+    } else {
+      next = current + 1;
+    }
+
+    if (next >= steps.length) {
+      // Finished intro but still need to choose — stay on last step
+      this.localCampMap.introStep = steps.length - 1;
+      return false;
+    }
+    if (next === current) return false;
+    this.localCampMap.introStep = next;
+    this.markDirty();
+    return true;
+  }
+
+  skipCampIntro() {
+    if (this.isCampSetupDone()) return false;
+    const steps = this.getCampFoundingIntroSteps();
+    if (!steps.length) return false;
+    const lastStep = steps.length - 1;
+    if (this.localCampMap.introStep === lastStep) return false;
+    this.localCampMap.introStep = lastStep;
+    this.markDirty();
+    return true;
+  }
+
+  // Returns IDs of tiles that would become discovered if the given candidate
+  // was chosen as the camp origin. Used for hover preview in the UI.
+  getCampCandidatePreviewTiles(tileId) {
+    const tile = this._getCampMapTile(tileId);
+    if (!tile) return [];
+    const origin = { q: tile.q || 0, r: tile.r || 0 };
+    const tiles = this._getCampMapTiles();
+    const previewIds = [];
+    const radius = 1; // only immediate neighbours of the chosen tile on start
+    for (const [id, t] of Object.entries(tiles)) {
+      if (id === tileId) continue;
+      const dq = (t.q || 0) - origin.q;
+      const dr = (t.r || 0) - origin.r;
+      const d = Math.max(Math.abs(dq), Math.abs(dr), Math.abs(-dq - dr));
+      if (d > radius) continue;
+      // Only preview tiles that would actually become reachable
+      // (i.e. not locked behind discoveryRequirements)
+      if (typeof t.discoveryRequirements === "function") {
+        try {
+          if (!t.discoveryRequirements(this)) continue;
+        } catch (_e) {
+          continue;
+        }
+      }
+      previewIds.push(id);
+    }
+    return previewIds;
+  }
+
+  // ─── Camp founding — cost, quest progress, surveyed candidates ───
+  getCampFoundingCost() {
+    return { ...(this.data.campFoundingIntro?.cost || {}) };
+  }
+
+  getCampFoundingEnergyCost() {
+    return Number.isFinite(this.data.campFoundingIntro?.energyCost)
+      ? this.data.campFoundingIntro.energyCost
+      : 0;
+  }
+
+  canFoundCamp() {
+    const cost = this.getCampFoundingCost();
+    const energyCost = this.getCampFoundingEnergyCost();
+    const missingResources = {};
+    let lacksResources = false;
+    for (const [resId, amount] of Object.entries(cost)) {
+      const have = this.resources[resId] || 0;
+      if (have < amount) {
+        missingResources[resId] = amount - have;
+        lacksResources = true;
+      }
+    }
+    const lacksEnergy = energyCost > 0 && !this.hasEnergy(energyCost);
+    return {
+      ok: !lacksResources && !lacksEnergy,
+      missingResources,
+      lacksEnergy,
+      cost,
+      energyCost,
+    };
+  }
+
+  getCampFoundingQuestProgress() {
+    const intro = this.data.campFoundingIntro || {};
+    const steps = Array.isArray(intro.questSteps) ? intro.questSteps : [];
+    const items = steps.map((step) => {
+      let done = false;
+      try {
+        done = typeof step.check === "function" ? !!step.check(this) : false;
+      } catch (_e) {
+        done = false;
+      }
+      return {
+        id: step.id,
+        text: step.text,
+        hint: step.hint,
+        done,
+      };
+    });
+    const allDone = items.length > 0 && items.every((i) => i.done);
+    return { items, allDone };
+  }
+
+  getCampCandidatesSurveyedCount() {
+    const arr = this.localCampMap?.surveyedCandidates;
+    return Array.isArray(arr) ? arr.length : 0;
+  }
+
+  isCampCandidateSurveyed(tileId) {
+    const arr = this.localCampMap?.surveyedCandidates;
+    return Array.isArray(arr) && arr.includes(tileId);
+  }
+
+  markCampCandidateSurveyed(tileId) {
+    if (this.isCampSetupDone()) return false;
+    const tile = this._getCampMapTile(tileId);
+    if (!tile) return false;
+    if (tile.state !== "camp_candidate" && !tile.isCampCandidate) return false;
+    if (!Array.isArray(this.localCampMap.surveyedCandidates)) {
+      this.localCampMap.surveyedCandidates = [];
+    }
+    if (this.localCampMap.surveyedCandidates.includes(tileId)) return false;
+    this.localCampMap.surveyedCandidates.push(tileId);
+    this.markDirty();
+
+    // If quest becomes fully complete right now — push readyStory once
+    if (!this.localCampMap.readyStoryShown) {
+      const progress = this.getCampFoundingQuestProgress();
+      if (progress.allDone) {
+        const story = this.data.campFoundingIntro?.readyStory;
+        if (story) {
+          this._pushStoryEvent({
+            type: "map",
+            icon: story.icon || "🧺",
+            title: story.title || "Всё готово",
+            text: story.text || "",
+            ttlMs: story.ttlMs || 6000,
+          });
+        }
+        this.localCampMap.readyStoryShown = true;
+      }
+    }
+    return true;
+  }
+
+  _maybeEmitCampReadyStory() {
+    if (this.isCampSetupDone()) return;
+    if (this.localCampMap.readyStoryShown) return;
+    const progress = this.getCampFoundingQuestProgress();
+    if (!progress.allDone) return;
+    const story = this.data.campFoundingIntro?.readyStory;
+    if (story) {
+      this._pushStoryEvent({
+        type: "map",
+        icon: story.icon || "🧺",
+        title: story.title || "Всё готово",
+        text: story.text || "",
+        ttlMs: story.ttlMs || 6000,
+      });
+    }
+    this.localCampMap.readyStoryShown = true;
+    this.markDirty();
+  }
+
+  isCampEntered() {
+    return !!this.localCampMap?.campEntered;
+  }
+
+  markCampEntered() {
+    if (!this.isCampSetupDone()) return false;
+    if (this.localCampMap.campEntered) return false;
+    this.localCampMap.campEntered = true;
+
+    const story = this.data.campFoundingIntro?.enterStory;
+    if (story) {
+      this._pushStoryEvent({
+        type: "map",
+        icon: story.icon || "🚪",
+        title: story.title || "Шаг за порог",
+        text: story.text || "",
+        ttlMs: story.ttlMs || 5500,
+      });
+    }
+    this.markDirty();
+    return true;
+  }
+
+  // ─── Camp settings ───────────────────────────────────────────────────────
+
+  getCampSettings() {
+    return this.localCampMap?.campSettings || { name: "" };
+  }
+
+  updateCampName(name) {
+    if (!this.localCampMap) return;
+    const sanitized = typeof name === "string" ? name.trim().slice(0, 40) : "";
+    if (!this.localCampMap.campSettings) {
+      this.localCampMap.campSettings = { name: "" };
+    }
+    this.localCampMap.campSettings.name = sanitized;
+    this.saveGame(true);
+  }
+
+  // ─── Building upgrades ───────────────────────────────────────────────────
+
+  isUpgradeApplied(upgradeId) {
+    return (
+      Array.isArray(this.localCampMap?.appliedUpgrades) &&
+      this.localCampMap.appliedUpgrades.includes(upgradeId)
+    );
+  }
+
+  canUpgrade(upgradeId) {
+    const upgrade = this.data.buildingUpgrades?.[upgradeId];
+    if (!upgrade) return { ok: false, reason: "unknown" };
+
+    // Target building must be built
+    if (!this.buildings[upgrade.targetBuilding]) {
+      return { ok: false, reason: "building_not_built" };
+    }
+
+    // Not already applied
+    if (this.isUpgradeApplied(upgradeId)) {
+      return { ok: false, reason: "already_applied" };
+    }
+
+    // Tech requirement
+    if (upgrade.unlockedBy && !this.researched[upgrade.unlockedBy]) {
+      return { ok: false, reason: "tech_locked" };
+    }
+
+    // Energy
+    const energyCost = upgrade.energyCost || 0;
+    if (!this.hasEnergy(energyCost)) {
+      return { ok: false, reason: "no_energy", energyCost };
+    }
+
+    // Resources
+    const cost = upgrade.cost || {};
+    const missingResources = [];
+    for (const [res, amount] of Object.entries(cost)) {
+      if ((this.resources[res] || 0) < amount) {
+        missingResources.push({
+          resource: res,
+          need: amount,
+          have: this.resources[res] || 0,
+        });
+      }
+    }
+    if (missingResources.length > 0) {
+      return { ok: false, reason: "no_resources", missingResources };
+    }
+
+    return { ok: true };
+  }
+
+  applyUpgrade(upgradeId) {
+    const check = this.canUpgrade(upgradeId);
+    if (!check.ok) return false;
+
+    const upgrade = this.data.buildingUpgrades[upgradeId];
+    const cost = upgrade.cost || {};
+    const energyCost = upgrade.energyCost || 0;
+
+    if (!this.spendResources(cost)) return false;
+    if (!this.spendEnergy(energyCost)) {
+      // Rollback resources
+      for (const [res, amount] of Object.entries(cost)) {
+        this.resources[res] = (this.resources[res] || 0) + amount;
+      }
+      return false;
+    }
+
+    if (!Array.isArray(this.localCampMap.appliedUpgrades)) {
+      this.localCampMap.appliedUpgrades = [];
+    }
+    this.localCampMap.appliedUpgrades.push(upgradeId);
+
+    this._recalculateDerivedState();
+    this._pushLogEntry(`⬆️ Улучшение применено: ${upgrade.name}`);
+    this._pushStoryEvent({
+      type: "camp",
+      icon: upgrade.icon || "⬆️",
+      title: upgrade.name,
+      text: upgrade.description || "",
+      ttlMs: 5000,
+    });
+
+    this.saveGame(true);
+    return true;
+  }
+
+  getUpgradesForBuilding(buildingId) {
+    const upgrades = this.data.buildingUpgrades || {};
+    return Object.values(upgrades).filter(
+      (u) => u.targetBuilding === buildingId,
+    );
+  }
+
+  chooseCamp(tileId) {
+    const tile = this._getCampMapTile(tileId);
+    if (!tile) return false;
+    if (tile.state !== "camp_candidate" && !tile.isCampCandidate) return false;
+
+    // Ritual gating: resources + energy must be available
+    const check = this.canFoundCamp();
+    if (!check.ok) return false;
+
+    // Spend the founding cost
+    if (!this.spendResources(check.cost)) return false;
+    if (check.energyCost > 0 && !this.spendEnergy(check.energyCost)) {
+      // Best-effort rollback: refund already-spent resources
+      for (const [resId, amount] of Object.entries(check.cost)) {
+        this.resources[resId] = (this.resources[resId] || 0) + amount;
+      }
+      return false;
+    }
+
+    // Set camp origin to chosen tile
+    this.localCampMap.campOrigin = { q: tile.q, r: tile.r };
+    this.localCampMap.campSetupDone = true;
+    this.localCampMap.campTileId = tileId;
+    this.localCampMap.introStep = null;
+
+    // Chosen tile becomes the camp center
+    this.localCampMap.tileStates[tileId] = "camp";
+
+    // Other candidates become regular discovered terrain
+    for (const candidateId of this._getCampCandidateTileIds()) {
+      if (candidateId === tileId) continue;
+      this.localCampMap.tileStates[candidateId] = "discovered";
+    }
+
+    // Clear any leftover silhouettes so post-camp sync can recompute
+    // them as discovered (if reachable) or hidden (if not yet gated).
+    for (const [tid, s] of Object.entries(this.localCampMap.tileStates)) {
+      if (s === "silhouette") this.localCampMap.tileStates[tid] = "hidden";
+    }
+
+    // Select the camp tile
+    this.localCampMap.selectedTileId = tileId;
+
+    // Sync map with new origin (reveals starting resource tiles)
+    this._syncLocalCampMap({ pushStory: false });
+
+    this.addLog(`🏕️ Лагерь основан: "${tile.name}".`);
+    if (tile.campChosenStory) {
+      this.addLog(`📝 ${tile.campChosenStory}`);
+    }
+    const ritualStory = this.data.campFoundingIntro?.ritualStory;
+    this._pushStoryEvent({
+      type: "map",
+      icon: ritualStory?.icon || "🏕️",
+      title: ritualStory?.title || "Лагерь основан",
+      text:
+        ritualStory?.text ||
+        tile.campChosenStory ||
+        `Место выбрано. Отсюда начнётся первое освоение местности.`,
+      ttlMs: ritualStory?.ttlMs || 6500,
+    });
+    this._pushStoryEvent({
+      type: "map",
+      icon: "🧭",
+      title: "Осмотрись вокруг",
+      text: "Рядом открылись участки, где можно начать собирать дерево, камень и волокно.",
+      ttlMs: 7000,
+    });
+
+    this.markDirty();
+    this.saveGame(true);
+    return true;
+  }
+
+  _getCampMapCoordKey(q, r) {
+    return `${q},${r}`;
+  }
+
+  _getProceduralCampTileId(q, r) {
+    return `tile_${q}_${r}`;
+  }
+
+  _normalizeCampTileState(state) {
+    switch (state) {
+      case "developed":
+      case "settled":
+      case "exploited":
+        return "developed";
+      case "camp":
+        return "camp";
+      case "camp_candidate":
+        return "camp_candidate";
+      case "silhouette":
+        return "silhouette";
+      case "visible_locked":
+        return "visible_locked";
+      case "discovered":
+      case "hidden":
+        return state;
+      default:
+        return "hidden";
+    }
+  }
+
+  _createProceduralCampTile(q, r) {
+    const distanceFromCamp = this._getCampHexDistance(q, r);
+    const baseTerrains = this.data.baseTerrains || {};
+    const grass = baseTerrains.grass || {
+      name: "Травы",
+      icon: "🌾",
+      description: "Спокойный участок местности рядом с лагерем.",
+      terrainType: "grass",
+    };
+    const brush = baseTerrains.brush || grass;
+    const rocks = baseTerrains.rocks || grass;
+    const water = baseTerrains.water || grass;
+    const clearing = baseTerrains.clearing || grass;
+    const hash = Math.abs(q * 37 + r * 19 + (q + r) * 11);
+    const roll = hash % 12;
+
+    let terrain = grass;
+    let actionId = null;
+    let resourceType = null;
+    let resourceAmount = null;
+    let name = grass.name || "Участок";
+    let description =
+      grass.description || "Спокойный участок местности рядом с лагерем.";
+
+    if (roll <= 1) {
+      terrain = brush;
+      actionId = "gather_wood";
+      resourceType = "wood";
+      resourceAmount = 3 + (hash % 4);
+      name = distanceFromCamp <= 1 ? "Хворост рядом" : "Заросли хвороста";
+      description =
+        "Здесь можно собрать ещё немного сухих ветвей и хвороста для лагеря.";
+    } else if (roll === 2) {
+      terrain = grass;
+      actionId = "gather_fiber";
+      resourceType = "fiber";
+      resourceAmount = 2 + (hash % 4);
+      name = distanceFromCamp <= 1 ? "Жёсткая трава" : "Полоса волокон";
+      description =
+        "Трава и волокна здесь пригодны для простых связок и грубых заготовок.";
+    } else if (roll === 3) {
+      terrain = rocks;
+      actionId = "gather_stone";
+      resourceType = "stone";
+      resourceAmount = 2 + (hash % 3);
+      name = distanceFromCamp <= 1 ? "Камни рядом" : "Каменная гряда";
+      description =
+        "Небольшой выход породы. Тут можно подобрать подходящие камни и сколы.";
+    } else if (roll === 4 && distanceFromCamp >= 2) {
+      terrain = water;
+      name = "Влажная низина";
+      description =
+        water.description ||
+        "Сырая кромка местности. Пока это просто часть ландшафта.";
+    } else if (roll === 5) {
+      terrain = clearing;
+      name = distanceFromCamp <= 2 ? "Тихая поляна" : "Открытый участок";
+      description =
+        clearing.description ||
+        "Ровный участок земли, который позже может пригодиться лагерю.";
+    } else if (roll === 6) {
+      terrain = brush;
+      name = "Кустарник";
+      description =
+        brush.description ||
+        "Плотный край зарослей. Пока это просто часть местности.";
+    } else if (roll === 7) {
+      terrain = rocks;
+      name = "Каменистый край";
+      description =
+        rocks.description || "Сухой каменистый участок рядом с лагерем.";
+    } else if (distanceFromCamp >= 3 && roll >= 10) {
+      terrain = brush;
+      name = "Густой кустарник";
+      description =
+        brush.description ||
+        "Плотный край зарослей. Пока это просто часть местности.";
+    }
+
+    return {
+      id: this._getProceduralCampTileId(q, r),
+      q,
+      r,
+      distanceFromCamp,
+      terrainType: terrain.terrainType || "grass",
+      state: "hidden",
+      icon: terrain.icon || "•",
+      name,
+      description,
+      actionId,
+      resourceType,
+      resourceAmount,
+    };
+  }
+
+  _getCampNeighborTileIds(tileId) {
+    const tile = this._getCampMapTile(tileId);
+    if (!tile) return [];
+
+    const directions = [
+      [1, 0],
+      [1, -1],
+      [0, -1],
+      [-1, 0],
+      [-1, 1],
+      [0, 1],
+    ];
+    const tilesByCoord = new Map(
+      this._getCampMapTileList().map((entry) => [
+        this._getCampMapCoordKey(entry.q, entry.r),
+        entry.id,
+      ]),
+    );
+
+    return directions
+      .map(([dq, dr]) =>
+        tilesByCoord.get(this._getCampMapCoordKey(tile.q + dq, tile.r + dr)),
+      )
+      .filter(Boolean);
+  }
+
+  _getCampRevealRadius() {
+    let radius = 0;
+
+    if (
+      this.getUnlockedInsightsCount() >= 1 ||
+      (this.resources.crude_tools || 0) > 0
+    ) {
+      radius = 1;
+    }
+    if (this.buildings.campfire) {
+      radius = 2;
+    }
+    if (
+      this.buildings.storage ||
+      this.buildings.rest_tent ||
+      this.buildings.workshop ||
+      this.researched.communal_memory
+    ) {
+      radius = 3;
+    }
+    if (
+      this.buildings.kiln ||
+      this.researched.mining ||
+      this.researched.labor_division
+    ) {
+      radius = 4;
+    }
+
+    return Math.min(radius, this._getCampMapRadius());
+  }
+
+  _canTileMeetDiscoveryRules(tile) {
+    if (!tile) return false;
+    const liveDist = this._getCampTileLiveDist(tile);
+    if (liveDist === 0) return true;
+    if (liveDist > this._getCampRevealRadius()) return false;
+    if (
+      typeof tile.discoveryRequirements === "function" &&
+      !tile.discoveryRequirements(this)
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  _getCampReachableDiscoveredTileIds() {
+    const reachable = new Set();
+    const frontier = [];
+
+    for (const tile of this._getCampMapTileList()) {
+      const baseState = this._normalizeCampTileState(tile.state);
+      const currentState = this._normalizeCampTileState(
+        this.localCampMap?.tileStates?.[tile.id],
+      );
+
+      if (
+        this._getCampTileLiveDist(tile) === 0 ||
+        baseState === "discovered" ||
+        baseState === "developed" ||
+        baseState === "camp" ||
+        currentState === "discovered" ||
+        currentState === "developed" ||
+        currentState === "camp"
+      ) {
+        reachable.add(tile.id);
+        frontier.push(tile.id);
+      }
+    }
+
+    while (frontier.length > 0) {
+      const currentTileId = frontier.shift();
+      for (const neighborTileId of this._getCampNeighborTileIds(
+        currentTileId,
+      )) {
+        if (reachable.has(neighborTileId)) continue;
+        const neighborTile = this._getCampMapTile(neighborTileId);
+        if (!this._canTileMeetDiscoveryRules(neighborTile)) continue;
+        reachable.add(neighborTileId);
+        frontier.push(neighborTileId);
+      }
+    }
+
+    return reachable;
+  }
+
+  _getCampMapTiles() {
+    if (this._campMapTilesCache) {
+      return this._campMapTilesCache;
+    }
+
+    const tiles = {};
+    const tilesByCoord = new Map();
+
+    for (const tile of Object.values(this.data.localCampMap?.tiles || {})) {
+      const normalizedTile = {
+        ...tile,
+        distanceFromCamp: Number.isFinite(tile.distanceFromCamp)
+          ? tile.distanceFromCamp
+          : this._getCampHexDistance(tile.q || 0, tile.r || 0),
+        state: this._normalizeCampTileState(tile.state),
+      };
+      tiles[normalizedTile.id] = normalizedTile;
+      tilesByCoord.set(
+        this._getCampMapCoordKey(normalizedTile.q, normalizedTile.r),
+        normalizedTile,
+      );
+    }
+
+    const radius = this._getCampMapRadius();
+    for (let q = -radius; q <= radius; q++) {
+      for (let r = -radius; r <= radius; r++) {
+        if (q + r < -radius || q + r > radius) continue;
+        const key = this._getCampMapCoordKey(q, r);
+        if (tilesByCoord.has(key)) continue;
+
+        const tile = this._createProceduralCampTile(q, r);
+        tiles[tile.id] = tile;
+      }
+    }
+
+    this._campMapTilesCache = tiles;
+    return tiles;
+  }
+
+  _getCampMapTileList() {
+    return Object.values(this._getCampMapTiles());
+  }
+
+  _getCampMapTile(tileId) {
+    return this._getCampMapTiles()[tileId] || null;
+  }
+
   _getDefaultLocalCampMapState() {
     const tileStates = {};
     const tileResourceRemaining = {};
-    const tiles = this.data.localCampMap?.tiles || {};
+    const pathLevels = {};
+    const tiles = this._getCampMapTiles();
 
     for (const [tileId, tile] of Object.entries(tiles)) {
-      tileStates[tileId] = tile.state || "hidden";
-      if (tile.resourceType) {
+      tileStates[tileId] = this._normalizeCampTileState(tile.state);
+      pathLevels[tileId] = "none";
+      if (Number.isFinite(tile.resourceAmount)) {
         tileResourceRemaining[tileId] = Number.isFinite(tile.resourceAmount)
           ? tile.resourceAmount
           : null;
@@ -149,23 +902,67 @@ class GameState {
     return {
       tileStates,
       tileResourceRemaining,
+      pathLevels,
       buildingPlacements: {},
       selectedTileId: "camp_clearing",
+      campSetupDone: false,
+      campTileId: null,
+      campOrigin: { q: 0, r: 0 },
+      introStep: 0,
+      surveyedCandidates: [],
+      campEntered: false,
+      readyStoryShown: false,
+      appliedUpgrades: [],
+      campSettings: { name: "" },
     };
   }
 
   _sanitizeCampMapState(raw) {
     const defaults = this._getDefaultLocalCampMapState();
-    const tiles = this.data.localCampMap?.tiles || {};
-    const validStates = new Set(["hidden", "discovered", "exploited", "settled"]);
+    const tiles = this._getCampMapTiles();
+    const validStates = new Set([
+      "hidden",
+      "silhouette",
+      "discovered",
+      "developed",
+      "exploited",
+      "settled",
+      "camp_candidate",
+      "camp",
+      "visible_locked",
+    ]);
+    const validPathLevels = new Set(
+      Object.keys(this.data.logistics?.pathLevels || {}),
+    );
+    const isLegacyCampMap = raw?.revision !== this._getCampMapRevision();
 
     for (const tileId of Object.keys(defaults.tileStates)) {
       const state = raw?.tileStates?.[tileId];
       if (typeof state === "string" && validStates.has(state)) {
-        defaults.tileStates[tileId] = state;
+        const normalizedState = this._normalizeCampTileState(state);
+        if (isLegacyCampMap) {
+          if (normalizedState === "developed" || normalizedState === "camp") {
+            defaults.tileStates[tileId] = normalizedState;
+          }
+        } else {
+          defaults.tileStates[tileId] = normalizedState;
+        }
       }
 
-      if (Object.prototype.hasOwnProperty.call(defaults.tileResourceRemaining, tileId)) {
+      const savedPathLevel = raw?.pathLevels?.[tileId];
+      if (
+        typeof savedPathLevel === "string" &&
+        validPathLevels.has(savedPathLevel)
+      ) {
+        defaults.pathLevels[tileId] = savedPathLevel;
+      }
+
+      if (
+        Object.prototype.hasOwnProperty.call(
+          defaults.tileResourceRemaining,
+          tileId,
+        )
+      ) {
         const remaining = raw?.tileResourceRemaining?.[tileId];
         defaults.tileResourceRemaining[tileId] = Number.isFinite(remaining)
           ? Math.max(0, remaining)
@@ -184,16 +981,76 @@ class GameState {
       defaults.selectedTileId = raw.selectedTileId;
     }
 
+    // Restore camp setup state
+    defaults.campSetupDone = !!raw?.campSetupDone;
+    if (
+      raw?.campOrigin &&
+      Number.isFinite(raw.campOrigin.q) &&
+      Number.isFinite(raw.campOrigin.r)
+    ) {
+      defaults.campOrigin = { q: raw.campOrigin.q, r: raw.campOrigin.r };
+    }
+    if (raw?.campTileId && tiles[raw.campTileId]) {
+      defaults.campTileId = raw.campTileId;
+    }
+
+    // Intro step — already done once camp is set up
+    if (defaults.campSetupDone) {
+      defaults.introStep = null;
+    } else if (raw?.introStep === null) {
+      defaults.introStep = null;
+    } else if (Number.isFinite(raw?.introStep)) {
+      const maxStep = (this.data.campFoundingIntro?.steps?.length || 1) - 1;
+      defaults.introStep = Math.max(0, Math.min(maxStep, raw.introStep));
+    }
+
+    // Restore surveyed candidates list (unique, only valid camp-candidate tile ids)
+    if (Array.isArray(raw?.surveyedCandidates)) {
+      const validCandidateIds = new Set(this._getCampCandidateTileIds());
+      const unique = new Set();
+      for (const tid of raw.surveyedCandidates) {
+        if (typeof tid === "string" && validCandidateIds.has(tid)) {
+          unique.add(tid);
+        }
+      }
+      defaults.surveyedCandidates = [...unique];
+    }
+
+    defaults.campEntered = !!raw?.campEntered;
+    defaults.readyStoryShown = !!raw?.readyStoryShown;
+
+    // Restore applied upgrades list
+    const allUpgradeIds = new Set(
+      Object.keys(this.data.buildingUpgrades || {}),
+    );
+    if (Array.isArray(raw?.appliedUpgrades)) {
+      defaults.appliedUpgrades = raw.appliedUpgrades.filter(
+        (id) => typeof id === "string" && allUpgradeIds.has(id),
+      );
+    }
+
+    // Restore camp settings
+    if (raw?.campSettings && typeof raw.campSettings === "object") {
+      defaults.campSettings = {
+        name:
+          typeof raw.campSettings.name === "string"
+            ? raw.campSettings.name.slice(0, 40)
+            : "",
+      };
+    }
+
     return defaults;
   }
 
   _getCampTileStateRank(state) {
     switch (state) {
-      case "settled":
+      case "developed":
+      case "camp":
         return 3;
-      case "exploited":
-        return 2;
       case "discovered":
+      case "camp_candidate":
+        return 2;
+      case "silhouette":
         return 1;
       default:
         return 0;
@@ -223,22 +1080,40 @@ class GameState {
     return true;
   }
 
-  _markCampTileExploited(tileId) {
+  _markCampTileDeveloped(tileId) {
     if (!tileId) return false;
-    return this._setCampTileState(tileId, "exploited");
+    return this._setCampTileState(tileId, "developed");
   }
 
   _serializeCampMap() {
     return {
+      revision: this._getCampMapRevision(),
       tileStates: { ...this.localCampMap.tileStates },
       tileResourceRemaining: { ...this.localCampMap.tileResourceRemaining },
+      pathLevels: { ...this.localCampMap.pathLevels },
       buildingPlacements: { ...this.localCampMap.buildingPlacements },
       selectedTileId: this.localCampMap.selectedTileId || null,
+      campSetupDone: !!this.localCampMap.campSetupDone,
+      campTileId: this.localCampMap.campTileId || null,
+      campOrigin: this.localCampMap.campOrigin || { q: 0, r: 0 },
+      introStep: this.localCampMap.introStep ?? null,
+      surveyedCandidates: Array.isArray(this.localCampMap.surveyedCandidates)
+        ? [...this.localCampMap.surveyedCandidates]
+        : [],
+      campEntered: !!this.localCampMap.campEntered,
+      readyStoryShown: !!this.localCampMap.readyStoryShown,
+      appliedUpgrades: Array.isArray(this.localCampMap.appliedUpgrades)
+        ? [...this.localCampMap.appliedUpgrades]
+        : [],
+      campSettings: {
+        name: this.localCampMap.campSettings?.name || "",
+      },
     };
   }
 
   _restoreCampMap(savedCampMap) {
     this.localCampMap = this._sanitizeCampMapState(savedCampMap);
+    this._campMapTilesCache = null; // force rebuild so procedural tiles use restored campOrigin
   }
 
   _sanitizeBooleanMap(raw, defs) {
@@ -268,7 +1143,7 @@ class GameState {
     this.unlockedRecipes = new Set();
     this._ensureBaseRecipeUnlocks();
 
-    let maxResourceCap = 50;
+    let maxResourceCap = BASE_RESOURCE_CAP;
     let craftDiscount = 0;
     let buildTimeMultiplier = 1;
     let automationIntervalMultiplier = 1;
@@ -283,7 +1158,8 @@ class GameState {
         buildTimeMultiplier *= tech.effect.buildTimeMultiplier;
       }
       if (tech.effect?.automationIntervalMultiplier) {
-        automationIntervalMultiplier *= tech.effect.automationIntervalMultiplier;
+        automationIntervalMultiplier *=
+          tech.effect.automationIntervalMultiplier;
       }
       for (const [recipeId, recipe] of Object.entries(this.data.recipes)) {
         if (recipe.unlockedBy === techId) {
@@ -316,16 +1192,99 @@ class GameState {
       }
     }
 
+    // Stack effects from applied building upgrades
+    for (const upgradeId of this.localCampMap?.appliedUpgrades || []) {
+      const upgrade = this.data.buildingUpgrades?.[upgradeId];
+      if (!upgrade) continue;
+
+      if (upgrade.effect?.maxResourceCap) {
+        maxResourceCap = Math.max(
+          maxResourceCap,
+          upgrade.effect.maxResourceCap,
+        );
+      }
+      if (upgrade.effect?.automation?.intervalMultiplier) {
+        automationIntervalMultiplier *=
+          upgrade.effect.automation.intervalMultiplier;
+      }
+    }
+
     this.maxResourceCap = maxResourceCap;
+    this._enforceResourceCap();
     this.craftDiscount = craftDiscount;
     this.buildTimeMultiplier = buildTimeMultiplier;
     this.automationIntervalMultiplier = automationIntervalMultiplier;
+    this._recalculateCharacterStats();
     this._recalculateEnergyStats();
     this._recalculateEraProgress();
   }
 
+  _enforceResourceCap() {
+    let changed = false;
+    for (const id of Object.keys(this.resources)) {
+      const amount = this.resources[id] || 0;
+      if (amount > this.maxResourceCap) {
+        this.resources[id] = this.maxResourceCap;
+        changed = true;
+      }
+    }
+    if (changed) this.markDirty();
+  }
+
+  _recalculateCharacterStats() {
+    let satietyMaxBonus = 0;
+    let recoveryBonusPerTick = 0;
+    let carryCapacityBonus = 0;
+    let enduranceBonus = 0;
+    let fieldcraftBonus = 0;
+    let recoveryRatingBonus = 0;
+
+    for (const techId of Object.keys(this.researched)) {
+      const effect = this.data.tech[techId]?.effect?.character;
+      if (!effect) continue;
+      satietyMaxBonus += effect.maxSatietyBonus || 0;
+      recoveryBonusPerTick += effect.recoveryBonusPerTick || 0;
+      carryCapacityBonus += effect.carryCapacityBonus || 0;
+      enduranceBonus += effect.enduranceBonus || 0;
+      fieldcraftBonus += effect.fieldcraftBonus || 0;
+      recoveryRatingBonus += effect.recoveryRatingBonus || 0;
+    }
+
+    for (const buildingId of Object.keys(this.buildings)) {
+      const effect = this.data.buildings[buildingId]?.effect?.character;
+      if (!effect) continue;
+      satietyMaxBonus += effect.maxSatietyBonus || 0;
+      recoveryBonusPerTick += effect.recoveryBonusPerTick || 0;
+      carryCapacityBonus += effect.carryCapacityBonus || 0;
+      enduranceBonus += effect.enduranceBonus || 0;
+      fieldcraftBonus += effect.fieldcraftBonus || 0;
+      recoveryRatingBonus += effect.recoveryRatingBonus || 0;
+    }
+
+    for (const upgradeId of this.localCampMap?.appliedUpgrades || []) {
+      const effect = this.data.buildingUpgrades?.[upgradeId]?.effect?.character;
+      if (!effect) continue;
+      satietyMaxBonus += effect.maxSatietyBonus || 0;
+      recoveryBonusPerTick += effect.recoveryBonusPerTick || 0;
+      carryCapacityBonus += effect.carryCapacityBonus || 0;
+      enduranceBonus += effect.enduranceBonus || 0;
+      fieldcraftBonus += effect.fieldcraftBonus || 0;
+      recoveryRatingBonus += effect.recoveryRatingBonus || 0;
+    }
+
+    this.satietyMaxBonus = satietyMaxBonus;
+    this.characterRecoveryBonusPerTick = recoveryBonusPerTick;
+    this.carryCapacityBonus = carryCapacityBonus;
+    this.enduranceBonus = enduranceBonus;
+    this.fieldcraftBonus = fieldcraftBonus;
+    this.recoveryRatingBonus = recoveryRatingBonus;
+    this.maxSatiety = this.baseSatietyMax + satietyMaxBonus;
+    this.carryCapacity = this.baseCarryCapacity + carryCapacityBonus;
+    this.satiety = Math.min(this.satiety, this.maxSatiety);
+  }
+
   _ensureCampBuildingPlacements() {
-    const mapTiles = this.data.localCampMap?.tiles || {};
+    const mapTiles = this._getCampMapTiles();
 
     for (const buildingId of Object.keys(this.buildings)) {
       if (this.localCampMap.buildingPlacements[buildingId]) continue;
@@ -346,32 +1305,110 @@ class GameState {
   }
 
   _syncLocalCampMap({ pushStory = false } = {}) {
-    const tiles = this.data.localCampMap?.tiles || {};
+    const tiles = this._getCampMapTiles();
     const newlyDiscovered = [];
 
+    // Pre-camp phase: show camp_candidate tiles; named neighbours within
+    // radius 2 of any candidate become "silhouette" (hint that something is
+    // there), but authored tiles that are explicitly marked as discovered
+    // stay fully available so the player can gather the founding resources.
+    if (!this.localCampMap.campSetupDone) {
+      const candidates = [];
+      const candidateIds = new Set();
+      const preCampDiscoveredIds = new Set();
+      for (const [tileId, tile] of Object.entries(tiles)) {
+        const baseState = this._normalizeCampTileState(tile.state);
+        const currentState = this._normalizeCampTileState(
+          this.localCampMap.tileStates[tileId],
+        );
+        const isCandidateTile =
+          baseState === "camp_candidate" ||
+          !!tile.isCampCandidate ||
+          currentState === "camp_candidate";
+        if (isCandidateTile) {
+          candidates.push(tile);
+          candidateIds.add(tileId);
+          continue;
+        }
+
+        const isPreCampDiscovered =
+          baseState === "discovered" ||
+          currentState === "discovered" ||
+          currentState === "developed" ||
+          currentState === "camp";
+        if (isPreCampDiscovered) {
+          preCampDiscoveredIds.add(tileId);
+        }
+      }
+
+      const SILHOUETTE_RADIUS = 2;
+      const silhouetteIds = new Set();
+      for (const [tileId, tile] of Object.entries(tiles)) {
+        if (candidateIds.has(tileId)) continue;
+        // Only reveal silhouettes for named/hand-authored tiles, not for
+        // procedurally filled background hexes (they clutter the pre-camp view).
+        if (!tile.name) continue;
+        for (const c of candidates) {
+          const dq = (tile.q || 0) - (c.q || 0);
+          const dr = (tile.r || 0) - (c.r || 0);
+          const d = Math.max(Math.abs(dq), Math.abs(dr), Math.abs(-dq - dr));
+          if (d <= SILHOUETTE_RADIUS) {
+            silhouetteIds.add(tileId);
+            break;
+          }
+        }
+      }
+
+      for (const [tileId] of Object.entries(tiles)) {
+        if (candidateIds.has(tileId)) {
+          this.localCampMap.tileStates[tileId] = "camp_candidate";
+        } else if (preCampDiscoveredIds.has(tileId)) {
+          this.localCampMap.tileStates[tileId] = "discovered";
+        } else if (silhouetteIds.has(tileId)) {
+          this.localCampMap.tileStates[tileId] = "silhouette";
+        } else {
+          this.localCampMap.tileStates[tileId] = "hidden";
+        }
+      }
+      this._ensureSelectedCampTile();
+      return;
+    }
+
     this._ensureCampBuildingPlacements();
+    const reachableDiscoveredTileIds =
+      this._getCampReachableDiscoveredTileIds();
 
     for (const [tileId, tile] of Object.entries(tiles)) {
       const previousState =
-        this.localCampMap.tileStates[tileId] || tile.state || "hidden";
+        this.localCampMap.tileStates[tileId] ||
+        this._normalizeCampTileState(tile.state);
 
-      let desiredState = tile.state || "hidden";
+      let desiredState = reachableDiscoveredTileIds.has(tileId)
+        ? "discovered"
+        : "hidden";
+
+      // Prologue rule: the first shelter site must be available right after
+      // camp founding so the player can build housing before the campfire.
       if (
-        tile.discoveryRequirements &&
-        typeof tile.discoveryRequirements === "function" &&
-        tile.discoveryRequirements(this)
+        this.isPrologueActive() &&
+        this.isCampSetupDone() &&
+        tileId === "shelter_site" &&
+        !this.buildings.rest_tent
       ) {
-        desiredState = "discovered";
+        desiredState = this._getHigherCampTileState(desiredState, "discovered");
       }
 
       const placedBuildingId = this.getCampPlacedBuildingId(tileId);
       if (placedBuildingId) {
-        desiredState = "settled";
+        desiredState = "developed";
       } else if (this.activeConstruction?.tileId === tileId) {
-        desiredState = this._getHigherCampTileState(desiredState, "exploited");
+        desiredState = this._getHigherCampTileState(desiredState, "developed");
       }
 
-      const nextState = this._getHigherCampTileState(previousState, desiredState);
+      const nextState = this._getHigherCampTileState(
+        previousState,
+        desiredState,
+      );
       this.localCampMap.tileStates[tileId] = nextState;
 
       if (
@@ -406,22 +1443,34 @@ class GameState {
     this._syncLocalCampMap({ pushStory: true });
   }
 
+  refreshCampMap() {
+    this._syncLocalCampMap({ pushStory: false });
+  }
+
   _ensureSelectedCampTile() {
-    const tiles = this.data.localCampMap?.tiles || {};
+    const tiles = this._getCampMapTileList();
     const currentId = this.localCampMap.selectedTileId;
     if (
       currentId &&
-      tiles[currentId] &&
-      this.getCampTileState(currentId) !== "hidden"
+      this._getCampMapTile(currentId) &&
+      ["discovered", "developed", "camp", "camp_candidate"].includes(
+        this.getCampTileState(currentId),
+      )
     ) {
       return;
     }
 
-    const discovered = Object.values(tiles)
-      .filter((tile) => this.getCampTileState(tile.id) !== "hidden")
+    const discovered = tiles
+      .filter((tile) => {
+        const s = this.getCampTileState(tile.id);
+        return ["discovered", "developed", "camp", "camp_candidate"].includes(
+          s,
+        );
+      })
       .sort(
         (a, b) =>
-          (a.distanceFromCamp || 0) - (b.distanceFromCamp || 0) ||
+          (this._getCampTileLiveDist(a) || 0) -
+            (this._getCampTileLiveDist(b) || 0) ||
           (a.r || 0) - (b.r || 0) ||
           (a.q || 0) - (b.q || 0),
       );
@@ -430,7 +1479,172 @@ class GameState {
   }
 
   getCampTileState(tileId) {
-    return this.localCampMap.tileStates[tileId] || "hidden";
+    return (
+      this.localCampMap.tileStates[tileId] ||
+      this._getCampMapTile(tileId)?.state ||
+      "hidden"
+    );
+  }
+
+  getCampPathLevel(tileId) {
+    if (!tileId) return "none";
+    return this.localCampMap.pathLevels?.[tileId] || "none";
+  }
+
+  getCampPathData(tileId) {
+    const level = this.getCampPathLevel(tileId);
+    const defs = this.data.logistics?.pathLevels || {};
+    return (
+      defs[level] || {
+        id: "none",
+        label: "Без тропы",
+        icon: "·",
+        routeRelief: 0,
+        terrainRelief: 0,
+        description: "Путь ещё не подготовлен.",
+      }
+    );
+  }
+
+  _canImproveCampPath(tileId) {
+    const tile = this._getCampMapTile(tileId);
+    if (!tile) return false;
+    if (this._getCampTileLiveDist(tile) <= 0) return false;
+    if (this.getCampTileState(tileId) === "hidden") return false;
+    if (this.getCampPathLevel(tileId) !== "none") return false;
+    if (this.activeConstruction?.tileId === tileId) return false;
+    if (
+      this.data.logistics?.trailProject?.requiresCampfire &&
+      !this.buildings.campfire
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  getCampPathProject(tileId = this.getSelectedCampTileId()) {
+    const tile = this._getCampMapTile(tileId);
+    if (!tile) return null;
+
+    const pathData = this.getCampPathData(tileId);
+    const project = this.data.logistics?.trailProject;
+    const terrainType = tile.terrainType || "grass";
+    const terrainExtraCost = project?.terrainExtraCosts?.[terrainType] || {};
+    const cost = {
+      ...(project?.baseCost || {}),
+    };
+
+    for (const [resourceId, amount] of Object.entries(terrainExtraCost)) {
+      cost[resourceId] = (cost[resourceId] || 0) + amount;
+    }
+
+    const condition = this.getCharacterCondition();
+    const distance = this._getCampTileLiveDist(tile);
+    const terrain = this._getTerrainEffort(tile);
+    const path = tile
+      ? this.getCampPathData(tile.id)
+      : this.getCampPathData(null);
+    const routeDistance = Math.max(0, distance - (path.routeRelief || 0));
+    const rawDistancePenalty = Math.max(0, routeDistance - 1);
+    const rawTerrainPenalty = Math.max(0, terrain.penalty || 0);
+    const penaltyAfterFieldcraft = this._applyFieldcraftRelief(
+      rawDistancePenalty,
+      rawTerrainPenalty,
+    );
+    const distancePenalty = penaltyAfterFieldcraft.distancePenalty;
+    const terrainPenalty = penaltyAfterFieldcraft.terrainPenalty;
+    const fieldcraftRelief = penaltyAfterFieldcraft.fieldcraftRelief;
+    const delivery = this._getDeliveryProfile(
+      this._getOutputCarryLoad(cost),
+      this.getCharacterCarryCapacity(),
+    );
+    const energyCost =
+      (project?.energyCost || 1) +
+      distancePenalty +
+      terrainPenalty +
+      delivery.tripPenalty +
+      (condition.gatherCostPenalty || 0);
+
+    let blockedReason = "";
+    if (this._getCampTileLiveDist(tile) <= 0) {
+      blockedReason =
+        "Стоянка уже является центром лагеря и не требует отдельной тропы.";
+    } else if (this.getCampTileState(tileId) === "hidden") {
+      blockedReason = "Сначала нужно открыть участок на карте лагеря.";
+    } else if (this.getCampPathLevel(tileId) !== "none") {
+      blockedReason = `${pathData.label} к участку уже есть.`;
+    } else if (project?.requiresCampfire && !this.buildings.campfire) {
+      blockedReason =
+        "Тропы имеют смысл только после первого костра и устойчивой точки лагеря.";
+    } else if (
+      Number.isFinite(condition.maxSafeDistance) &&
+      routeDistance > condition.maxSafeDistance
+    ) {
+      blockedReason =
+        condition.id === "exhausted"
+          ? "В таком состоянии персонаж не потянет дальний выход даже ради новой тропы."
+          : "Сначала нужно восстановиться, прежде чем тянуть путь так далеко от стоянки.";
+    }
+
+    const ruleAllowsImprove = this._canImproveCampPath(tileId);
+    const missingResources = this.getMissingResources(cost);
+    const hasTrailResources = missingResources.length === 0;
+    const hasTrailEnergy = this.hasEnergy(energyCost);
+
+    if (!blockedReason && !hasTrailResources) {
+      const missingText = missingResources
+        .map(({ id, missing }) => {
+          const resource = this.data.resources[id];
+          return `${resource?.icon || ""}${missing} ${resource?.name || id}`;
+        })
+        .join(", ");
+      blockedReason = `Не хватает материалов для тропы: ${missingText}.`;
+    } else if (!blockedReason && !hasTrailEnergy) {
+      blockedReason = "Не хватает сил, чтобы протоптать путь к участку.";
+    }
+
+    const warnings = [];
+    if (distancePenalty > 0) {
+      warnings.push("Дальний участок особенно выигрывает от удобного прохода.");
+    }
+    if (terrainPenalty > 0) {
+      warnings.push(
+        `Местность тяжёлая: ${terrain.label}. Тропа здесь особенно полезна.`,
+      );
+    }
+    if (delivery.requiresMultipleTrips) {
+      warnings.push(
+        `Материалы для тропы придётся подносить в ${delivery.tripsRequired} ходки.`,
+      );
+    }
+    if (fieldcraftRelief > 0) {
+      warnings.push(
+        "Походная сноровка помогает тянуть путь без лишней потери сил.",
+      );
+    }
+
+    return {
+      tile,
+      pathLevel: this.getCampPathLevel(tileId),
+      pathData,
+      canImprove: ruleAllowsImprove && hasTrailResources && hasTrailEnergy,
+      project,
+      cost,
+      energyCost,
+      totalLoad: delivery.totalLoad,
+      load: delivery.perTripLoad,
+      carryCapacity: delivery.carryCapacity,
+      deliveryTrips: delivery.tripsRequired,
+      deliveryPenalty: delivery.tripPenalty,
+      requiresMultipleTrips: delivery.requiresMultipleTrips,
+      blockedReason,
+      missingResources,
+      hasResources: hasTrailResources,
+      hasEnergy: hasTrailEnergy,
+      warnings,
+      terrainLabel: terrain.label,
+      fieldcraftRelief,
+    };
   }
 
   getCampPlacedBuildingId(tileId) {
@@ -449,11 +1663,14 @@ class GameState {
   }
 
   _getMappedCampTilesForAction(actionId) {
-    return Object.values(this.data.localCampMap?.tiles || {})
+    return this._getCampMapTileList()
       .filter((tile) => tile.actionId === actionId)
       .sort(
         (a, b) =>
-          (a.distanceFromCamp || 0) - (b.distanceFromCamp || 0) ||
+          (this._getCampTileLiveDist(a) || 0) -
+            (this._getCampTileLiveDist(b) || 0) ||
+          (this.getCampPathLevel(b.id) === "trail" ? 1 : 0) -
+            (this.getCampPathLevel(a.id) === "trail" ? 1 : 0) ||
           (a.r || 0) - (b.r || 0) ||
           (a.q || 0) - (b.q || 0),
       );
@@ -500,9 +1717,12 @@ class GameState {
   }
 
   _canBuildOnTile(buildingId, tileId) {
-    const tile = this.data.localCampMap?.tiles?.[tileId];
+    const tile = this._getCampMapTile(tileId);
     if (!tile) return false;
-    if (!Array.isArray(tile.buildOptions) || !tile.buildOptions.includes(buildingId)) {
+    if (
+      !Array.isArray(tile.buildOptions) ||
+      !tile.buildOptions.includes(buildingId)
+    ) {
       return false;
     }
     if (this.getCampTileState(tileId) === "hidden") return false;
@@ -519,7 +1739,7 @@ class GameState {
   }
 
   _getPreferredCampBuildTile(buildingId, preferredTileId = null) {
-    const tiles = Object.values(this.data.localCampMap?.tiles || {});
+    const tiles = this._getCampMapTileList();
     if (!tiles.length) return null;
 
     if (preferredTileId && this._canBuildOnTile(buildingId, preferredTileId)) {
@@ -535,7 +1755,8 @@ class GameState {
       .filter((tile) => this._canBuildOnTile(buildingId, tile.id))
       .sort(
         (a, b) =>
-          (a.distanceFromCamp || 0) - (b.distanceFromCamp || 0) ||
+          (this._getCampTileLiveDist(a) || 0) -
+            (this._getCampTileLiveDist(b) || 0) ||
           (a.r || 0) - (b.r || 0) ||
           (a.q || 0) - (b.q || 0),
       )[0];
@@ -544,7 +1765,7 @@ class GameState {
   }
 
   selectCampTile(tileId) {
-    const tile = this.data.localCampMap?.tiles?.[tileId];
+    const tile = this._getCampMapTile(tileId);
     if (!tile || this.getCampTileState(tileId) === "hidden") return false;
     this.localCampMap.selectedTileId = tileId;
     return true;
@@ -557,19 +1778,13 @@ class GameState {
 
   getSelectedCampTile() {
     const tileId = this.getSelectedCampTileId();
-    return tileId ? this.data.localCampMap?.tiles?.[tileId] || null : null;
+    return tileId ? this._getCampMapTile(tileId) : null;
   }
 
   getCampMapState() {
     const mapData = this.data.localCampMap || {};
     const selectedTileId = this.getSelectedCampTileId();
-    const tiles = Object.values(mapData.tiles || {})
-      .sort(
-        (a, b) =>
-          (a.distanceFromCamp || 0) - (b.distanceFromCamp || 0) ||
-          (a.r || 0) - (b.r || 0) ||
-          (a.q || 0) - (b.q || 0),
-      )
+    const tiles = this._getCampMapTileList()
       .map((tile) => {
         const state = this.getCampTileState(tile.id);
         const buildingId = this.getCampPlacedBuildingId(tile.id);
@@ -578,10 +1793,14 @@ class GameState {
           this.activeConstruction?.tileId === tile.id
             ? this.getConstructionState()
             : null;
+        const liveDist = this._getCampTileLiveDist(tile);
 
         return {
           ...tile,
+          distanceFromCamp: liveDist,
           state,
+          pathLevel: this.getCampPathLevel(tile.id),
+          pathData: this.getCampPathData(tile.id),
           selected: tile.id === selectedTileId,
           buildingId,
           building,
@@ -592,22 +1811,38 @@ class GameState {
             : null,
           isDepleted: this._isCampTileResourceDepleted(tile.id),
         };
-      });
+      })
+      .sort(
+        (a, b) =>
+          (a.distanceFromCamp || 0) - (b.distanceFromCamp || 0) ||
+          (a.r || 0) - (b.r || 0) ||
+          (a.q || 0) - (b.q || 0),
+      );
 
     return {
       title: mapData.title || "Локальная карта лагеря",
       description: mapData.description || "",
       interactionHint: mapData.interactionHint || "",
+      radius: this._getCampMapRadius(),
       selectedTileId,
-      discoveredCount: tiles.filter((tile) => tile.state !== "hidden").length,
-      settledCount: tiles.filter((tile) => tile.state === "settled").length,
+      campSetupDone: !!this.localCampMap.campSetupDone,
+      introStep: this.getCampIntroStepData(),
+      discoveredCount: tiles.filter(
+        (tile) =>
+          tile.state !== "hidden" &&
+          tile.state !== "silhouette" &&
+          tile.state !== "visible_locked",
+      ).length,
+      developedCount: tiles.filter((tile) => tile.state === "developed").length,
+      trailCount: tiles.filter((tile) => tile.pathLevel === "trail").length,
+      resourceCount: tiles.filter((tile) => !!tile.actionId).length,
       totalCount: tiles.length,
       tiles,
     };
   }
 
   getCampMapTileDetails(tileId = this.getSelectedCampTileId()) {
-    const tile = this.data.localCampMap?.tiles?.[tileId];
+    const tile = this._getCampMapTile(tileId);
     if (!tile) return null;
 
     const state = this.getCampTileState(tileId);
@@ -619,7 +1854,13 @@ class GameState {
       this.activeConstruction?.tileId === tileId
         ? this.getConstructionState()
         : null;
-    const action = tile.actionId ? this.data.gatherActions[tile.actionId] : null;
+    const action = tile.actionId
+      ? this.data.gatherActions[tile.actionId]
+      : null;
+    const gatherProfile = action
+      ? this.getGatherProfile(action.id, { tileId })
+      : null;
+    const pathProject = this.getCampPathProject(tileId);
 
     let nextBuildId = null;
     if (Array.isArray(tile.buildOptions)) {
@@ -632,6 +1873,7 @@ class GameState {
 
     return {
       ...tile,
+      distanceFromCamp: this._getCampTileLiveDist(tile),
       state,
       action,
       placedBuildingId,
@@ -644,10 +1886,16 @@ class GameState {
         ? tile.resourceAmount
         : null,
       isDepleted: this._isCampTileResourceDepleted(tileId),
-      canGather: action ? this.canGather(action.id, { tileId }) : false,
+      pathLevel: this.getCampPathLevel(tileId),
+      pathData: this.getCampPathData(tileId),
+      pathProject,
+      gatherProfile,
+      canGather: gatherProfile ? this.canGather(action.id, { tileId }) : false,
+      canImprovePath: !!pathProject?.canImprove,
       canBuild:
         nextBuildId && !placedBuildingId
-          ? this._canBuildOnTile(nextBuildId, tileId) && this.canBuild(nextBuildId)
+          ? this._canBuildOnTile(nextBuildId, tileId) &&
+            this.canBuild(nextBuildId)
           : false,
     };
   }
@@ -671,6 +1919,35 @@ class GameState {
     }
 
     return false;
+  }
+
+  improveCampPath(tileId = this.getSelectedCampTileId()) {
+    const project = this.getCampPathProject(tileId);
+    if (!project || !project.canImprove) return false;
+    if (!this.hasResources(project.cost)) return false;
+    if (!this.hasEnergy(project.energyCost)) return false;
+
+    if (!this.spendResources(project.cost)) return false;
+    if (!this.spendEnergy(project.energyCost)) return false;
+
+    this.localCampMap.pathLevels[tileId] = "trail";
+    this._markCampTileDeveloped(tileId);
+    this._drainSatiety(0.18);
+    this._syncCharacterConditionState();
+
+    this.addLog(
+      `🥾 Натоптана тропа к участку "${project.tile.name}" (⚡-${project.energyCost}).`,
+    );
+    this._pushStoryEvent({
+      type: "map",
+      icon: "🥾",
+      title: "Появилась первая тропа",
+      text: `Теперь путь к участку "${project.tile.name}" обходится легче и делает снабжение лагеря устойчивее.`,
+      ttlMs: 5500,
+    });
+    this.markDirty();
+    this.saveGame(true);
+    return true;
   }
 
   _getEraData(eraId = this.currentEra) {
@@ -896,10 +2173,17 @@ class GameState {
     this.researchQueue = [];
     if (!Array.isArray(savedQueue)) return;
     for (const item of savedQueue) {
-      if (item?.techId && this.data.tech[item.techId] && !this.researched[item.techId]) {
+      if (
+        item?.techId &&
+        this.data.tech[item.techId] &&
+        !this.researched[item.techId]
+      ) {
         this.researchQueue.push({
           techId: item.techId,
-          spentResources: typeof item.spentResources === "object" && item.spentResources ? { ...item.spentResources } : {},
+          spentResources:
+            typeof item.spentResources === "object" && item.spentResources
+              ? { ...item.spentResources }
+              : {},
         });
       }
     }
@@ -989,6 +2273,8 @@ class GameState {
         craftDiscount: this.craftDiscount,
         totalResourcesCollected: this.totalResourcesCollected,
         energy: this.energy,
+        satiety: this.satiety,
+        lastManualRestAt: this.lastManualRestAt,
         energyRegenRemainingMs: this.getEnergyRegenRemaining(),
         onboarding: { ...this.onboarding },
         insights: { ...this.insights },
@@ -1087,17 +2373,24 @@ class GameState {
 
     this._recalculateDerivedState();
 
+    this.satiety = Number.isFinite(state.satiety)
+      ? Math.max(0, Math.min(this.maxSatiety, state.satiety))
+      : this.maxSatiety;
+    this.lastManualRestAt = Number.isFinite(state.lastManualRestAt)
+      ? state.lastManualRestAt
+      : 0;
     this.energy = Number.isFinite(state.energy)
       ? Math.max(0, Math.min(this.maxEnergy, state.energy))
       : this.maxEnergy;
+    const currentRegenInterval = this.getCurrentEnergyRegenInterval();
     const regenRemainingMs = Number.isFinite(state.energyRegenRemainingMs)
       ? Math.max(
           0,
-          Math.min(this.energyRegenInterval, state.energyRegenRemainingMs),
+          Math.min(currentRegenInterval, state.energyRegenRemainingMs),
         )
-      : this.energyRegenInterval;
+      : currentRegenInterval;
     this.lastEnergyRegen =
-      Date.now() - (this.energyRegenInterval - regenRemainingMs);
+      Date.now() - (currentRegenInterval - regenRemainingMs);
 
     this._restoreCraftQueue(state.craftQueue);
     this._restoreConstruction(state.construction);
@@ -1342,8 +2635,7 @@ class GameState {
       type: "prologue",
       icon: "🌄",
       title: "Холодная стоянка и первые поиски",
-      text:
-        "Около 12 тысяч лет назад мир уже меняется после льда, но ночь всё ещё холодна. Сначала нужно понять, что можно удержать в руках и что поможет пережить темноту.",
+      text: "Около 12 тысяч лет назад мир уже меняется после льда, но ночь всё ещё холодна. Сначала нужно понять, что можно удержать в руках и что поможет пережить темноту.",
       ttlMs: 7000,
     });
     this._syncLocalCampMap();
@@ -1453,10 +2745,7 @@ class GameState {
       type: "insight",
       icon: insight.icon,
       title: `Озарение: ${insight.name}`,
-      text:
-        insight.momentText ||
-        insight.unlockText ||
-        insight.description,
+      text: insight.momentText || insight.unlockText || insight.description,
       action: "insights",
       ttlMs: 8000,
     });
@@ -1518,7 +2807,21 @@ class GameState {
     if (!this.getPrologueRevealState().showBuildings) {
       return [];
     }
-    return [...(this.data.prologue?.buildingIds || [])];
+
+    const visible = [];
+    if (this.isCampSetupDone()) {
+      visible.push("rest_tent");
+    }
+
+    const campfireVisible =
+      !!this.buildings.rest_tent ||
+      this.activeConstruction?.buildingId === "campfire" ||
+      !!this.buildings.campfire;
+    if (campfireVisible) {
+      visible.push("campfire");
+    }
+
+    return visible;
   }
 
   getPrologueRevealState() {
@@ -1526,8 +2829,11 @@ class GameState {
     const hasTool =
       (this.resources.crude_tools || 0) >= 1 ||
       (this.resourceTotals.crude_tools || 0) >= 1;
+    const campSetupDone = this.isCampSetupDone();
+    const shelterBuilt = !!this.buildings.rest_tent;
     const nearFinalSteps =
-      this.onboarding.currentStep >= Math.max(0, this.data.onboarding.steps.length - 2);
+      this.onboarding.currentStep >=
+      Math.max(0, this.data.onboarding.steps.length - 2);
     const campfireSeen =
       this.activeConstruction?.buildingId === "campfire" ||
       !!this.buildings.campfire;
@@ -1535,7 +2841,8 @@ class GameState {
     let stage = 0;
     if (unlockedInsights >= 1) stage = 1;
     if (unlockedInsights >= 4 || hasTool) stage = 2;
-    if (unlockedInsights >= 6 || nearFinalSteps || campfireSeen) stage = 3;
+    if (unlockedInsights >= 6 || nearFinalSteps || shelterBuilt || campfireSeen)
+      stage = 3;
 
     return {
       stage,
@@ -1543,7 +2850,7 @@ class GameState {
       showInsights: true,
       showResources: stage >= 1,
       showCraft: stage >= 2,
-      showBuildings: stage >= 3,
+      showBuildings: campSetupDone,
     };
   }
 
@@ -1551,6 +2858,9 @@ class GameState {
     const building = this.data.buildings.campfire;
     if (!building) return null;
 
+    const shelterBuilt = !!this.buildings.rest_tent;
+    const shelterConstructing =
+      this.activeConstruction?.buildingId === "rest_tent";
     const missingInsights = (building.requiresInsights || []).filter(
       (insightId) => !this.insights[insightId],
     );
@@ -1562,20 +2872,33 @@ class GameState {
     const readyParts =
       this.getUnlockedInsightsCount() +
       (hasTool ? 1 : 0) +
+      (shelterBuilt ? 1 : 0) +
       (built ? 1 : 0);
-    const totalParts = this.getPrologueInsights().length + 2;
+    const totalParts = this.getPrologueInsights().length + 3;
+
+    let text =
+      this.data.prologue?.campfireText ||
+      "Костёр должен стать первым центром жизни.";
+    if (built) {
+      text =
+        this.data.prologue?.campfireBuiltText ||
+        "Костёр уже стал точкой возвращения.";
+    } else if (!shelterBuilt) {
+      text =
+        "Стоянка ещё слишком хрупкая для очага. Сначала нужно поставить первое жильё, чтобы лагерь стал пригодным для жизни, а уже потом собирать устойчивый огонь.";
+    } else if (missingInsights.length > 0 || !hasTool) {
+      text =
+        "Жильё уже стоит, и место под очаг намечено. Теперь нужно закончить раннюю подготовку: добрать озарения, связать грубое орудие и не дать огню родиться вслепую.";
+    }
 
     return {
       title: this.data.prologue?.campfireTitle || "Путь к первому костру",
-      text:
-        built
-          ? this.data.prologue?.campfireBuiltText ||
-            "Костёр уже стал точкой возвращения."
-          : this.data.prologue?.campfireText ||
-            "Костёр должен стать первым центром жизни.",
+      text,
       built,
       constructing,
       hasTool,
+      shelterBuilt,
+      shelterConstructing,
       unlockedInsights: this.getUnlockedInsightsCount(),
       totalInsights: this.getPrologueInsights().length,
       missingInsights,
@@ -1644,6 +2967,9 @@ class GameState {
   }
 
   _getPrologueBuildStartLog(buildingId) {
+    if (buildingId === "rest_tent") {
+      return "⛺ Начали ставить первую палатку. Стоянка становится местом, где можно задержаться.";
+    }
     if (buildingId === "campfire") {
       return "🔥 Начали складывать первый костёр. Огонь уже близко.";
     }
@@ -1651,6 +2977,9 @@ class GameState {
   }
 
   _getPrologueBuildCompleteLog(buildingId) {
+    if (buildingId === "rest_tent") {
+      return "⛺ Первое жильё готово. Теперь стоянка уже не выглядит совсем случайной.";
+    }
     if (buildingId === "campfire") {
       return "🔥 Первый костёр разгорелся. У общины появилось место, к которому можно возвращаться.";
     }
@@ -1748,21 +3077,933 @@ class GameState {
     return cost;
   }
 
+  _clampSatiety(value) {
+    return Math.max(0, Math.min(this.maxSatiety, value));
+  }
+
+  _getCharacterConditionConfig(conditionId) {
+    return this.data.character?.conditions?.[conditionId] || null;
+  }
+
+  getCharacterCondition() {
+    const satietyRatio =
+      this.maxSatiety > 0 ? this.satiety / this.maxSatiety : 1;
+    const energyRatio = this.maxEnergy > 0 ? this.energy / this.maxEnergy : 1;
+
+    let conditionId = "stable";
+    if (satietyRatio <= 0.2 || energyRatio <= 0.15) {
+      conditionId = "exhausted";
+    } else if (satietyRatio <= 0.5 || energyRatio <= 0.35) {
+      conditionId = "weakened";
+    }
+
+    const config = this._getCharacterConditionConfig(conditionId) ||
+      this._getCharacterConditionConfig("stable") || {
+        id: "stable",
+        label: "В порядке",
+        description: "",
+        regenPenaltyMs: 0,
+        gatherOutputPenalty: 0,
+        gatherCostPenalty: 0,
+      };
+
+    const maxSafeDistance = Number.isFinite(config.maxSafeDistance)
+      ? config.maxSafeDistance >= 99
+        ? config.maxSafeDistance
+        : config.maxSafeDistance + (this.enduranceBonus || 0)
+      : config.maxSafeDistance;
+
+    return {
+      ...config,
+      baseMaxSafeDistance: config.maxSafeDistance,
+      maxSafeDistance,
+      satietyRatio,
+      energyRatio,
+    };
+  }
+
+  getCharacterCarryCapacity() {
+    return this.carryCapacity;
+  }
+
+  getCharacterFieldcraft() {
+    let fieldcraft = this.fieldcraftBonus || 0;
+    if ((this.resources.improved_tools || 0) > 0) {
+      fieldcraft += 1;
+    }
+    return Math.max(0, fieldcraft);
+  }
+
+  getCharacterRecoveryRating() {
+    return Math.max(0, this.recoveryRatingBonus || 0);
+  }
+
+  getResourceCarryWeight(resourceId) {
+    return this.data.resources?.[resourceId]?.carryWeight || 1;
+  }
+
+  _getDeliveryProfile(
+    totalLoad,
+    carryCapacity = this.getCharacterCarryCapacity(),
+  ) {
+    const safeCapacity = Math.max(0.01, carryCapacity || 1);
+    const safeLoad = Math.max(0, totalLoad || 0);
+    const tripsRequired = Math.max(1, Math.ceil(safeLoad / safeCapacity));
+    const perTripLoad =
+      safeLoad > 0 ? Math.min(safeCapacity, safeLoad / tripsRequired) : 0;
+    const loadPct = safeCapacity > 0 ? perTripLoad / safeCapacity : 0;
+
+    return {
+      totalLoad: safeLoad,
+      carryCapacity: safeCapacity,
+      tripsRequired,
+      perTripLoad,
+      loadPct,
+      tripPenalty: Math.max(0, tripsRequired - 1),
+      requiresMultipleTrips: tripsRequired > 1,
+    };
+  }
+
+  _getTerrainEffort(tile) {
+    if (!tile) {
+      return {
+        penalty: 0,
+        label: "лагерь",
+      };
+    }
+
+    switch (tile.terrainType) {
+      case "rock":
+        return { penalty: 1, label: "каменистый участок" };
+      case "clay":
+        return { penalty: 1, label: "вязкая глина" };
+      case "water":
+        return { penalty: 1, label: "влажный берег" };
+      case "brush":
+        return { penalty: 0, label: "заросли" };
+      case "grass":
+        return { penalty: 0, label: "трава" };
+      default:
+        return { penalty: 0, label: tile.terrainType || "участок" };
+    }
+  }
+
+  getCharacterRecoveryState() {
+    const sources = [];
+    if (this.buildings.campfire) {
+      sources.push({
+        id: "campfire",
+        label: "Костёр",
+        description: "даёт тепло и возвращает сытость быстрее",
+      });
+    }
+    if (this.buildings.rest_tent) {
+      sources.push({
+        id: "rest_tent",
+        label: "Укрытие",
+        description: "делает отдых устойчивее",
+      });
+    }
+    if (this.buildings.storage) {
+      sources.push({
+        id: "storage",
+        label: "Хранилище",
+        description: "снижает бытовой хаос и чуть улучшает восстановление",
+      });
+    }
+
+    return {
+      sources,
+      bonusPerTick: this.characterRecoveryBonusPerTick || 0,
+      summary:
+        sources.length > 0
+          ? sources.map((source) => source.label).join(" · ")
+          : "только короткие паузы без опоры лагеря",
+    };
+  }
+
+  _getCharacterRestConfig() {
+    return this.data.character?.rest || {};
+  }
+
+  getCharacterRestCooldownMs() {
+    const restConf = this._getCharacterRestConfig();
+    const sourceIds = new Set(
+      (this.getCharacterRecoveryState().sources || []).map(
+        (source) => source.id,
+      ),
+    );
+    let cooldown = restConf.cooldownMs || 14000;
+
+    if (sourceIds.has("campfire")) {
+      cooldown -= 2000;
+    }
+    if (sourceIds.has("rest_tent")) {
+      cooldown -= 3000;
+    }
+    cooldown -= this.getCharacterRecoveryRating() * 500;
+
+    return Math.max(5000, cooldown);
+  }
+
+  getCharacterRestCooldownRemaining() {
+    if (!this.lastManualRestAt) return 0;
+    return Math.max(
+      0,
+      this.getCharacterRestCooldownMs() - (Date.now() - this.lastManualRestAt),
+    );
+  }
+
+  getCharacterRestProfile() {
+    const restConf = this._getCharacterRestConfig();
+    const condition = this.getCharacterCondition();
+    const recovery = this.getCharacterRecoveryState();
+    const sourceIds = new Set(
+      (recovery.sources || []).map((source) => source.id),
+    );
+    const recoveryRating = this.getCharacterRecoveryRating();
+    const energyMissing = Math.max(0, this.maxEnergy - this.energy);
+    const satietyMissing = Math.max(0, this.maxSatiety - this.satiety);
+
+    let energyGain = restConf.baseEnergy || 2;
+    let satietyGain = restConf.baseSatiety || 0.45;
+
+    if (sourceIds.has("campfire")) {
+      energyGain += restConf.campfireEnergyBonus || 0;
+      satietyGain += restConf.campfireSatietyBonus || 0;
+    }
+    if (sourceIds.has("rest_tent")) {
+      energyGain += restConf.shelterEnergyBonus || 0;
+      satietyGain += restConf.shelterSatietyBonus || 0;
+    }
+    if (sourceIds.has("storage")) {
+      satietyGain += restConf.storageSatietyBonus || 0;
+    }
+
+    energyGain += Math.min(2, Math.floor(recoveryRating / 2));
+    energyGain += Math.min(1, Math.floor((this.enduranceBonus || 0) / 2));
+    satietyGain += Math.min(0.45, recoveryRating * 0.08);
+
+    if (condition.id === "weakened") {
+      energyGain += 1;
+      satietyGain += 0.15;
+    } else if (condition.id === "exhausted") {
+      energyGain += 2;
+      satietyGain += 0.35;
+    }
+
+    const cooldownMs = this.getCharacterRestCooldownMs();
+    const remainingMs = this.getCharacterRestCooldownRemaining();
+    const energyRecovery = Math.min(
+      energyMissing,
+      Math.max(0, Math.round(energyGain)),
+    );
+    const satietyRecovery = Math.min(
+      satietyMissing,
+      Math.max(0, Number(satietyGain.toFixed(2))),
+    );
+
+    let blockedReason = "";
+    if (energyMissing <= 0 && satietyMissing <= 0.05) {
+      blockedReason = "Персонажу пока не нужна передышка.";
+    } else if (remainingMs > 0) {
+      blockedReason = `Передышка будет доступна снова через ${Math.ceil(remainingMs / 1000)}с.`;
+    }
+
+    const label = sourceIds.has("rest_tent")
+      ? "Отдохнуть под укрытием"
+      : sourceIds.has("campfire")
+        ? "Передохнуть у костра"
+        : "Короткая передышка";
+    const note = sourceIds.has("rest_tent")
+      ? "Укрытие и лагерь собирают силы быстрее, чем случайная пауза в поле."
+      : sourceIds.has("campfire")
+        ? "Огонь помогает перевести дух и не развалить ритм тяжёлой работы."
+        : "Без костра отдых даёт лишь короткую передышку и не держит силы долго.";
+
+    return {
+      label,
+      note,
+      energyGain: energyRecovery,
+      satietyGain: satietyRecovery,
+      cooldownMs,
+      remainingMs,
+      blockedReason,
+      canRest: !blockedReason,
+      recoveryRating,
+    };
+  }
+
+  restCharacter() {
+    const profile = this.getCharacterRestProfile();
+    if (!profile.canRest) return false;
+
+    const beforeEnergy = this.energy;
+    const beforeSatiety = this.satiety;
+    this.energy = Math.min(this.maxEnergy, this.energy + profile.energyGain);
+    this.satiety = this._clampSatiety(this.satiety + profile.satietyGain);
+    this.lastManualRestAt = Date.now();
+    this.lastEnergyRegen = Date.now();
+    this._syncCharacterConditionState();
+
+    const energyRecovered = this.energy - beforeEnergy;
+    const satietyRecovered = this.satiety - beforeSatiety;
+    this.addLog(
+      `🛌 ${profile.label}: +${energyRecovered} сил, +${satietyRecovered.toFixed(1)} сытости.`,
+    );
+    this.markDirty();
+    this.saveGame(true);
+    return true;
+  }
+
+  _getCharacterConditionTransitionEvent(condition) {
+    switch (condition?.id) {
+      case "stable":
+        return {
+          icon: "🫁",
+          title: "Силы возвращаются",
+          text: "Персонаж снова может работать ровно: дыхание выровнялось, путь по лагерю уже не кажется слишком тяжёлым.",
+          log: "🫁 Персонаж пришёл в себя и снова работает без явных штрафов.",
+        };
+      case "weakened":
+        return {
+          icon: "🥀",
+          title: "Силы на исходе",
+          text: "Голод и усталость уже мешают дальним выходам. Теперь каждое тяжёлое действие нужно выбирать осторожнее.",
+          log: "🥀 Персонаж ослаблен: дальние выходы и тяжёлая работа стали заметно труднее.",
+        };
+      case "exhausted":
+        return {
+          icon: "🪫",
+          title: "Истощение",
+          text: "Сейчас безопасны только самые близкие действия у стоянки. Нужны отдых, огонь и короткая передышка.",
+          log: "🪫 Персонаж истощён: далеко от стоянки сейчас лучше не уходить.",
+        };
+      default:
+        return null;
+    }
+  }
+
+  _syncCharacterConditionState({ pushLog = true, pushStory = true } = {}) {
+    const condition = this.getCharacterCondition();
+    if (!condition?.id) return;
+
+    if (!this.lastCharacterConditionId) {
+      this.lastCharacterConditionId = condition.id;
+      return;
+    }
+
+    if (this.lastCharacterConditionId === condition.id) return;
+
+    this.lastCharacterConditionId = condition.id;
+    const event = this._getCharacterConditionTransitionEvent(condition);
+    if (!event) return;
+
+    if (pushLog) {
+      this.addLog(event.log);
+    }
+    if (pushStory) {
+      this._pushStoryEvent({
+        type: "character",
+        icon: event.icon,
+        title: event.title,
+        text: event.text,
+        ttlMs: 5000,
+      });
+    }
+    this.markDirty();
+  }
+
+  _getOutputCarryLoad(output) {
+    return Object.entries(output).reduce(
+      (sum, [resourceId, amount]) =>
+        sum + this.getResourceCarryWeight(resourceId) * amount,
+      0,
+    );
+  }
+
+  _limitOutputByCarry(output) {
+    const capacity = this.getCharacterCarryCapacity();
+    const rawLoad = this._getOutputCarryLoad(output);
+
+    if (rawLoad <= capacity) {
+      return {
+        output,
+        rawLoad,
+        load: rawLoad,
+        limitedByCarry: false,
+      };
+    }
+
+    const entries = Object.entries(output);
+    if (entries.length === 0) {
+      return {
+        output,
+        rawLoad,
+        load: 0,
+        limitedByCarry: false,
+      };
+    }
+
+    const limitedOutput = {};
+    let changed = false;
+
+    if (entries.length === 1) {
+      const [resourceId, amount] = entries[0];
+      const weight = Math.max(0.01, this.getResourceCarryWeight(resourceId));
+      const cappedAmount = Math.max(1, Math.floor((capacity + 1e-9) / weight));
+      limitedOutput[resourceId] = Math.min(amount, cappedAmount);
+      changed = limitedOutput[resourceId] < amount;
+    } else {
+      const ratio = capacity / Math.max(rawLoad, 0.01);
+      for (const [resourceId, amount] of entries) {
+        const limitedAmount = Math.min(
+          amount,
+          Math.max(1, Math.floor(amount * ratio)),
+        );
+        limitedOutput[resourceId] = limitedAmount;
+        if (limitedAmount < amount) changed = true;
+      }
+    }
+
+    const load = this._getOutputCarryLoad(limitedOutput);
+    return {
+      output: limitedOutput,
+      rawLoad,
+      load,
+      limitedByCarry: changed,
+    };
+  }
+
+  _limitOutputByTileSupply(output, tile) {
+    if (!tile) {
+      return {
+        output,
+        limitedBySupply: false,
+      };
+    }
+
+    const remaining = this._getCampTileResourceRemaining(tile.id);
+    if (!Number.isFinite(remaining)) {
+      return {
+        output,
+        limitedBySupply: false,
+      };
+    }
+
+    if (tile.resourceType) {
+      const currentAmount = output[tile.resourceType] || 0;
+      if (currentAmount <= remaining) {
+        return {
+          output,
+          limitedBySupply: false,
+        };
+      }
+
+      return {
+        output: {
+          ...output,
+          [tile.resourceType]: Math.max(0, remaining),
+        },
+        limitedBySupply: true,
+      };
+    }
+
+    const entries = Object.entries(output);
+    const totalAmount = entries.reduce((sum, [, amount]) => sum + amount, 0);
+    if (totalAmount <= remaining) {
+      return {
+        output,
+        limitedBySupply: false,
+      };
+    }
+
+    let unitsLeft = Math.max(0, Math.floor(remaining));
+    const scaledEntries = entries
+      .map(([resourceId, amount]) => {
+        const exact = (amount * unitsLeft) / Math.max(totalAmount, 1);
+        const limitedAmount = Math.min(amount, Math.floor(exact));
+        return {
+          resourceId,
+          amount,
+          limitedAmount,
+          fraction: exact - limitedAmount,
+        };
+      })
+      .sort((a, b) => b.fraction - a.fraction);
+
+    unitsLeft -= scaledEntries.reduce(
+      (sum, entry) => sum + entry.limitedAmount,
+      0,
+    );
+
+    for (const entry of scaledEntries) {
+      if (unitsLeft <= 0) break;
+      if (entry.limitedAmount >= entry.amount) continue;
+      entry.limitedAmount += 1;
+      unitsLeft -= 1;
+    }
+
+    const limitedOutput = {};
+    for (const entry of scaledEntries) {
+      if (entry.limitedAmount > 0) {
+        limitedOutput[entry.resourceId] = entry.limitedAmount;
+      }
+    }
+
+    return {
+      output: limitedOutput,
+      limitedBySupply: true,
+    };
+  }
+
+  _getSatietyRecoveryPerTick() {
+    const satietyConf = this.data.character?.satiety || {};
+    let recovery = satietyConf.passiveRecoveryPerTick || 0;
+
+    if (this.buildings.campfire) {
+      recovery += satietyConf.campfireRecoveryPerTick || 0;
+    }
+    if (this.buildings.rest_tent) {
+      recovery += satietyConf.restTentRecoveryBonusPerTick || 0;
+    }
+    recovery += this.characterRecoveryBonusPerTick || 0;
+
+    return recovery;
+  }
+
+  _drainSatiety(amount) {
+    if (!Number.isFinite(amount) || amount <= 0) return 0;
+    const before = this.satiety;
+    this.satiety = this._clampSatiety(this.satiety - amount);
+    return before - this.satiety;
+  }
+
+  _getSatietyDrainForGather(profile) {
+    const satietyConf = this.data.character?.satiety || {};
+    const baseDrain = satietyConf.gatherDrain || 0;
+    if (!profile) return baseDrain;
+
+    return Math.max(
+      0.08,
+      baseDrain +
+        Math.max(0, (profile.routeDistance ?? profile.distance) - 1) * 0.08 +
+        Math.max(0, profile.deliveryPenalty || 0) * 0.08 +
+        (profile.loadPct >= 0.85 ? 0.08 : 0) -
+        (profile.pathLevel && profile.pathLevel !== "none" ? 0.08 : 0),
+    );
+  }
+
+  _getSatietyDrainForBuild(profile = null) {
+    const baseDrain = this.data.character?.satiety?.buildDrain || 0;
+    if (!profile) return baseDrain;
+    return Math.max(
+      0.1,
+      baseDrain +
+        Math.max(0, (profile.routeDistance ?? profile.distance) - 1) * 0.08 +
+        Math.max(0, profile.deliveryPenalty || 0) * 0.08 -
+        (profile.pathLevel && profile.pathLevel !== "none" ? 0.08 : 0),
+    );
+  }
+
+  getCurrentEnergyRegenInterval() {
+    const condition = this.getCharacterCondition();
+    return Math.max(
+      1000,
+      this.energyRegenInterval + (condition.regenPenaltyMs || 0),
+    );
+  }
+
+  _getLogisticsEffortLabel(totalPenalty) {
+    if (totalPenalty <= 0) return "лёгкий путь";
+    if (totalPenalty === 1) return "умеренный путь";
+    return "тяжёлый путь";
+  }
+
+  _applyFieldcraftRelief(distancePenalty, terrainPenalty) {
+    let remainingRelief = Math.max(0, this.getCharacterFieldcraft());
+    const distanceRelief = Math.min(distancePenalty, remainingRelief);
+    remainingRelief -= distanceRelief;
+    const terrainRelief = Math.min(terrainPenalty, remainingRelief);
+
+    return {
+      distancePenalty: Math.max(0, distancePenalty - distanceRelief),
+      terrainPenalty: Math.max(0, terrainPenalty - terrainRelief),
+      fieldcraftRelief: distanceRelief + terrainRelief,
+    };
+  }
+
+  getGatherProfile(actionId, options = {}) {
+    const action = this.data.gatherActions[actionId];
+    if (!action) return null;
+
+    const tile = this._getPreferredCampGatherTile(actionId, options.tileId);
+    const distance = tile ? this._getCampTileLiveDist(tile) : 0;
+    const zoneLabel =
+      distance === 0
+        ? "центр"
+        : distance === 1
+          ? "ближняя зона"
+          : "дальний выход";
+    const condition = this.getCharacterCondition();
+    const carryCapacity = this.getCharacterCarryCapacity();
+    const terrain = this._getTerrainEffort(tile);
+    const path = tile
+      ? this.getCampPathData(tile.id)
+      : this.getCampPathData(null);
+    const warnings = [];
+
+    const rawOutput = { ...action.output };
+    const gatherBonus = this._getGatherBonus();
+    for (const [resourceId, amount] of Object.entries(rawOutput)) {
+      rawOutput[resourceId] = Math.max(
+        1,
+        amount + gatherBonus - (condition.gatherOutputPenalty || 0),
+      );
+    }
+
+    const multiTripDelivery = action.deliveryMode === "multi-trip";
+    const carryLimited = multiTripDelivery
+      ? {
+          output: rawOutput,
+          rawLoad: this._getOutputCarryLoad(rawOutput),
+          load: this._getOutputCarryLoad(rawOutput),
+          limitedByCarry: false,
+        }
+      : this._limitOutputByCarry(rawOutput);
+    const supplyLimited = this._limitOutputByTileSupply(carryLimited.output, tile);
+    const output = supplyLimited.output;
+    const totalLoad = this._getOutputCarryLoad(output);
+    const delivery = this._getDeliveryProfile(totalLoad, carryCapacity);
+    const load = delivery.perTripLoad;
+    const loadPct = delivery.loadPct;
+    const heavyThreshold = this.data.character?.carry?.heavyThreshold || 0.85;
+    const loadPenalty = loadPct >= heavyThreshold ? 1 : 0;
+    const routeDistance = Math.max(0, distance - (path.routeRelief || 0));
+    const rawDistancePenalty = Math.max(0, routeDistance - 1);
+    const rawTerrainPenalty = Math.max(
+      0,
+      (terrain.penalty || 0) - (path.terrainRelief || 0),
+    );
+    const penaltyAfterFieldcraft = this._applyFieldcraftRelief(
+      rawDistancePenalty,
+      rawTerrainPenalty,
+    );
+    const distancePenalty = penaltyAfterFieldcraft.distancePenalty;
+    const terrainPenalty = penaltyAfterFieldcraft.terrainPenalty;
+    const fieldcraftRelief = penaltyAfterFieldcraft.fieldcraftRelief;
+    const energyCost =
+      action.energyCost +
+      distancePenalty +
+      terrainPenalty +
+      delivery.tripPenalty +
+      loadPenalty +
+      (condition.gatherCostPenalty || 0);
+
+    let blockedReason = "";
+    if (!tile) {
+      blockedReason = "Подходящий участок пока не найден или уже истощён.";
+    } else if (
+      Number.isFinite(condition.maxSafeDistance) &&
+      routeDistance > condition.maxSafeDistance
+    ) {
+      blockedReason =
+        condition.id === "exhausted"
+          ? "Истощённый персонаж не потянет такой дальний выход."
+          : "В таком состоянии дальние выходы уже слишком тяжёлые.";
+    }
+
+    if (terrainPenalty > 0) {
+      warnings.push(`Местность утяжеляет выход: ${terrain.label}.`);
+    }
+    if (distancePenalty > 0) {
+      warnings.push("Дистанция от стоянки повышает расход сил.");
+    }
+    if (path.id !== "none") {
+      warnings.push(`Тропа облегчает путь: ${path.label}.`);
+    }
+    if (fieldcraftRelief > 0) {
+      warnings.push("Походная сноровка снимает часть тяжести пути.");
+    }
+    if (loadPenalty > 0) {
+      warnings.push("Выход почти упирается в переносимость.");
+    }
+    if (delivery.requiresMultipleTrips) {
+      warnings.push(
+        `Доставка до стоянки потребует ${delivery.tripsRequired} ходки.`,
+      );
+    }
+    if (carryLimited.limitedByCarry) {
+      warnings.push("Часть добычи теряется из-за ограниченной переносимости.");
+    }
+    if (supplyLimited.limitedBySupply) {
+      warnings.push("Участок почти выработан, поэтому выход уже меньше.");
+    }
+
+    return {
+      actionId,
+      action,
+      tile,
+      distance,
+      zoneLabel,
+      output,
+      rawOutput,
+      load,
+      totalLoad,
+      rawLoad: carryLimited.rawLoad,
+      loadPct,
+      carryCapacity,
+      deliveryTrips: delivery.tripsRequired,
+      deliveryPenalty: delivery.tripPenalty,
+      requiresMultipleTrips: delivery.requiresMultipleTrips,
+      pathLevel: path.id,
+      pathLabel: path.label,
+      pathIcon: path.icon,
+      routeDistance,
+      energyCost,
+      baseEnergyCost: action.energyCost,
+      distancePenalty,
+      terrainPenalty,
+      fieldcraftRelief,
+      loadPenalty,
+      effortLabel: this._getLogisticsEffortLabel(
+        distancePenalty +
+          terrainPenalty +
+          loadPenalty +
+          delivery.tripPenalty,
+      ),
+      limitedByCarry: carryLimited.limitedByCarry,
+      limitedBySupply: supplyLimited.limitedBySupply,
+      blockedReason,
+      isAvailable: !blockedReason,
+      terrainLabel: terrain.label,
+      warnings,
+      condition,
+    };
+  }
+
+  getBuildProfile(buildingId, preferredTileId = null) {
+    const building = this.data.buildings[buildingId];
+    if (!building) return null;
+
+    const tileId = this._getPreferredCampBuildTile(
+      buildingId,
+      preferredTileId || this.getSelectedCampTileId(),
+    );
+    const tile = tileId ? this._getCampMapTile(tileId) : null;
+    const distance = tile ? this._getCampTileLiveDist(tile) : 0;
+    const condition = this.getCharacterCondition();
+    const zoneLabel =
+      distance === 0
+        ? "центр"
+        : distance === 1
+          ? "ближняя зона"
+          : "дальний участок";
+    const path = tile
+      ? this.getCampPathData(tile.id)
+      : this.getCampPathData(null);
+    const routeDistance = Math.max(0, distance - (path.routeRelief || 0));
+    const rawDistancePenalty = Math.max(0, routeDistance - 1);
+    const terrain = this._getTerrainEffort(tile);
+    const rawTerrainPenalty = Math.max(
+      0,
+      (terrain.penalty || 0) - (path.terrainRelief || 0),
+    );
+    const penaltyAfterFieldcraft = this._applyFieldcraftRelief(
+      rawDistancePenalty,
+      rawTerrainPenalty,
+    );
+    const distancePenalty = penaltyAfterFieldcraft.distancePenalty;
+    const terrainPenalty = penaltyAfterFieldcraft.terrainPenalty;
+    const fieldcraftRelief = penaltyAfterFieldcraft.fieldcraftRelief;
+    const warnings = [];
+    const cost = this.getBuildingCost(buildingId);
+    const delivery = this._getDeliveryProfile(
+      this._getOutputCarryLoad(cost),
+      this.getCharacterCarryCapacity(),
+    );
+    const energyCost =
+      1 +
+      distancePenalty +
+      terrainPenalty +
+      delivery.tripPenalty +
+      (condition.gatherCostPenalty || 0);
+    let blockedReason = "";
+
+    if (
+      Number.isFinite(condition.maxSafeDistance) &&
+      routeDistance > condition.maxSafeDistance
+    ) {
+      blockedReason =
+        condition.id === "exhausted"
+          ? "В таком состоянии персонаж не потянет стройку так далеко от стоянки."
+          : "Сначала нужно восстановиться, прежде чем тащить материалы так далеко.";
+    }
+
+    if (terrainPenalty > 0) {
+      warnings.push(`Место утяжеляет стройку: ${terrain.label}.`);
+    }
+    if (distancePenalty > 0) {
+      warnings.push("Материалы придётся нести заметно дальше от стоянки.");
+    }
+    if (delivery.requiresMultipleTrips) {
+      warnings.push(
+        `Поднос материалов займёт ${delivery.tripsRequired} ходки.`,
+      );
+    }
+
+    if (path.id !== "none") {
+      warnings.push(`Тропа облегчает перенос материалов: ${path.label}.`);
+    }
+    if (fieldcraftRelief > 0) {
+      warnings.push(
+        "Походная сноровка помогает нести материалы по этому пути.",
+      );
+    }
+
+    return {
+      buildingId,
+      tileId,
+      tile,
+      distance,
+      zoneLabel,
+      totalLoad: delivery.totalLoad,
+      load: delivery.perTripLoad,
+      carryCapacity: delivery.carryCapacity,
+      deliveryTrips: delivery.tripsRequired,
+      deliveryPenalty: delivery.tripPenalty,
+      requiresMultipleTrips: delivery.requiresMultipleTrips,
+      pathLevel: path.id,
+      pathLabel: path.label,
+      pathIcon: path.icon,
+      routeDistance,
+      energyCost,
+      terrainLabel: terrain.label,
+      terrainPenalty,
+      fieldcraftRelief,
+      effortLabel: this._getLogisticsEffortLabel(
+        distancePenalty + terrainPenalty + delivery.tripPenalty,
+      ),
+      blockedReason,
+      warnings,
+      condition,
+    };
+  }
+
+  getCharacterState() {
+    const selectedTileId = this.getSelectedCampTileId();
+    const selectedTile = this._getCampMapTile(selectedTileId);
+    let tripProfile = null;
+    let tripType = "";
+
+    if (selectedTile?.actionId) {
+      tripProfile = this.getGatherProfile(selectedTile.actionId, {
+        tileId: selectedTileId,
+      });
+      tripType = "gather";
+    } else if (Array.isArray(selectedTile?.buildOptions)) {
+      const buildId = selectedTile.buildOptions.find(
+        (id) =>
+          !this.buildings[id] &&
+          this._getPreferredCampBuildTile(id, selectedTileId) ===
+            selectedTileId,
+      );
+      if (buildId) {
+        tripProfile = this.getBuildProfile(buildId, selectedTileId);
+        tripType = "build";
+      }
+    } else if (
+      selectedTileId &&
+      selectedTile &&
+      this._getCampTileLiveDist(selectedTile) > 0
+    ) {
+      const pathProject = this.getCampPathProject(selectedTileId);
+      if (pathProject) {
+        tripProfile = pathProject;
+        tripType = "trail";
+      }
+    }
+
+    const condition = this.getCharacterCondition();
+    const regenIntervalMs = this.getCurrentEnergyRegenInterval();
+    const recovery = this.getCharacterRecoveryState();
+    const restProfile = this.getCharacterRestProfile();
+    const fieldcraft = this.getCharacterFieldcraft();
+    const recoveryRating = this.getCharacterRecoveryRating();
+    const restrictionText = Number.isFinite(condition.maxSafeDistance)
+      ? condition.maxSafeDistance >= 99
+        ? "Доступны любые выходы в пределах открытой карты."
+        : condition.maxSafeDistance <= 1
+          ? "Сейчас безопасны только ближние клетки у стоянки."
+          : `Сейчас безопасны выходы до дистанции ${condition.maxSafeDistance}.`
+      : "";
+
+    return {
+      title: this.characterTitle,
+      role: this.characterRole,
+      energy: {
+        current: this.energy,
+        max: this.maxEnergy,
+        pct: this.maxEnergy > 0 ? this.energy / this.maxEnergy : 0,
+      },
+      satiety: {
+        current: this.satiety,
+        max: this.maxSatiety,
+        baseMax: this.baseSatietyMax,
+        maxBonus: this.satietyMaxBonus || 0,
+        pct: this.maxSatiety > 0 ? this.satiety / this.maxSatiety : 0,
+        recoveryPerTick: this._getSatietyRecoveryPerTick(),
+      },
+      carry: {
+        capacity: this.getCharacterCarryCapacity(),
+        baseCapacity: this.baseCarryCapacity,
+        capacityBonus: this.carryCapacityBonus || 0,
+      },
+      condition,
+      regen: {
+        perTick: this.energyRegenPerTick,
+        remainingMs: this.getEnergyRegenRemaining(),
+        intervalMs: regenIntervalMs,
+      },
+      stats: {
+        enduranceBonus: this.enduranceBonus || 0,
+        fieldcraft,
+        recoveryRating,
+        safeDistance: condition.maxSafeDistance,
+      },
+      recovery,
+      restProfile,
+      restrictionText,
+      tripProfile,
+      tripType,
+      knowledge: {
+        insightsUnlocked: this.getUnlockedInsightsCount(),
+        techResearched: Object.keys(this.researched).length,
+      },
+    };
+  }
+
   regenEnergy() {
     const now = Date.now();
-    if (now - this.lastEnergyRegen < this.energyRegenInterval) return;
+    const currentInterval = this.getCurrentEnergyRegenInterval();
+    if (now - this.lastEnergyRegen < currentInterval) return;
 
     const before = this.energy;
+    const satietyBefore = this.satiety;
     this.energy = Math.min(
       this.energy + this.energyRegenPerTick,
       this.maxEnergy,
     );
+    this.satiety = this._clampSatiety(
+      this.satiety + this._getSatietyRecoveryPerTick(),
+    );
     this.lastEnergyRegen = now;
+    this._syncCharacterConditionState();
 
     if (this.energy !== before && !this.isPrologueActive()) {
       this.addLog(`⚡ +${this.energy - before} энергии`);
       this.markDirty();
-    } else if (this.energy !== before) {
+    } else if (this.energy !== before || this.satiety !== satietyBefore) {
       this.markDirty();
     }
   }
@@ -1796,6 +4037,14 @@ class GameState {
       regenBonusMs += energyEffect.regenIntervalBonusMs || 0;
     }
 
+    for (const upgradeId of this.localCampMap?.appliedUpgrades || []) {
+      const energyEffect =
+        this.data.buildingUpgrades?.[upgradeId]?.effect?.energy;
+      if (!energyEffect) continue;
+      maxBonus += energyEffect.maxBonus || 0;
+      regenBonusMs += energyEffect.regenIntervalBonusMs || 0;
+    }
+
     this.energyMaxBonus = maxBonus;
     this.energyRegenIntervalBonusMs = regenBonusMs;
     this.maxEnergy = this.baseEnergyMax + maxBonus;
@@ -1811,13 +4060,13 @@ class GameState {
       maxBonus: this.energyMaxBonus,
       regenIntervalBonusMs: this.energyRegenIntervalBonusMs,
       maxEnergy: this.maxEnergy,
-      regenIntervalMs: this.energyRegenInterval,
+      regenIntervalMs: this.getCurrentEnergyRegenInterval(),
     };
   }
 
   getEnergyRegenRemaining() {
     const elapsed = Date.now() - this.lastEnergyRegen;
-    return Math.max(0, this.energyRegenInterval - elapsed);
+    return Math.max(0, this.getCurrentEnergyRegenInterval() - elapsed);
   }
 
   canGather(actionId, options = {}) {
@@ -1825,44 +4074,60 @@ class GameState {
     if (!action) return false;
     if (this.isPrologueActive()) {
       const allowedIds = this.data.prologue?.gatherActionIds || [];
-      if (!allowedIds.includes(actionId) || action.hiddenInPrologue) return false;
+      if (!allowedIds.includes(actionId) || action.hiddenInPrologue)
+        return false;
     }
     if (action.unlockedBy && !this.researched[action.unlockedBy]) return false;
     if (this.cooldowns[actionId] && Date.now() < this.cooldowns[actionId])
       return false;
-    if (!this.hasEnergy(action.energyCost)) return false;
+    const profile = this.getGatherProfile(actionId, options);
+    if (!profile) return false;
     const mappedTiles = this._getMappedCampTilesForAction(actionId);
+    if (mappedTiles.length > 0 && !profile.tile) return false;
+    if (profile.blockedReason) return false;
     if (
-      mappedTiles.length > 0 &&
-      !this._getPreferredCampGatherTile(actionId, options.tileId)
+      Object.values(profile.output).reduce((sum, amount) => sum + amount, 0) <=
+      0
     ) {
       return false;
     }
+    if (!this.hasEnergy(profile.energyCost)) return false;
     return true;
   }
 
   gather(actionId, options = {}) {
-    const mappedTile = this._getPreferredCampGatherTile(actionId, options.tileId);
+    const profile = this.getGatherProfile(actionId, options);
+    const mappedTile =
+      profile?.tile ||
+      this._getPreferredCampGatherTile(actionId, options.tileId);
     if (!this.canGather(actionId, options)) return false;
 
     const action = this.data.gatherActions[actionId];
-    if (!this.spendEnergy(action.energyCost)) return false;
+    if (!this.spendEnergy(profile.energyCost)) return false;
+    this._drainSatiety(this._getSatietyDrainForGather(profile));
+    this._syncCharacterConditionState();
 
-    const output = this.getGatherOutput(actionId);
+    const output = profile.output;
     for (const [id, amount] of Object.entries(output)) {
       this.addResource(id, amount);
     }
     if (mappedTile) {
-      this._markCampTileExploited(mappedTile.id);
+      this._markCampTileDeveloped(mappedTile.id);
       if (
         Number.isFinite(this.localCampMap.tileResourceRemaining[mappedTile.id])
       ) {
         const before = this.localCampMap.tileResourceRemaining[mappedTile.id];
+        const gatheredAmount = mappedTile.resourceType
+          ? output[mappedTile.resourceType] || 0
+          : Object.values(output).reduce((sum, amount) => sum + amount, 0);
         this.localCampMap.tileResourceRemaining[mappedTile.id] = Math.max(
           0,
-          before - 1,
+          before - gatheredAmount,
         );
-        if (before > 0 && this.localCampMap.tileResourceRemaining[mappedTile.id] === 0) {
+        if (
+          before > 0 &&
+          this.localCampMap.tileResourceRemaining[mappedTile.id] === 0
+        ) {
           this.addLog(`🗺️ Участок "${mappedTile.name}" истощён.`);
         }
       }
@@ -1875,7 +4140,7 @@ class GameState {
       this.addLog(
         `+${Object.entries(output)
           .map(([id, amount]) => `${this.data.resources[id].icon}${amount}`)
-          .join(" ")} (⚡-${action.energyCost})`,
+          .join(" ")} (⚡-${profile.energyCost})`,
       );
     }
 
@@ -1907,18 +4172,7 @@ class GameState {
   }
 
   getGatherOutput(actionId) {
-    const action = this.data.gatherActions[actionId];
-    if (!action) return {};
-
-    const output = { ...action.output };
-    const bonus = this._getGatherBonus();
-    if (bonus > 0) {
-      for (const [id, amount] of Object.entries(output)) {
-        output[id] = amount + bonus;
-      }
-    }
-
-    return output;
+    return this.getGatherProfile(actionId)?.output || {};
   }
 
   canCraft(recipeId) {
@@ -1926,7 +4180,8 @@ class GameState {
     if (!recipe) return false;
     if (this.isPrologueActive()) {
       const allowedIds = this.data.prologue?.recipeIds || [];
-      if (!allowedIds.includes(recipeId) || recipe.hiddenInPrologue) return false;
+      if (!allowedIds.includes(recipeId) || recipe.hiddenInPrologue)
+        return false;
       const requiredInsights = recipe.requiresInsights || [];
       if (requiredInsights.some((id) => !this.insights[id])) return false;
     }
@@ -2082,7 +4337,7 @@ class GameState {
     if (!building) return false;
     if (this.activeConstruction) return false;
     if (this.isPrologueActive()) {
-      const allowedIds = this.data.prologue?.buildingIds || [];
+      const allowedIds = this.getVisibleBuildingIds();
       if (!allowedIds.includes(buildingId) || building.hiddenInPrologue)
         return false;
       const requiredInsights = building.requiresInsights || [];
@@ -2098,9 +4353,10 @@ class GameState {
       return false;
     if (building.requires && !this.buildings[building.requires]) return false;
     if (this.buildings[buildingId]) return false;
-    const hasMappedSite = Object.values(this.data.localCampMap?.tiles || {}).some(
+    const hasMappedSite = this._getCampMapTileList().some(
       (tile) =>
-        Array.isArray(tile.buildOptions) && tile.buildOptions.includes(buildingId),
+        Array.isArray(tile.buildOptions) &&
+        tile.buildOptions.includes(buildingId),
     );
     if (
       hasMappedSite &&
@@ -2108,6 +4364,10 @@ class GameState {
     ) {
       return false;
     }
+    const buildProfile = this.getBuildProfile(buildingId);
+    if (!buildProfile) return false;
+    if (buildProfile.blockedReason) return false;
+    if (!this.hasEnergy(buildProfile.energyCost)) return false;
     return this.hasResources(this.getBuildingCost(buildingId));
   }
 
@@ -2117,12 +4377,15 @@ class GameState {
     const building = this.data.buildings[buildingId];
     const cost = this.getBuildingCost(buildingId);
     if (!this.spendResources(cost)) return false;
-    const tileId = this._getPreferredCampBuildTile(
-      buildingId,
-      this.getSelectedCampTileId(),
-    );
+    const buildProfile = this.getBuildProfile(buildingId);
+    const tileId =
+      buildProfile?.tileId ||
+      this._getPreferredCampBuildTile(buildingId, this.getSelectedCampTileId());
+    if (!this.spendEnergy(buildProfile.energyCost)) return false;
 
     const durationMs = this.getBuildDuration(buildingId);
+    this._drainSatiety(this._getSatietyDrainForBuild(buildProfile));
+    this._syncCharacterConditionState();
     this.activeConstruction = {
       buildingId,
       tileId,
@@ -2133,12 +4396,12 @@ class GameState {
     this.addLog(
       this.isPrologueActive()
         ? this._getPrologueBuildStartLog(buildingId) ||
-            `🏗️ Начато строительство: ${building.icon} ${building.name} (${Math.ceil(durationMs / 1000)}с)`
-        : `🏗️ Начато строительство: ${building.icon} ${building.name} (${Math.ceil(durationMs / 1000)}с)`,
+            `🏗️ Начато строительство: ${building.icon} ${building.name} (${Math.ceil(durationMs / 1000)}с, ⚡-${buildProfile.energyCost})`
+        : `🏗️ Начато строительство: ${building.icon} ${building.name} (${Math.ceil(durationMs / 1000)}с, ⚡-${buildProfile.energyCost})`,
     );
     if (tileId) {
       this.localCampMap.buildingPlacements[buildingId] = tileId;
-      this._markCampTileExploited(tileId);
+      this._markCampTileDeveloped(tileId);
     }
     this.markDirty();
     this.saveGame(true);
@@ -2157,7 +4420,7 @@ class GameState {
     };
     if (current.tileId) {
       this.localCampMap.buildingPlacements[current.buildingId] = current.tileId;
-      this._setCampTileState(current.tileId, "settled");
+      this._setCampTileState(current.tileId, "developed");
     }
     if (building.effect?.automation) {
       this.automation[building.effect.automation.id] = {
@@ -2167,6 +4430,16 @@ class GameState {
     }
 
     this._recalculateDerivedState();
+    if (current.buildingId === "rest_tent" && this.isPrologueActive()) {
+      this._pushStoryEvent({
+        type: "prologue",
+        icon: "⛺",
+        title: "Появилось первое жильё",
+        text:
+          "Палатка уже держит ветер и сырость. Стоянка стала местом, где можно не просто дожидаться утра, а оставаться дольше одного случайного вечера.",
+        ttlMs: 8000,
+      });
+    }
     if (current.buildingId === "campfire") {
       this._unlockKnowledgeEntry("campfire_center");
       this._pushStoryEvent({
@@ -2283,7 +4556,8 @@ class GameState {
     if (!entry || !auto || entry.lastRun === 0) return 0;
     return Math.max(
       0,
-      (this.getEffectiveAutomationInterval(auto) - (Date.now() - entry.lastRun)) /
+      (this.getEffectiveAutomationInterval(auto) -
+        (Date.now() - entry.lastRun)) /
         1000,
     );
   }
@@ -2557,7 +4831,9 @@ class GameState {
       requiredTechIds,
       missingTechIds: requiredTechIds.filter((id) => !this.researched[id]),
       requiredBuildingIds,
-      missingBuildingIds: requiredBuildingIds.filter((id) => !this.buildings[id]),
+      missingBuildingIds: requiredBuildingIds.filter(
+        (id) => !this.buildings[id],
+      ),
     };
   }
 
@@ -2585,7 +4861,9 @@ class GameState {
         const techs = Object.values(this.data.tech)
           .filter((tech) => tech.branch === branchId)
           .sort((a, b) => (a.order || 0) - (b.order || 0));
-        const completed = techs.filter((tech) => this.researched[tech.id]).length;
+        const completed = techs.filter(
+          (tech) => this.researched[tech.id],
+        ).length;
 
         return {
           ...branch,
@@ -2696,7 +4974,9 @@ class GameState {
       this.addResource(id, amount);
     }
     const tech = this.data.tech[queued.techId];
-    this.addLog(`↩️ Убрано из очереди: ${tech?.icon || ""} ${tech?.name || queued.techId}`);
+    this.addLog(
+      `↩️ Убрано из очереди: ${tech?.icon || ""} ${tech?.name || queued.techId}`,
+    );
     this.markDirty();
     return true;
   }
@@ -2708,7 +4988,9 @@ class GameState {
     for (const [id, amount] of Object.entries(cost)) {
       this.addResource(id, Math.floor(amount * 0.5));
     }
-    this.addLog(`❌ Исследование отменено: ${tech?.icon || ""} ${tech?.name || ""} (возвращено 50% ресурсов)`);
+    this.addLog(
+      `❌ Исследование отменено: ${tech?.icon || ""} ${tech?.name || ""} (возвращено 50% ресурсов)`,
+    );
     this.activeResearch = null;
     this.markDirty();
     this.saveGame(true);
@@ -2731,10 +5013,16 @@ class GameState {
     if (this.researchQueue.length > 0) {
       const next = this.researchQueue.shift();
       const durationMs = this.getResearchDuration(next.techId);
-      this.activeResearch = { techId: next.techId, durationMs, startedAt: Date.now() };
+      this.activeResearch = {
+        techId: next.techId,
+        durationMs,
+        startedAt: Date.now(),
+      };
       const nextTech = this.data.tech[next.techId];
       if (nextTech) {
-        this.addLog(`🔬 Начато (из очереди): ${nextTech.icon} ${nextTech.name} (${Math.ceil(durationMs / 1000)}с)`);
+        this.addLog(
+          `🔬 Начато (из очереди): ${nextTech.icon} ${nextTech.name} (${Math.ceil(durationMs / 1000)}с)`,
+        );
       }
     }
 

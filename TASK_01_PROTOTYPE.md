@@ -58,13 +58,17 @@ No fancy art required.
 
 ## Required architecture
 
-Use simple, maintainable structure.
-Suggested:
+Use a simple browser-only structure.
 
-- `src/game/` for logic/data
-- `src/components/` for UI
-- `src/data/` for resources/recipes/buildings/research
-- `src/App.tsx` as shell
+Suggested current layout:
+
+- `web/prototype/data/game-data.js` for resources, recipes, buildings, research
+- `web/prototype/game-state.js` for logic and progression
+- `web/prototype/ui.js` for DOM rendering and input wiring
+- `web/prototype/app.js` for the main loop and bootstrapping
+- `web/prototype/style.css` for layout and visual rules
+
+Do not add Python, Pygame, or backend scaffolding to this prototype.
 
 ## Required implementation approach
 
@@ -96,3 +100,4 @@ Do not add:
 - combat
 - animations beyond tiny UI feedback
 - premature optimization
+- Python or Pygame runtime

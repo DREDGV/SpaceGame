@@ -1,13 +1,103 @@
 // Game data definitions — Primitive Stage (Core Loop v4: Onboarding)
 
 const GAME_DATA = {
+  // ─── Camp founding intro (shown over the map before chooseCamp) ───
+  campFoundingIntro: {
+    skipLabel: "Пропустить вступление",
+    steps: [
+      {
+        id: "arrival",
+        icon: "🚶",
+        title: "Ты пришёл сюда один.",
+        text: "Зима была долгой. За спиной — пустая тропа, впереди — холмы, где ветер ещё гуляет над камнем. Здесь можно остановиться.",
+        cta: "▶ Нажмите, чтобы осмотреться",
+        advanceMode: "click",
+        autoAdvanceMs: 9000,
+      },
+      {
+        id: "survey",
+        icon: "👁️",
+        title: "Три места зовут остановиться.",
+        text: "Светящиеся участки — это то, что ты успел разглядеть. Наведись на каждый, чтобы понять, каким будет лагерь.",
+        cta: "Наведись на любое из светящихся мест",
+        advanceMode: "hover-candidate",
+        autoAdvanceMs: 12000,
+      },
+      {
+        id: "choose",
+        icon: "🏕️",
+        title: "Выбери место для лагеря.",
+        text: "От выбора зависит, с какой стороны ты начнёшь открывать карту. Нажми на понравившийся участок и подтверди выбор.",
+        cta: "Выберите один из трёх светящихся участков",
+        advanceMode: "choose",
+      },
+    ],
+
+    // ─── Founding ritual: cost, quest, stories ───
+    cost: { wood: 4, stone: 3, fiber: 2 },
+    energyCost: 2,
+    questTitle: "🏕️ Подготовка к основанию лагеря",
+    questIntro:
+      "Пустое место не становится лагерем само. Соберите опору — дерево, камень, волокно — и присмотритесь к подходящим участкам.",
+    questReadyText: "Всё готово. Выберите место и основайте лагерь.",
+    questSurveyThreshold: 2,
+    questSteps: [
+      {
+        id: "camp_quest_wood",
+        text: "Соберите 4 дерева для каркаса",
+        hint: "Каркас и щепа для круга — из сухих ветвей рядом со стоянкой.",
+        check: (game) => (game.resources.wood || 0) >= 4,
+      },
+      {
+        id: "camp_quest_stone",
+        text: "Соберите 3 камня для круга",
+        hint: "Камни лягут в круг, который удержит первый огонь.",
+        check: (game) => (game.resources.stone || 0) >= 3,
+      },
+      {
+        id: "camp_quest_fiber",
+        text: "Соберите 2 волокна для связки",
+        hint: "Связка удержит каркас и опоры между собой.",
+        check: (game) => (game.resources.fiber || 0) >= 2,
+      },
+      {
+        id: "camp_quest_survey",
+        text: "Осмотрите не меньше двух подходящих мест",
+        hint: "Наведите взгляд на светящиеся участки, чтобы понять, каким будет ваш лагерь.",
+        check: (game) => game.getCampCandidatesSurveyedCount() >= 2,
+      },
+    ],
+    readyStory: {
+      icon: "🧺",
+      title: "Теперь есть чем обустроить место",
+      text: "Сухое дерево, крепкий камень и тугое волокно уже ждут в руках. Осталось выбрать землю, на которой огонь удержится.",
+      ttlMs: 6000,
+    },
+    ritualStory: {
+      icon: "🏕️",
+      title: "Круг на земле",
+      text: "Камни легли в круг, ветви встали по краю, связка стянула всё в одно. Отсюда и начинается лагерь.",
+      ttlMs: 6500,
+    },
+    enterStory: {
+      icon: "🚪",
+      title: "Шаг за порог",
+      text: "Лагерь перестал быть точкой на карте — изнутри у него появляется свой уклад.",
+      ttlMs: 5500,
+    },
+    confirmTitle: "Основать лагерь здесь?",
+    confirmConfirmLabel: "🏕️ Основать лагерь",
+    confirmCancelLabel: "Отмена",
+    enterPromptLabel: "🏕️ Войти в лагерь",
+  },
+
   // ─── Onboarding ───
   onboarding: {
     introLines: [
-      "Около 12 тысяч лет назад лёд уже отступал, но мир всё ещё оставался холодным, ветреным и ненадёжным. Люди часто жили короткими стоянками и берегли всё, что давало тепло, острый край и крепкую связку.",
-      "Пока ещё нет полей, постоянных домов и оформленных ремёсел. Есть только ветви, каменные сколы, волокна, сырой холод и первые попытки понять, как удержать порядок вокруг себя.",
-      "В начале нужно не добывать, а замечать: какие ветви суше, какой камень режет, какое волокно держит лучше, где ветер меньше гасит огонь.",
-      "Лишь после грубого орудия и первого костра жизнь перестаёт быть набором случайных находок. Тогда и начинается более привычная primitive-эпоха.",
+      "Двенадцать тысяч лет назад лёд ещё не успел забыть землю. Он отступал медленно — оставляя за собой мокрые долины, голые холмы и тишину, в которой не было ни слов, ни имён.",
+      "Где-то в этой тишине — человек. Без дома. Без записей. Без уверенности, что завтра будет легче, чем сегодня. В его руках — несколько веток, выбранных не наугад: чуть суше, чуть прямее других. Это всё, что сейчас отделяет его от ночного холода.",
+      "Всё великое, что придёт после — поля, города, корабли, книги — начнётся не с откровения и не с приказа. С того, как один человек замечает: этот камень режет лучше, чем другой. Это волокно держит крепче. Эта ветка не сломается.",
+      "Ты не знаешь ещё, куда ведёт этот путь. Никто не знал. Но первый шаг — всегда один и тот же: поднять голову, осмотреться и сделать то, что можно сделать прямо сейчас.",
     ],
 
     steps: [
@@ -60,6 +150,14 @@ const GAME_DATA = {
         check: (game) => (game.resourceTotals.crude_tools || 0) >= 1,
       },
       {
+        id: "prologue_build_shelter",
+        text: "Поставьте первое жильё",
+        hint: "Лагерь должен сначала стать пригодным для жизни. Поставьте простую палатку, чтобы у стоянки появилась защита от ветра и место для сна.",
+        sceneText:
+          "До очага стоянке нужна хотя бы одна вещь, которая делает её не случайной ночёвкой, а местом, где можно задержаться.",
+        check: (game) => !!game.buildings.rest_tent,
+      },
+      {
         id: "prologue_prepare_fire_stock",
         text: "Подготовьте запас для первого костра",
         hint: "Чтобы огонь не умер сразу, нужно заранее собрать достаточно топлива, камня и связки для простого очага.",
@@ -83,8 +181,9 @@ const GAME_DATA = {
 
   prologue: {
     title: "На рубеже льда и леса",
+    eraLabel: "~ 10\u202f000 лет до нашей эры ~",
     subtitle:
-      "Около 12 тысяч лет назад: короткая стоянка, холодный воздух, голые руки и первые догадки.",
+      "Конец ледникового периода. Мир ещё холодный, безымянный — и только-только начинает становиться человеческим.",
     stepTitle: "Сейчас главное",
     stepSubtitle:
       "Первые минуты должны ощущаться как медленный и осторожный поиск опоры в мире, а не как готовая экономика.",
@@ -101,19 +200,24 @@ const GAME_DATA = {
       "Книга знаний хранит не энциклопедию, а короткие следы того, как люди ранних стоянок начинали понимать холодный мир вокруг себя.",
     campfireTitle: "Путь к первому костру",
     campfireText:
-      "Огонь — первая организованная точка жизни. Пока его нет, стоянка остаётся набором случайных находок, которые легко теряются в темноте и ветре.",
+      "Очаг не появляется сразу. Сначала стоянка должна стать жилым местом: появится укрытие, накопится запас и только потом огонь станет устойчивым центром жизни.",
     campfireBuiltText:
       "Огонь разгорелся. Теперь у общины есть место, вокруг которого можно сидеть ближе друг к другу, сушить сырьё и повторять одни и те же действия уже не вслепую.",
     transitionTitle: "Начинается более организованная жизнь",
     transitionText:
-      "Когда у общины появляется грубое орудие и первый удержанный костёр, случайные находки превращаются в более устойчивый уклад. С этого момента начинается уже знакомая primitive-эпоха.",
+      "Когда у общины появляются первое жильё, грубое орудие и удержанный костёр, случайные находки превращаются в более устойчивый уклад. С этого момента начинается уже знакомая primitive-эпоха.",
     postTransitionText:
-      "После первого костра жизнь перестаёт быть только хаотичным поиском. Появляются ремесло, более осмысленные исследования и решения, которые можно повторять от дня к дню.",
+      "После первого костра жизнь перестаёт быть только хаотичным поиском. У стоянки уже есть жильё, ритм и первые решения, которые можно повторять от дня к дню.",
     startKnowledgeEntryId: "after_ice",
-    gatherActionIds: ["gather_wood", "gather_stone", "gather_fiber"],
+    gatherActionIds: [
+      "gather_wood",
+      "gather_stone",
+      "gather_fiber",
+      "gather_supplies",
+    ],
     visibleResourceIds: ["wood", "stone", "fiber", "crude_tools"],
     recipeIds: ["craft_crude_tools"],
-    buildingIds: ["campfire"],
+    buildingIds: ["rest_tent", "campfire"],
     insights: {
       sharp_edge: {
         id: "sharp_edge",
@@ -355,25 +459,69 @@ const GAME_DATA = {
     },
   },
 
+  baseTerrains: {
+    grass: {
+      name: "Травы",
+      icon: "🌾",
+      description:
+        "Равнина, покрытая травой и редким кустарником. Можно найти волокна.",
+      terrainType: "grass",
+    },
+    brush: {
+      name: "Кустарник",
+      icon: "🌿",
+      description:
+        "Заросли кустарника и мелких деревьев. Источник веток и хвороста.",
+      terrainType: "brush",
+    },
+    rocks: {
+      name: "Камни",
+      icon: "🪨",
+      description:
+        "Каменистая почва с выходами породы. Можно подобрать подходящие сколы.",
+      terrainType: "rock",
+    },
+    water: {
+      name: "Вода",
+      icon: "💧",
+      description:
+        "Край ручья или небольшого озера. Пока просто часть местности.",
+      terrainType: "water",
+    },
+    clearing: {
+      name: "Поляна",
+      icon: "🌲",
+      description:
+        "Открытое место, подходящее для будущих построек или отдыха.",
+      terrainType: "clearing",
+    },
+  },
+
   localCampMap: {
     title: "Локальная карта лагеря",
     description:
       "Небольшая зона вокруг стоянки. Это не карта мира, а первое пространство, где лагерь рождается из случайных находок.",
     interactionHint:
-      "Клетки теперь различаются по насыщенности: одни богаче, другие быстро пустеют, а часть остаётся просто местностью под лагерь и будущие решения.",
+      "Клетки различаются по запасу, тяжести пути и наличию троп. Ближние выходы проще, а дальние стоит связывать с лагерем удобным проходом.",
     tiles: {
       camp_clearing: {
         id: "camp_clearing",
         q: 0,
         r: 0,
         distanceFromCamp: 0,
-        terrainType: "camp",
-        state: "discovered",
+        terrainType: "clearing",
+        state: "camp_candidate",
         icon: "◉",
-        name: "Стоянка",
+        name: "Открытая поляна",
+        shortLabel: "Поляна",
         description:
-          "Небольшая открытая площадка, где можно держать вещи при себе и где позже появится первый костёр.",
+          "Широкая, относительно ровная поляна в центре местности. Хорошее место для стоянки — открыто, но не слишком.",
+        campCandidateHint:
+          "Легко обозначить границы лагеря, удобный выход в разные стороны.",
+        campChosenStory:
+          "Ты выбрал простор: отсюда видно все стороны, и ветер приходит со всех сразу.",
         buildOptions: ["campfire"],
+        isCampCandidate: true,
       },
       branch_patch: {
         id: "branch_patch",
@@ -388,7 +536,7 @@ const GAME_DATA = {
           "Кустарник и сухой хворост рядом со стоянкой. Здесь проще всего начать поиск топлива и первых заготовок.",
         actionId: "gather_wood",
         resourceType: "wood",
-        resourceAmount: 9,
+        resourceAmount: 22,
       },
       stone_patch: {
         id: "stone_patch",
@@ -403,7 +551,7 @@ const GAME_DATA = {
           "Низкая россыпь у края стоянки. Здесь подбирают подходящие сколы и тяжёлые камни.",
         actionId: "gather_stone",
         resourceType: "stone",
-        resourceAmount: 6,
+        resourceAmount: 16,
       },
       fiber_patch: {
         id: "fiber_patch",
@@ -418,7 +566,7 @@ const GAME_DATA = {
           "Полоса жёсткой травы и волокон, из которых позже получится первая крепкая связка.",
         actionId: "gather_fiber",
         resourceType: "fiber",
-        resourceAmount: 5,
+        resourceAmount: 14,
       },
       windbreak: {
         id: "windbreak",
@@ -426,13 +574,32 @@ const GAME_DATA = {
         r: 0,
         distanceFromCamp: 1,
         terrainType: "grove",
-        state: "hidden",
+        state: "camp_candidate",
         icon: "🌲",
-        name: "Ветровая кромка",
+        name: "Лесная опушка",
+        shortLabel: "Опушка",
         description:
-          "Небольшой заслон из кустарника и молодых деревьев. Здесь стоянка ощущается менее открытой ветру.",
-        discoveryHint: "Откроется с первым озарением — когда вы что-то поймёте о местности.",
-        discoveryRequirements: (game) => game.getUnlockedInsightsCount() >= 1,
+          "Край кустарника и молодых деревьев. Естественный заслон от ветра — хорошее место для стоянки.",
+        campCandidateHint:
+          "Укрытие от ветра, но меньше простора. Ближний сбор дерева улучшается.",
+        campChosenStory:
+          "Ты ушёл под заслон веток: здесь тише и пахнет хвоёй, а огонь меньше треплет.",
+        buildOptions: ["campfire"],
+        isCampCandidate: true,
+      },
+      starter_cache: {
+        id: "starter_cache",
+        q: -2,
+        r: 0,
+        distanceFromCamp: 2,
+        terrainType: "clearing",
+        state: "discovered",
+        icon: "🧺",
+        name: "Брошенные припасы",
+        description:
+          "Небольшая груда оставленного снаряжения: сухие ветви, несколько камней и вязанка волокна. Этого должно хватить, чтобы разжечь первый огонь и основать лагерь.",
+        actionId: "gather_supplies",
+        resourceAmount: 10,
       },
       tinder_hollow: {
         id: "tinder_hollow",
@@ -447,8 +614,9 @@ const GAME_DATA = {
           "Неглубокая ложбина, где ветер меньше треплет траву и проще заметить сухой хворост для растопки.",
         actionId: "gather_wood",
         resourceType: "wood",
-        resourceAmount: 4,
-        discoveryHint: "Откроется с озарением о растопке или после двух наблюдений.",
+        resourceAmount: 8,
+        discoveryHint:
+          "Откроется с озарением о растопке или после двух наблюдений.",
         discoveryRequirements: (game) =>
           !!game.insights.dry_tinder || game.getUnlockedInsightsCount() >= 2,
       },
@@ -474,6 +642,25 @@ const GAME_DATA = {
         q: 0,
         r: -1,
         distanceFromCamp: 1,
+        terrainType: "ridge",
+        state: "camp_candidate",
+        icon: "🪨",
+        name: "Сухой откос",
+        shortLabel: "Откос",
+        description:
+          "Небольшой сухой откос с хорошим обзором. Возможно, здесь уже кто-то делал стоянку раньше.",
+        campCandidateHint:
+          "Хороший обзор, сухая почва. Ближний камень доступен с самого начала.",
+        campChosenStory:
+          "Ты поднялся на сухой гребень: дальше видно, но и сам ты виден дольше.",
+        buildOptions: ["campfire"],
+        isCampCandidate: true,
+      },
+      storage_site: {
+        id: "storage_site",
+        q: 2,
+        r: -1,
+        distanceFromCamp: 2,
         terrainType: "clearing",
         state: "hidden",
         icon: "🧺",
@@ -491,13 +678,13 @@ const GAME_DATA = {
         distanceFromCamp: 1,
         terrainType: "clearing",
         state: "hidden",
-        icon: "⛺",
+        icon: "🛖",
         name: "Место под укрытие",
         description:
-          "Небольшое ровное место, где уже можно думать не только об огне, но и о более устойчивом отдыхе.",
+          "Небольшое ровное место рядом с основанной стоянкой. Здесь можно поставить первое жильё ещё до того, как появится устойчивый очаг.",
         buildOptions: ["rest_tent"],
-        discoveryHint: "Откроется после постройки костра.",
-        discoveryRequirements: (game) => !!game.buildings.campfire,
+        discoveryHint: "Откроется после основания лагеря.",
+        discoveryRequirements: (game) => game.isCampSetupDone(),
       },
       workshop_site: {
         id: "workshop_site",
@@ -511,7 +698,8 @@ const GAME_DATA = {
         description:
           "Площадка рядом со стоянкой, где можно перейти от случайных связок к более повторяемому ремеслу.",
         buildOptions: ["workshop"],
-        discoveryHint: "Откроется после постройки костра или исследования разделения труда.",
+        discoveryHint:
+          "Откроется после постройки костра или исследования разделения труда.",
         discoveryRequirements: (game) =>
           !!game.buildings.campfire || !!game.researched.labor_division,
       },
@@ -542,15 +730,16 @@ const GAME_DATA = {
           "Камень здесь попадается реже, чем у россыпи рядом со стоянкой, зато иногда встречаются более крепкие и удобные куски.",
         actionId: "gather_stone",
         resourceType: "stone",
-        resourceAmount: 3,
-        discoveryHint: "Откроется после постройки костра или озарения об остром крае.",
+        resourceAmount: 8,
+        discoveryHint:
+          "Откроется после постройки костра или озарения об остром крае.",
         discoveryRequirements: (game) =>
           !!game.insights.sharp_edge || !!game.buildings.campfire,
       },
       old_fire_ring: {
         id: "old_fire_ring",
-        q: 2,
-        r: -1,
+        q: 0,
+        r: -2,
         distanceFromCamp: 2,
         terrainType: "lore",
         state: "hidden",
@@ -590,10 +779,49 @@ const GAME_DATA = {
         description:
           "Более защищённая точка для жаркой и долгой работы с огнём, когда лагерь уже умеет держать ремесленный ритм.",
         buildOptions: ["kiln"],
-        discoveryHint: "Откроется после постройки мастерской или исследования добычи.",
+        discoveryHint:
+          "Откроется после постройки мастерской или исследования добычи.",
         discoveryRequirements: (game) =>
           !!game.buildings.workshop || !!game.researched.mining,
       },
+    },
+  },
+
+  logistics: {
+    pathLevels: {
+      none: {
+        id: "none",
+        label: "Без тропы",
+        icon: "·",
+        routeRelief: 0,
+        terrainRelief: 0,
+        description:
+          "Путь к участку ещё не натоптан, поэтому каждый выход ощущается тяжелее.",
+      },
+      trail: {
+        id: "trail",
+        label: "Тропа",
+        icon: "⋯",
+        routeRelief: 1,
+        terrainRelief: 1,
+        description:
+          "Натоптанная тропа уменьшает тяжесть пути и делает выходы стабильнее.",
+      },
+    },
+    trailProject: {
+      id: "trail",
+      name: "Натоптать тропу",
+      icon: "🥾",
+      description:
+        "Простой путь от стоянки к участку. Он снижает затраты сил на перенос и делает дальние клетки полезнее.",
+      requiresCampfire: true,
+      baseCost: { wood: 2, fiber: 1 },
+      terrainExtraCosts: {
+        rock: { stone: 1 },
+        clay: { wood: 1 },
+        water: { wood: 1, fiber: 1 },
+      },
+      energyCost: 1,
     },
   },
 
@@ -714,11 +942,25 @@ const GAME_DATA = {
   resources: {
     wood: {
       name: "Дерево",
+      prologueName: "Ветки",
       icon: "🪵",
+      prologueIcon: `<svg class="branch-icon-svg" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" preserveAspectRatio="xMidYMid meet">
+        <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 46 C26 38, 35 28, 46 16" stroke="#8a5a2b" stroke-width="6" />
+          <path d="M28 36 L20 26" stroke="#8a5a2b" stroke-width="4.5" />
+          <path d="M36 28 L30 18" stroke="#8a5a2b" stroke-width="4.2" />
+          <path d="M42 22 L52 22" stroke="#8a5a2b" stroke-width="4" />
+          <path d="M16 46 L13 53" stroke="#6f451e" stroke-width="5" />
+          <ellipse cx="18" cy="25" rx="5.5" ry="3.6" fill="#7fb34d" stroke="#5d8d34" stroke-width="1.5" transform="rotate(-25 18 25)" />
+          <ellipse cx="31" cy="17" rx="5.2" ry="3.4" fill="#8cbc58" stroke="#5d8d34" stroke-width="1.5" transform="rotate(-38 31 17)" />
+          <ellipse cx="54" cy="22" rx="5.5" ry="3.6" fill="#8cbc58" stroke="#5d8d34" stroke-width="1.5" transform="rotate(10 54 22)" />
+        </g>
+      </svg>`,
       color: "#8B5A2B",
       description: "Базовое сырье для досок, топлива и строительства.",
       storageCategory: "raw",
       storageSize: 1,
+      carryWeight: 1,
     },
     stone: {
       name: "Камень",
@@ -727,6 +969,7 @@ const GAME_DATA = {
       description: "Твердое сырье для инструментов и строительных деталей.",
       storageCategory: "raw",
       storageSize: 1,
+      carryWeight: 1.4,
     },
     clay: {
       name: "Глина",
@@ -735,6 +978,7 @@ const GAME_DATA = {
       description: "Сырье для кирпича и ранней обжиговой цепочки.",
       storageCategory: "raw",
       storageSize: 1,
+      carryWeight: 2.2,
     },
     fiber: {
       name: "Волокно",
@@ -743,6 +987,7 @@ const GAME_DATA = {
       description: "Легкий материал для связок, веревок и улучшений.",
       storageCategory: "raw",
       storageSize: 1,
+      carryWeight: 0.5,
     },
     plank: {
       name: "Доски",
@@ -776,6 +1021,7 @@ const GAME_DATA = {
       description: "Обработанное дерево для зданий и более сложных рецептов.",
       storageCategory: "materials",
       storageSize: 1,
+      carryWeight: 1.3,
     },
     crude_tools: {
       name: "Простые инструменты",
@@ -785,6 +1031,7 @@ const GAME_DATA = {
         "Повышают ручной сбор и открывают первые производственные развилки.",
       storageCategory: "tools",
       storageSize: 1,
+      carryWeight: 1.7,
     },
     workshop_parts: {
       name: "Детали мастерской",
@@ -793,6 +1040,7 @@ const GAME_DATA = {
       description: "Переходный компонент для зданий и улучшенных инструментов.",
       storageCategory: "components",
       storageSize: 1,
+      carryWeight: 1.8,
     },
     improved_tools: {
       name: "Улучшенные инструменты",
@@ -801,6 +1049,7 @@ const GAME_DATA = {
       description: "Сильнее ускоряют ручной сбор, чем примитивные инструменты.",
       storageCategory: "tools",
       storageSize: 1,
+      carryWeight: 1.8,
     },
     brick: {
       name: "Кирпичи",
@@ -810,6 +1059,7 @@ const GAME_DATA = {
         "Материал для прогрессивных построек и дальнейшего развития.",
       storageCategory: "materials",
       storageSize: 1,
+      carryWeight: 2.4,
     },
   },
 
@@ -827,9 +1077,9 @@ const GAME_DATA = {
       id: "survival",
       label: "Выживание",
       icon: "⛺",
-      description:
-        "Энергия, отдых и устойчивый ритм ранней общины.",
-      leadsTo: "Ведёт к большей выносливости и стабильному темпу ручного труда.",
+      description: "Энергия, отдых и устойчивый ритм ранней общины.",
+      leadsTo:
+        "Ведёт к большей выносливости и стабильному темпу ручного труда.",
       order: 1,
     },
     craft: {
@@ -845,8 +1095,7 @@ const GAME_DATA = {
       id: "production",
       label: "Производство",
       icon: "🔥",
-      description:
-        "Управляемый обжиг и первые предсказуемые циклы выпуска.",
+      description: "Управляемый обжиг и первые предсказуемые циклы выпуска.",
       leadsTo: "Ведёт к печи и более надёжной автоматизации.",
       order: 3,
     },
@@ -921,6 +1170,63 @@ const GAME_DATA = {
     regenIntervalMs: 3000,
   },
 
+  character: {
+    title: "Ведущий стоянки",
+    role: "Один человек, через которого ранняя стоянка ощущает усталость, голод и тяжесть каждого выхода.",
+    satiety: {
+      max: 10,
+      gatherDrain: 0.35,
+      buildDrain: 0.45,
+      passiveRecoveryPerTick: 0.04,
+      campfireRecoveryPerTick: 0.18,
+      restTentRecoveryBonusPerTick: 0.08,
+    },
+    carry: {
+      baseCapacity: 5,
+      heavyThreshold: 0.85,
+    },
+    rest: {
+      cooldownMs: 14000,
+      baseEnergy: 1,
+      baseSatiety: 0.35,
+      campfireEnergyBonus: 1,
+      campfireSatietyBonus: 0.35,
+      shelterEnergyBonus: 1,
+      shelterSatietyBonus: 0.45,
+      storageSatietyBonus: 0.12,
+    },
+    conditions: {
+      stable: {
+        id: "stable",
+        label: "В порядке",
+        description: "Силы и сытость позволяют работать без явных штрафов.",
+        regenPenaltyMs: 0,
+        gatherOutputPenalty: 0,
+        gatherCostPenalty: 0,
+        maxSafeDistance: 99,
+      },
+      weakened: {
+        id: "weakened",
+        label: "Ослаблен",
+        description: "Низкие силы или голод делают выходы заметно тяжелее.",
+        regenPenaltyMs: 600,
+        gatherOutputPenalty: 0,
+        gatherCostPenalty: 1,
+        maxSafeDistance: 2,
+      },
+      exhausted: {
+        id: "exhausted",
+        label: "Истощён",
+        description:
+          "Персонаж тянет работу с трудом, медленнее восстанавливается и уносит меньше.",
+        regenPenaltyMs: 1400,
+        gatherOutputPenalty: 1,
+        gatherCostPenalty: 1,
+        maxSafeDistance: 1,
+      },
+    },
+  },
+
   // ─── Gathering ───
   gatherActions: {
     gather_wood: {
@@ -931,7 +1237,7 @@ const GAME_DATA = {
       icon: "🪓",
       output: { wood: 1 },
       energyCost: 1,
-      cooldown: 1000,
+      cooldown: 1600,
       unlockedBy: null,
       description: "Базовый сбор для всех ранних цепочек.",
       prologueDescription:
@@ -945,7 +1251,7 @@ const GAME_DATA = {
       icon: "⛏️",
       output: { stone: 1 },
       energyCost: 1,
-      cooldown: 1200,
+      cooldown: 1900,
       unlockedBy: null,
       description: "Нужен для инструментов и деталей мастерской.",
       prologueDescription:
@@ -957,7 +1263,7 @@ const GAME_DATA = {
       icon: "🤲",
       output: { clay: 1 },
       energyCost: 1,
-      cooldown: 1000,
+      cooldown: 1700,
       unlockedBy: null,
       description: "Запускает ветку кирпича и обжига.",
       hiddenInPrologue: true,
@@ -970,12 +1276,26 @@ const GAME_DATA = {
       icon: "🌾",
       output: { fiber: 1 },
       energyCost: 1,
-      cooldown: 800,
+      cooldown: 1500,
       unlockedBy: null,
       description:
         "Полезно для улучшений и построек, где нужен связующий материал.",
       prologueDescription:
         "Трава и волокна пригодятся для первых связок, когда община начнёт собирать материалы вместе.",
+    },
+    gather_supplies: {
+      id: "gather_supplies",
+      name: "Взять припасы",
+      icon: "🧺",
+      output: { wood: 2, stone: 2, fiber: 1 },
+      energyCost: 0,
+      cooldown: 2200,
+      unlockedBy: null,
+      mapOnly: true,
+      deliveryMode: "multi-trip",
+      description: "Из тайника сразу выходит дерево, камень и немного волокна.",
+      prologueDescription:
+        "Чьи-то брошенные припасы. В одной связке — ветки, камни и волокно. Этого хватит для первого костра.",
     },
   },
 
@@ -1060,10 +1380,14 @@ const GAME_DATA = {
       id: "storage",
       name: "Хранилище",
       icon: "🏚️",
-      description: "Увеличивает лимит ресурсов до 150",
+      description:
+        "Увеличивает лимит ресурсов до 150 и делает быт стоянки устойчивее.",
       cost: { wood: 8, fiber: 5, plank: 2 },
       buildTimeMs: 6000,
-      effect: { maxResourceCap: 150 },
+      effect: {
+        maxResourceCap: 150,
+        character: { recoveryBonusPerTick: 0.03, carryCapacityBonus: 1 },
+      },
       unlockedBy: null,
       hiddenInPrologue: true,
     },
@@ -1091,6 +1415,7 @@ const GAME_DATA = {
       unlockedBy: null,
       prologueDescription:
         "Тепло, свет и защита. Первый удержанный костёр превращает короткую стоянку в место, куда можно возвращаться не наугад.",
+      requires: "rest_tent",
       requiresInsights: [
         "sharp_edge",
         "sturdy_branch",
@@ -1115,15 +1440,24 @@ const GAME_DATA = {
     rest_tent: {
       id: "rest_tent",
       name: "Палатка отдыха",
+      prologueName: "Первое жильё",
       icon: "⛺",
-      description: "Повышает запас энергии и ускоряет восстановление",
+      description:
+        "Повышает запас энергии, запас сытости и ускоряет восстановление.",
+      prologueDescription:
+        "Первая палатка делает стоянку жилой: в ней можно укрыться от ветра, переждать сырость и впервые отдыхать не прямо на голой земле.",
       cost: { wood: 4, plank: 2, fiber: 4 },
+      prologueCost: { wood: 5, fiber: 4 },
       buildTimeMs: 7000,
       effect: {
         energy: { maxBonus: 3, regenIntervalBonusMs: 1500 },
+        character: {
+          maxSatietyBonus: 2,
+          enduranceBonus: 1,
+          recoveryRatingBonus: 1,
+        },
       },
-      unlockedBy: "rest_discipline",
-      hiddenInPrologue: true,
+      unlockedBy: null,
     },
     kiln: {
       id: "kiln",
@@ -1136,6 +1470,60 @@ const GAME_DATA = {
       unlockedBy: "mining",
       requires: "workshop",
       hiddenInPrologue: true,
+    },
+  },
+
+  // ─── Building upgrades ───────────────────────────────────────────────────
+  // Each upgrade is tied to a specific already-built building and improves it.
+  // Fields: id, name, icon, targetBuilding, description, cost, energyCost,
+  //         effect (same shape as building.effect), unlockedBy (tech id or null)
+  buildingUpgrades: {
+    campfire_stone_hearth: {
+      id: "campfire_stone_hearth",
+      name: "Каменный очаг",
+      icon: "🪨🔥",
+      targetBuilding: "campfire",
+      description:
+        "Обложить кострище камнями и обмазать глиной. Жар держится дольше — обжиг кирпича идёт на 30% быстрее.",
+      cost: { stone: 8, clay: 4 },
+      energyCost: 2,
+      effect: {
+        automation: {
+          targetId: "campfire_brick",
+          intervalMultiplier: 0.7,
+        },
+      },
+      unlockedBy: "mining",
+    },
+    storage_reinforced: {
+      id: "storage_reinforced",
+      name: "Укреплённое хранилище",
+      icon: "🏚️⬆️",
+      targetBuilding: "storage",
+      description:
+        "Дополнительные полки и крепкие стены. Хранилище вмещает вдвое больше — лимит ресурсов вырастает до 250.",
+      cost: { plank: 4, stone: 6, workshop_parts: 1 },
+      energyCost: 2,
+      effect: {
+        maxResourceCap: 250,
+        character: { carryCapacityBonus: 1 },
+      },
+      unlockedBy: "labor_division",
+    },
+    rest_tent_shelter: {
+      id: "rest_tent_shelter",
+      name: "Укреплённая палатка",
+      icon: "⛺⬆️",
+      targetBuilding: "rest_tent",
+      description:
+        "Камень вместо кольев, глиняная обмазка от ветра. Запас энергии увеличивается ещё на 2, восстановление становится немного быстрее.",
+      cost: { stone: 5, clay: 3, plank: 2 },
+      energyCost: 2,
+      effect: {
+        energy: { maxBonus: 2, regenIntervalBonusMs: 1000 },
+        character: { enduranceBonus: 1, recoveryRatingBonus: 1 },
+      },
+      unlockedBy: "rest_discipline",
     },
   },
 
@@ -1169,11 +1557,12 @@ const GAME_DATA = {
         "Община осваивает простые, но надёжные орудия. Каждый ручной выход начинает приносить больше пользы.",
       cost: { crude_tools: 2 },
       researchTimeMs: 8000,
-      effect: { gatherBonus: 1 },
+      effect: { gatherBonus: 1, character: { fieldcraftBonus: 1 } },
       requires: null,
       requiresTech: ["communal_memory"],
       outcomes: [
         "Ручной сбор: +1 к каждому действию",
+        "Первые вылазки чуть легче переносят путь и тяжёлую почву",
         "Открывает путь к ремесленной практике",
       ],
     },
@@ -1208,10 +1597,7 @@ const GAME_DATA = {
       effect: { buildTimeMultiplier: 0.85 },
       requires: null,
       requiresTech: ["communal_memory"],
-      outcomes: [
-        "Открывает мастерскую",
-        "Строительство идёт быстрее",
-      ],
+      outcomes: ["Открывает мастерскую", "Строительство идёт быстрее"],
     },
     rest_discipline: {
       id: "rest_discipline",
@@ -1225,13 +1611,16 @@ const GAME_DATA = {
       researchTimeMs: 9000,
       effect: {
         energy: { maxBonus: 1, regenIntervalBonusMs: 500 },
+        character: { recoveryBonusPerTick: 0.03, recoveryRatingBonus: 1 },
       },
       requires: "campfire",
       requiresTech: ["communal_memory"],
       outcomes: [
         "Запас энергии +1",
         "Восстановление энергии ускоряется",
-        "Открывает палатку отдыха",
+        "Короткая передышка у лагеря становится заметно полезнее",
+        "Бытовой распорядок чуть улучшает восстановление сытости",
+        "Открывает укрепление палатки",
       ],
     },
     mining: {
@@ -1247,16 +1636,48 @@ const GAME_DATA = {
       effect: { automationIntervalMultiplier: 0.8 },
       requires: "campfire",
       requiresTech: ["communal_memory"],
-      outcomes: [
-        "Ускоряет автоматический обжиг",
-        "Открывает печь для обжига",
-      ],
+      outcomes: ["Ускоряет автоматический обжиг", "Открывает печь для обжига"],
     },
   },
 };
 
 // ─── Changelog data ─────────────────────────────────────────────────────────
 const CHANGELOG_DATA = [
+  {
+    version: "v0.1.15",
+    date: "2026-04-19",
+    title: "Логистика сбора: полный цикл туда/сбор/обратно, задержка тултипов",
+    changes: [
+      {
+        type: "added",
+        text: "Полный цикл логистики сбора: персонаж идёт к участку, собирает и возвращается в лагерь",
+      },
+      {
+        type: "added",
+        text: "Три визуальные фазы на карте — жёлтая линия туда, зелёный маркер при сборе, синяя линия обратно",
+      },
+      {
+        type: "added",
+        text: "Блокировка повторного сбора пока персонаж занят на другом участке",
+      },
+      {
+        type: "improved",
+        text: "Коэффициенты времени пути привязаны к состоянию персонажа, местности, дистанции, нагрузке и тропе",
+      },
+      {
+        type: "improved",
+        text: "Задержка 480 мс на всплывающие подсказки над тайлами — устранено перекрытие обзора карты",
+      },
+      {
+        type: "fixed",
+        text: "Баг: getCharacterCondition() возвращает объект — Number(obj)=NaN блокировал весь сбор",
+      },
+      {
+        type: "fixed",
+        text: "Ссылка на несуществующее this.game.builtBuildings заменена на this.game.buildings",
+      },
+    ],
+  },
   {
     version: "v0.1.14",
     date: "2026-04-17",

@@ -48,12 +48,6 @@ body {
   flex-shrink: 0;
 }
 
-.header-top > .panel-energy {
-  flex: 1 1 auto;
-  min-width: 200px;
-  max-width: 420px;
-}
-
 .header-actions {
   display: flex;
   align-items: center;
@@ -69,7 +63,14 @@ body {
 }
 
 .panel-compact {
-  padding: 0.6rem 0.75rem;
+  padding: 0.7rem 0.85rem;
+}
+
+#game-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
 }
 
 /* Game layout: sidebar + main */
@@ -251,6 +252,18 @@ body {
   margin: 0;
 }
 
+.camp-map-pre-camp-hint {
+  font-size: 0.83rem;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  border-radius: 8px;
+  padding: 0.45rem 0.75rem;
+  animation: campCandidatePulse 2s ease-in-out infinite;
+  white-space: nowrap;
+  align-self: center;
+}
+
 .camp-map-description {
   margin-top: 0.3rem;
   color: #9ca3af;
@@ -295,13 +308,13 @@ body {
   border-radius: 16px;
   border: 1px solid #2f3546;
   background:
-    radial-gradient(circle at 30% 20%, rgba(96, 165, 250, 0.08), transparent 28%),
-    radial-gradient(circle at 70% 75%, rgba(34, 197, 94, 0.07), transparent 30%),
-    linear-gradient(180deg, #141923, #0f131a);
+    radial-gradient(circle at 50% 50%, rgba(96, 165, 250, 0.05), transparent 55%),
+    linear-gradient(180deg, #0c0f16, #06080c);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
   overflow: hidden;
-  height: 420px;
-  cursor: grab;
+  height: 460px;
+  cursor: default;
+  -webkit-user-select: none;
   user-select: none;
 }
 
@@ -309,11 +322,32 @@ body {
   cursor: grabbing;
 }
 
-.camp-map-canvas {
+.camp-map-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.camp-map-svg:focus,
+.camp-map-svg *:focus,
+.camp-map-svg *:focus-visible {
+  outline: none;
+}
+
+.camp-map-tooltip {
   position: absolute;
-  top: 0;
-  left: 0;
-  will-change: transform;
+  z-index: 50;
+  max-width: 220px;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid #3a3d47;
+  border-radius: 6px;
+  background: rgba(15, 17, 23, 0.98);
+  color: #d1d5db;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  white-space: pre-line;
+  pointer-events: none;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35);
 }
 
 .camp-map-legend {
@@ -323,266 +357,262 @@ body {
   line-height: 1.45;
 }
 
-.camp-tile {
-  position: absolute;
-  padding: 0;
-  border: none;
-  background: #2e3a52;
-  clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition:
-    transform 0.16s ease,
-    filter 0.16s ease;
+/* SVG camp map tiles */
+
+/* Base polygon: default = hidden fog colour */
+.camp-tile polygon {
+  fill: #253048;
+  stroke: rgba(0, 0, 0, 0.5);
+  stroke-width: 0.5;
+  transition: fill 0.14s ease, opacity 0.14s ease;
 }
 
-.camp-tile:hover {
-  transform: scale(1.04);
-  z-index: 2;
+/* Tile icon text */
+.camp-tile .tile-icon {
+  font-family: 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif;
+  font-size: 22px;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+  fill: #f0f4f8;
 }
 
-.camp-tile-inner {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  gap: 0.15rem;
-  padding: 0.35rem 0.3rem;
-  text-align: center;
+.camp-tile:focus,
+.camp-tile:focus-visible {
+  outline: none;
 }
 
-.camp-tile-stock {
-  position: absolute;
-  top: 14%;
-  right: 22%;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 0.3rem;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.66rem;
+.camp-tile.is-hidden .tile-icon {
+  visibility: hidden;
+}
+
+/* Resource stock badge */
+.camp-tile .tile-stock {
+  font-size: 11px;
   font-weight: 800;
-  color: #f8fafc;
-  background: rgba(15, 23, 42, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
+  font-family: system-ui, sans-serif;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+  fill: rgba(248, 250, 252, 0.92);
+}
+
+.camp-tile .tile-stock.is-depleted {
+  fill: #fca5a5;
+}
+
+.camp-tile .tile-path-mark {
+  fill: none;
+  stroke: rgba(232, 199, 121, 0.78);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 2 5;
   pointer-events: none;
 }
 
-.camp-tile-stock.is-empty {
-  color: #fca5a5;
-  background: rgba(71, 20, 20, 0.78);
-  border-color: rgba(248, 113, 113, 0.22);
-}
-
-.camp-tile-icon {
-  font-size: 1.05rem;
-  line-height: 1;
-}
-
-.camp-tile-name {
-  font-size: 0.6rem;
-  font-weight: 700;
-  color: #f8fafc;
-  line-height: 1.15;
-}
-
-.camp-tile-state {
-  font-size: 0.52rem;
-  color: #cbd5e1;
-  line-height: 1.1;
-}
-
-.camp-tile.is-hidden {
-  opacity: 0.82;
-  filter: grayscale(0.25);
-}
-
-.camp-tile.is-hidden .camp-tile-inner {
-  background:
-    linear-gradient(180deg, rgba(60, 68, 90, 0.97), rgba(42, 48, 66, 0.98)) !important;
-}
-
-.camp-tile.is-discovered .camp-tile-inner {
-  background:
-    linear-gradient(180deg, rgba(70, 82, 105, 0.97), rgba(48, 56, 76, 0.98));
-}
-
-.camp-tile.is-exploited .camp-tile-inner {
-  background:
-    linear-gradient(180deg, rgba(52, 82, 46, 0.97), rgba(36, 56, 30, 0.98));
-  border-color: rgba(74, 222, 128, 0.22);
-}
-
-.camp-tile.is-depleted .camp-tile-inner {
-  background:
-    linear-gradient(180deg, rgba(82, 60, 54, 0.97), rgba(54, 38, 34, 0.98));
-  border-color: rgba(248, 113, 113, 0.2);
-}
-
-.camp-tile.is-settled .camp-tile-inner {
-  background:
-    linear-gradient(180deg, rgba(96, 68, 38, 0.97), rgba(64, 46, 24, 0.98));
-  border-color: rgba(251, 191, 36, 0.25);
-}
-
-.camp-tile.is-selected {
-  filter: brightness(1.08);
-}
-
-.camp-tile.is-selected .camp-tile-inner {
-  box-shadow:
-    0 0 0 2px rgba(167, 139, 250, 0.34),
-    0 8px 24px rgba(15, 23, 42, 0.28);
-}
-
-.camp-tile.terrain-brush .camp-tile-inner,
-.camp-tile.terrain-grove .camp-tile-inner,
-.camp-tile.terrain-grass .camp-tile-inner {
-  background:
-    linear-gradient(180deg, rgba(48, 80, 44, 0.97), rgba(32, 56, 28, 0.98));
-}
-
-.camp-tile.terrain-rock .camp-tile-inner,
-.camp-tile.terrain-clay .camp-tile-inner,
-.camp-tile.terrain-kiln .camp-tile-inner {
-  background:
-    linear-gradient(180deg, rgba(78, 66, 54, 0.97), rgba(56, 48, 38, 0.98));
-}
-
-.camp-tile.terrain-water .camp-tile-inner {
-  background:
-    linear-gradient(180deg, rgba(36, 72, 96, 0.97), rgba(22, 46, 64, 0.98));
-}
-
-.camp-tile.terrain-worksite .camp-tile-inner,
-.camp-tile.terrain-camp .camp-tile-inner,
-.camp-tile.terrain-clearing .camp-tile-inner {
-  background:
-    linear-gradient(180deg, rgba(80, 68, 50, 0.97), rgba(58, 48, 34, 0.98));
-}
-
-.camp-tile.terrain-lore .camp-tile-inner {
-  background:
-    linear-gradient(160deg, rgba(100, 76, 40, 0.97), rgba(68, 48, 26, 0.99));
-}
-
-.camp-tile.terrain-lore {
-  background: #4a3218;
-}
-
-/* Zone distance: outer rings get slightly cooler/darker */
-.camp-tile.zone-0 .camp-tile-inner {
-  filter: brightness(1.06) saturate(1.1);
-}
-.camp-tile.zone-2 .camp-tile-inner {
-  filter: brightness(0.88) saturate(0.85);
-}
-
-/* Resource richness visual */
-.camp-tile.res-rich .camp-tile-inner::after {
-  content: "";
-  position: absolute;
-  bottom: 12%;
-  left: 30%;
-  width: 40%;
-  height: 3px;
-  border-radius: 2px;
-  background: rgba(74, 222, 128, 0.55);
+.camp-map-travel-layer {
   pointer-events: none;
 }
 
-.camp-tile.res-sparse .camp-tile-inner::after {
-  content: "";
-  position: absolute;
-  bottom: 12%;
-  left: 30%;
-  width: 40%;
-  height: 3px;
-  border-radius: 2px;
-  background: rgba(248, 113, 113, 0.45);
+.camp-map-travel-route {
+  fill: none;
+  stroke: rgba(251, 191, 36, 0.95);
+  stroke-width: 3.2;
+  stroke-linecap: round;
+  stroke-dasharray: 7 8;
+  opacity: 0.95;
+  animation: campTravelDash 0.9s linear infinite;
+}
+
+.camp-map-travel-route.is-return {
+  stroke: rgba(96, 165, 250, 0.95);
+}
+
+.camp-map-travel-marker {
+  fill: rgba(15, 23, 42, 0.95);
+  stroke: rgba(251, 191, 36, 0.95);
+  stroke-width: 1.8;
+  filter: drop-shadow(0 0 8px rgba(251, 191, 36, 0.55));
+}
+
+.camp-map-travel-marker.is-gathering {
+  stroke: rgba(134, 239, 172, 0.95);
+  filter: drop-shadow(0 0 9px rgba(134, 239, 172, 0.6));
+}
+
+.camp-map-travel-icon {
+  font-family: 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif;
+  font-size: 12px;
+  text-anchor: middle;
+  dominant-baseline: central;
   pointer-events: none;
 }
 
-/* ── Filler hexes — look like hidden fog tiles ────────── */
-.camp-tile--filler {
+.camp-map-travel-timer {
+  font-family: system-ui, 'Segoe UI', sans-serif;
+  font-size: 10px;
+  font-weight: 800;
+  text-anchor: middle;
+  dominant-baseline: central;
+  fill: rgba(251, 191, 36, 0.98);
+  stroke: rgba(15, 23, 42, 0.9);
+  stroke-width: 2;
+  paint-order: stroke;
+}
+
+@keyframes campTravelDash {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -22;
+  }
+}
+
+.camp-tile.has-path-trail polygon {
+  stroke: rgba(232, 199, 121, 0.55);
+  stroke-width: 1.5;
+}
+
+/* State-based fills */
+.camp-tile.is-discovered polygon {
+  fill: #364252;
+}
+
+.camp-tile.is-developed polygon {
+  fill: #3a3426;
+}
+
+.camp-tile.is-depleted polygon {
+  fill: #3a2826;
+}
+
+/* Terrain fills (visible tiles only) */
+.camp-tile:not(.is-hidden).terrain-brush polygon,
+.camp-tile:not(.is-hidden).terrain-grove polygon,
+.camp-tile:not(.is-hidden).terrain-grass polygon {
+  fill: #263c22;
+}
+
+.camp-tile:not(.is-hidden).terrain-rock polygon,
+.camp-tile:not(.is-hidden).terrain-clay polygon,
+.camp-tile:not(.is-hidden).terrain-kiln polygon {
+  fill: #3c2e24;
+}
+
+.camp-tile:not(.is-hidden).terrain-water polygon {
+  fill: #1a3248;
+}
+
+.camp-tile:not(.is-hidden).terrain-worksite polygon,
+.camp-tile:not(.is-hidden).terrain-clearing polygon {
+  fill: #382e1c;
+}
+
+.camp-tile:not(.is-hidden).terrain-lore polygon {
+  fill: #3c2a10;
+}
+
+/* Camp centre: golden prominent tile */
+.camp-tile:not(.is-hidden).terrain-camp polygon {
+  fill: #6a4012;
+  stroke: rgba(251, 191, 36, 0.65);
+  stroke-width: 2;
+  animation: campSvgPulse 3s ease-in-out infinite;
+}
+
+.camp-tile:not(.is-hidden).terrain-camp .tile-icon {
+  font-size: 28px;
+}
+
+/* Hidden override: always fog colour, no interaction */
+.camp-tile.is-hidden polygon {
+  fill: #253048 !important;
+  stroke: rgba(0, 0, 0, 0.3) !important;
+  stroke-width: 0.5 !important;
   pointer-events: none;
   cursor: default;
 }
 
-.camp-tile--filler:hover {
-  transform: none;
-  z-index: auto;
+/* Hover — only non-hidden tiles */
+.camp-tile:not(.is-hidden):not(.is-visible_locked):hover polygon {
+  opacity: 0.78;
+  cursor: pointer;
 }
 
-/* ── Animations ────────────────────────────────────────── */
-@keyframes campPulse {
-  0%, 100% { opacity: 0.25; }
-  50%       { opacity: 0.75; }
+/* Camp candidate — amber glow, pulsing */
+@keyframes campCandidatePulse {
+  0%, 100% { stroke: rgba(251, 191, 36, 0.4); }
+  50%       { stroke: rgba(251, 191, 36, 0.9); }
 }
 
-@keyframes lorePulse {
-  0%, 100% { opacity: 0.4; }
-  50%       { opacity: 1; }
+.camp-tile.is-camp_candidate polygon {
+  fill: #2e2510 !important;
+  stroke: rgba(251, 191, 36, 0.6) !important;
+  stroke-width: 2 !important;
+  animation: campCandidatePulse 2s ease-in-out infinite;
 }
 
-@keyframes fogShimmer {
+.camp-tile.is-camp_candidate:hover polygon {
+  fill: #3a2e10 !important;
+  stroke: rgba(251, 191, 36, 1.0) !important;
+  stroke-width: 2.5 !important;
+  cursor: pointer;
+  opacity: 1;
+}
+
+.camp-tile.is-camp_candidate .tile-icon {
+  opacity: 1;
+}
+
+/* Chosen camp centre */
+.camp-tile.is-camp polygon {
+  fill: #2a2000 !important;
+  stroke: rgba(251, 191, 36, 0.85) !important;
+  stroke-width: 2.5 !important;
+  animation: campSvgPulse 2.5s ease-in-out infinite;
+}
+
+/* Visible-locked: dim, no interaction */
+.camp-tile.is-visible_locked polygon {
+  fill: #1e2535 !important;
+  stroke: rgba(100, 120, 160, 0.2) !important;
+  stroke-width: 0.5 !important;
+  opacity: 0.55;
+  pointer-events: none;
+  cursor: default;
+}
+
+/* Selected */
+.camp-tile.is-selected polygon {
+  stroke: rgba(236, 221, 165, 0.72) !important;
+  stroke-width: 1.4 !important;
+  filter: brightness(1.08);
+}
+
+/* Zone darkening: outer rings */
+.camp-tile.zone-3 polygon,
+.camp-tile.zone-4 polygon {
+  filter: brightness(0.85);
+}
+
+/* Resource richness indicators */
+.camp-tile.res-rich polygon {
+  stroke: rgba(74, 222, 128, 0.5);
+  stroke-width: 1.5;
+}
+
+.camp-tile.res-sparse polygon {
+  stroke: rgba(248, 113, 113, 0.45);
+  stroke-width: 1.5;
+}
+
+/* Camp centre glow animation */
+@keyframes campSvgPulse {
   0%, 100% { opacity: 0.3; }
-  50%       { opacity: 0.65; }
+  50%       { opacity: 0.85; }
 }
 
-/* Camp center — warm amber glow */
-.camp-tile.terrain-camp:not(.is-hidden) .camp-tile-inner::before,
-.camp-tile.terrain-clearing:not(.is-hidden) .camp-tile-inner::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse at 50% 50%, rgba(251, 191, 36, 0.35), transparent 60%);
-  animation: campPulse 3s ease-in-out infinite;
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* Camp tile special marker — always visible ring */
-.camp-tile.terrain-camp {
-  background: #5a4420;
-  z-index: 1;
-}
-
-.camp-tile.terrain-camp .camp-tile-inner {
-  background:
-    linear-gradient(180deg, rgba(110, 85, 40, 0.98), rgba(72, 54, 26, 0.98)) !important;
-}
-
-/* Lore tile — deep amber smolder */
-.camp-tile.terrain-lore:not(.is-hidden) .camp-tile-inner::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse at 50% 55%, rgba(180, 110, 28, 0.3), transparent 65%);
-  animation: lorePulse 4s ease-in-out infinite;
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* Hidden tiles — fog shimmer */
-.camp-tile.is-hidden .camp-tile-inner::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, rgba(90, 110, 150, 0.12) 0%, transparent 55%);
-  animation: fogShimmer 2.5s ease-in-out infinite;
-  pointer-events: none;
-  z-index: 0;
-}
 
 .camp-map-details {
   padding: 0.9rem 1rem;
@@ -694,6 +724,38 @@ body {
   box-shadow: none;
 }
 
+.camp-map-secondary-btn {
+  width: 100%;
+  margin-top: 0.6rem;
+  min-height: 38px;
+  padding: 0.6rem 0.9rem;
+  border-radius: 10px;
+  border: 1px solid rgba(134, 239, 172, 0.25);
+  background: linear-gradient(180deg, #1a2e1f, #111a14);
+  color: #bbf7d0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    transform 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.camp-map-secondary-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(134, 239, 172, 0.45);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.18);
+}
+
+.camp-map-secondary-btn.disabled,
+.camp-map-secondary-btn[aria-disabled="true"] {
+  opacity: 0.52;
+  cursor: default;
+  transform: none;
+  box-shadow: none;
+}
+
 /* Panels */
 .panel {
   background: #1a1d27;
@@ -777,6 +839,7 @@ body {
   opacity: 1;
   filter: brightness(1.8) saturate(1.1);
   pointer-events: none;
+  -webkit-user-select: none;
   user-select: none;
 }
 
@@ -852,6 +915,49 @@ body {
   font-style: italic;
   color: #c49a4a;
   margin-top: 0.25rem;
+}
+
+/* Cinematic opening paragraph (lede) */
+.intro-lede {
+  font-size: 1.05rem;
+  line-height: 1.9;
+  font-style: italic;
+  color: #ede5d4;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.95);
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid rgba(196, 154, 74, 0.22);
+  margin-bottom: 0.15rem !important;
+}
+
+/* Subtitle under main title */
+.intro-subtitle {
+  font-size: 0.83rem;
+  letter-spacing: 0.04em;
+  color: #b8a882;
+  font-style: italic;
+  opacity: 0.9;
+  margin-bottom: 1.1rem;
+}
+
+/* Decorative divider before buttons */
+.intro-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  margin: 0.65rem 0 0.4rem;
+  color: rgba(196, 154, 74, 0.55);
+}
+.intro-divider::before,
+.intro-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(196, 154, 74, 0.22);
+}
+.intro-divider span {
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
 }
 
 .onboarding-intro-buttons {
@@ -1122,14 +1228,24 @@ body {
   flex-shrink: 0;
 }
 
+.branch-icon-svg {
+  display: inline-block;
+  width: 1.15em;
+  height: 1.15em;
+  vertical-align: -0.15em;
+  flex-shrink: 0;
+}
+
 .resource-icon .plank-icon-svg,
+.resource-icon .branch-icon-svg,
 .btn-icon .plank-icon-svg,
+.btn-icon .branch-icon-svg,
 .building-icon .plank-icon-svg,
+.building-icon .branch-icon-svg,
 .tech-icon .plank-icon-svg {
   display: block;
   width: 1.18em;
   height: 1.18em;
-  vertical-align: baseline;
 }
 
 .resource-text {
@@ -1250,53 +1366,174 @@ body {
   background: linear-gradient(90deg, #ef4444, #f87171);
 }
 
-/* Energy panel */
-.panel-energy {
-  border-color: #fbbf24;
+/* Character panel */
+.panel-character {
+  border-color: rgba(251, 191, 36, 0.32);
+  background:
+    linear-gradient(135deg, rgba(31, 27, 12, 0.9), rgba(16, 20, 29, 0.96)),
+    #171923;
 }
 
-.panel-energy.is-low {
+#game-main > .panel-character {
+  position: sticky;
+  top: 0.5rem;
+  z-index: 20;
+  margin-bottom: -0.15rem;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.panel-character.is-low {
   border-color: #f59e0b;
   box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.18);
 }
 
-.panel-energy.is-critical {
+.panel-character.is-critical {
   border-color: #ef4444;
   box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.22);
 }
 
-.energy-topline {
+.character-topline {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
-  margin-bottom: 0.45rem;
-  font-size: 0.8rem;
-  font-weight: 700;
+  margin-bottom: 0.4rem;
 }
 
-.energy-title {
+.character-topline-right {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+}
+
+.character-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.character-title {
+  font-size: 0.84rem;
+  font-weight: 700;
   color: #fbbf24;
 }
 
-.energy-value {
-  color: #f3f4f6;
+.character-condition {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  color: #d1d5db;
+  background: rgba(148, 163, 184, 0.08);
 }
 
-.energy-bar-container {
+.character-condition.is-stable {
+  color: #86efac;
+  border-color: rgba(34, 197, 94, 0.24);
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.character-condition.is-weakened {
+  color: #fcd34d;
+  border-color: rgba(245, 158, 11, 0.24);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.character-condition.is-exhausted {
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.24);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.character-mini-stack {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.16rem;
+}
+
+.character-toggle-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.34);
+  color: #cbd5e1;
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+
+.character-toggle-btn:hover {
+  background: rgba(30, 41, 59, 0.6);
+  border-color: rgba(148, 163, 184, 0.4);
+  color: #f8fafc;
+}
+
+.character-carry,
+.character-knowledge {
+  color: #cbd5e1;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.character-knowledge {
+  color: #a5b4fc;
+}
+
+.character-hud-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr);
+  gap: 0.6rem;
+  margin-bottom: 0.35rem;
+}
+
+.character-meter-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.24rem;
+  font-size: 0.73rem;
+  color: #cbd5e1;
+  font-weight: 600;
+}
+
+.energy-bar-container,
+.character-bar-container {
   position: relative;
   width: 100%;
-  height: 20px;
+  height: 14px;
   background: #141620;
   border-radius: 6px;
   overflow: hidden;
-  margin-bottom: 0.5rem;
 }
 
 .energy-bar-fill {
   height: 100%;
   background: linear-gradient(90deg, #f59e0b, #fbbf24);
   transition: width 0.3s ease;
+}
+
+.character-bar-energy {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.character-bar-satiety {
+  background: linear-gradient(90deg, #84cc16, #22c55e);
 }
 
 .energy-bar-text {
@@ -1310,25 +1547,263 @@ body {
   text-shadow: 0 0 2px rgba(255, 255, 255, 0.5);
 }
 
-.energy-info {
+.character-chip-row {
   display: flex;
   flex-direction: row;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.35rem 0.75rem;
-  font-size: 0.75rem;
+  gap: 0.3rem 0.5rem;
+  margin-bottom: 0.3rem;
+}
+
+.character-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0.14rem 0.44rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.34);
+  color: #cbd5e1;
+  font-size: 0.69rem;
+  line-height: 1.2;
+}
+
+.character-chip.is-empty {
   color: #9ca3af;
 }
 
-.energy-bonus {
-  color: #22c55e;
+.character-chip-cooldown {
+  color: #9ca3af;
 }
 
-.energy-warning {
-  display: block;
-  margin-top: 0.35rem;
+.character-rest-compact-btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0.14rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  background: rgba(48, 35, 14, 0.55);
+  color: #fde68a;
+  font-size: 0.69rem;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease;
+}
+
+.character-rest-compact-btn:hover {
+  background: rgba(73, 52, 18, 0.78);
+  border-color: rgba(251, 191, 36, 0.58);
+}
+
+.character-trip-compact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.55rem;
+  padding-top: 0.28rem;
+  border-top: 1px solid rgba(71, 85, 105, 0.28);
+  color: #dbe4f0;
+  font-size: 0.72rem;
+}
+
+.character-trip-compact-kind {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.character-expandable {
+  overflow: hidden;
+  max-height: 1100px;
+  transition: max-height 0.24s ease, opacity 0.2s ease, margin-top 0.2s ease;
+  opacity: 1;
+  margin-top: 0.3rem;
+}
+
+.character-expandable.is-collapsed {
+  max-height: 0;
+  opacity: 0;
+  margin-top: 0;
+}
+
+.character-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(260px, 1fr);
+  gap: 0.65rem;
+  align-items: start;
+}
+
+.character-detail-main,
+.character-detail-side {
+  min-width: 0;
+}
+
+.character-detail-side {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.character-attribute-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.character-attribute {
+  min-width: 0;
+  padding: 0.38rem 0.48rem;
+  border-radius: 10px;
+  border: 1px solid rgba(71, 85, 105, 0.28);
+  background: rgba(15, 23, 42, 0.22);
+}
+
+.character-attribute-label {
+  font-size: 0.63rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  margin-bottom: 0.18rem;
+}
+
+.character-attribute-value {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #f3f4f6;
+  line-height: 1.25;
+}
+
+.character-attribute-note {
+  margin-top: 0.14rem;
+  font-size: 0.66rem;
+  color: #9ca3af;
+  line-height: 1.3;
+}
+
+.character-note {
+  font-size: 0.69rem;
+  color: #cbd5e1;
+  line-height: 1.35;
+  margin-bottom: 0;
+}
+
+.character-rest {
+  margin-bottom: 0;
+  padding: 0.52rem 0.65rem;
+  border-radius: 12px;
+  border: 1px solid rgba(251, 191, 36, 0.22);
+  background: rgba(36, 28, 13, 0.34);
+}
+
+.character-rest-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.character-rest-body {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.character-rest-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #fde68a;
+  margin-bottom: 0.14rem;
+}
+
+.character-rest-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.18rem 0.45rem;
+  font-size: 0.69rem;
+  color: #e5e7eb;
+  margin-bottom: 0.16rem;
+}
+
+.character-rest-note {
+  font-size: 0.68rem;
+  color: #cbd5e1;
+  line-height: 1.3;
+}
+
+.character-rest-btn {
+  flex-shrink: 0;
+  min-width: 138px;
+  min-height: 34px;
+  padding: 0.46rem 0.78rem;
+  border-radius: 10px;
+  border: 1px solid rgba(251, 191, 36, 0.32);
+  background: linear-gradient(180deg, #3a2b12, #23190a);
+  color: #fde68a;
   font-size: 0.73rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.character-rest-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(251, 191, 36, 0.56);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.2);
+}
+
+.character-rest-btn.disabled,
+.character-rest-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+  transform: none;
+  box-shadow: none;
+}
+
+.character-trip {
+  padding-top: 0.38rem;
+  border-top: 1px solid rgba(71, 85, 105, 0.35);
+}
+
+.character-trip-label {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  margin-bottom: 0.18rem;
+}
+
+.character-trip-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.18rem 0.45rem;
+  font-size: 0.69rem;
+  color: #dbe4f0;
+}
+
+.character-trip-meta span {
+  white-space: nowrap;
+}
+
+.character-trip-warning {
+  margin-top: 0.2rem;
   color: #fca5a5;
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
+.character-trip-empty {
+  font-size: 0.68rem;
+  color: #9ca3af;
+  line-height: 1.35;
 }
 
 /* Action buttons */
@@ -2352,6 +2827,15 @@ body {
     grid-template-columns: 1fr;
   }
 
+  .character-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  #game-main > .panel-character {
+    position: static;
+    margin-bottom: 0;
+  }
+
   #game-sidebar {
     position: static;
     max-height: none;
@@ -2373,9 +2857,32 @@ body {
     align-items: flex-start;
   }
 
-  .header-top > .panel-energy {
-    max-width: 100%;
+  .character-topline {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .character-topline-right {
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .character-hud-grid {
+    grid-template-columns: 1fr;
+    gap: 0.45rem;
+  }
+
+  .character-attribute-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .character-rest-top {
+    flex-direction: column;
+  }
+
+  .character-rest-btn {
     width: 100%;
+    min-width: 0;
   }
 
   .header-actions {
@@ -2418,6 +2925,7 @@ body {
   align-items: center;
   justify-content: center;
   padding: 1rem;
+  -webkit-backdrop-filter: blur(2px);
   backdrop-filter: blur(2px);
 }
 
@@ -2592,6 +3100,21 @@ body {
   margin: 0;
 }
 
+/* ═══════════════════════════════════════════════════════════
+   Intro screen: show only prologue panel, hide everything else
+   ═══════════════════════════════════════════════════════════ */
+body.is-intro-screen #game-header,
+body.is-intro-screen #game-layout,
+body.is-intro-screen #onboarding-step-panel,
+body.is-intro-screen #story-event-layer {
+  display: none !important;
+}
+
+body.is-intro-screen #onboarding-intro-panel {
+  min-height: calc(100vh - 2rem);
+  margin-bottom: 0;
+}
+
 body.is-prologue-active {
   background:
     radial-gradient(circle at top, rgba(127, 72, 28, 0.16), transparent 36%),
@@ -2618,6 +3141,441 @@ body.is-prologue-active .panel:hover {
     0 0 14px rgba(145, 102, 48, 0.08);
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Camp founding intro — narrative overlay + silhouettes + arrival animation
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Scene wrapper positioning context */
+.camp-map-scene-wrap.is-pre-camp {
+  position: relative;
+}
+
+/* ── Silhouette state: between hidden and discovered, no interaction ── */
+.camp-tile.is-silhouette polygon {
+  fill: #1c2336 !important;
+  stroke: rgba(120, 140, 180, 0.25) !important;
+  stroke-width: 0.5 !important;
+  pointer-events: all; /* allow hover for tooltip */
+  cursor: default;
+}
+.camp-tile.is-silhouette .tile-icon {
+  opacity: 0.22;
+  fill: #9aa4b8;
+  visibility: visible;
+}
+.camp-tile.is-silhouette:hover polygon {
+  fill: #222c44 !important;
+  stroke: rgba(150, 170, 210, 0.45) !important;
+}
+
+/* ── Terrain-based candidate palette — three moods ── */
+.camp-tile.is-camp_candidate.terrain-clearing polygon {
+  fill: #3a2a0e !important; /* warm sand */
+  stroke: rgba(251, 191, 36, 0.6) !important;
+}
+.camp-tile.is-camp_candidate.terrain-clearing:hover polygon,
+.camp-tile.is-camp_candidate.terrain-clearing.is-preview-source polygon {
+  fill: #4a3612 !important;
+  stroke: rgba(251, 210, 90, 1) !important;
+}
+.camp-tile.is-camp_candidate.terrain-grove polygon {
+  fill: #1f2d16 !important; /* forest green */
+  stroke: rgba(134, 239, 172, 0.55) !important;
+  animation: campCandidatePulseGrove 2s ease-in-out infinite !important;
+}
+.camp-tile.is-camp_candidate.terrain-grove:hover polygon,
+.camp-tile.is-camp_candidate.terrain-grove.is-preview-source polygon {
+  fill: #2b3d1e !important;
+  stroke: rgba(180, 245, 200, 0.95) !important;
+}
+.camp-tile.is-camp_candidate.terrain-ridge polygon {
+  fill: #2a2a2e !important; /* dry stony grey */
+  stroke: rgba(203, 213, 225, 0.55) !important;
+  animation: campCandidatePulseRidge 2s ease-in-out infinite !important;
+}
+.camp-tile.is-camp_candidate.terrain-ridge:hover polygon,
+.camp-tile.is-camp_candidate.terrain-ridge.is-preview-source polygon {
+  fill: #3a3a3e !important;
+  stroke: rgba(240, 245, 255, 0.95) !important;
+}
+
+@keyframes campCandidatePulseGrove {
+  0%, 100% { stroke: rgba(134, 239, 172, 0.35); }
+  50%      { stroke: rgba(134, 239, 172, 0.9); }
+}
+@keyframes campCandidatePulseRidge {
+  0%, 100% { stroke: rgba(203, 213, 225, 0.3); }
+  50%      { stroke: rgba(203, 213, 225, 0.8); }
+}
+
+/* ── Short label under candidate icon ── */
+.camp-tile .tile-label {
+  font-family: system-ui, 'Segoe UI', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: central;
+  fill: rgba(248, 250, 252, 0.85);
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  text-transform: uppercase;
+}
+.camp-tile.is-camp_candidate .tile-label {
+  fill: rgba(251, 191, 36, 0.95);
+}
+.camp-tile.is-camp_candidate.terrain-grove .tile-label {
+  fill: rgba(180, 245, 200, 0.95);
+}
+.camp-tile.is-camp_candidate.terrain-ridge .tile-label {
+  fill: rgba(230, 238, 250, 0.95);
+}
+
+/* ── Preview reach — candidate hover highlights neighbour tiles ── */
+.camp-tile.is-preview-reach polygon {
+  fill: rgba(45, 58, 82, 0.62) !important;
+  stroke: rgba(251, 191, 36, 0.45) !important;
+  stroke-width: 1 !important;
+  transition: fill 0.18s ease, stroke 0.18s ease;
+}
+.camp-tile.is-preview-reach .tile-icon {
+  opacity: 0.68 !important;
+  fill: #f5e7c6 !important;
+  visibility: visible;
+}
+
+/* ── Arrival cascade — tiles emerge one by one on first render ── */
+@keyframes tileEmerge {
+  0%   { opacity: 0; transform: scale(0.4); }
+  60%  { opacity: 0.9; transform: scale(1.06); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.camp-map-scene.is-arriving .camp-tile {
+  transform-origin: center;
+  transform-box: fill-box;
+  opacity: 0;
+  animation: tileEmerge 0.55s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* ── Intro overlay (narrative card over the map) ── */
+.camp-intro-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.2rem;
+  background: linear-gradient(180deg,
+    rgba(6, 8, 12, 0.55) 0%,
+    rgba(6, 8, 12, 0.25) 40%,
+    rgba(6, 8, 12, 0.55) 100%);
+  -webkit-backdrop-filter: blur(1.5px);
+  backdrop-filter: blur(1.5px);
+  pointer-events: auto;
+  cursor: pointer;
+  animation: campIntroFadeIn 0.5s ease both;
+}
+.camp-intro-overlay[data-intro-step="survey"],
+.camp-intro-overlay[data-intro-step="choose"] {
+  align-items: flex-start;
+  background: linear-gradient(180deg,
+    rgba(6, 8, 12, 0.82) 0%,
+    rgba(6, 8, 12, 0.4) 45%,
+    rgba(6, 8, 12, 0.02) 100%);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  /* Tiles below need hover/click — let events pass through the background */
+  pointer-events: none;
+  cursor: default;
+}
+/* Keep the card itself interactive (skip button, future controls) */
+.camp-intro-overlay[data-intro-step="survey"] .camp-intro-card,
+.camp-intro-overlay[data-intro-step="choose"] .camp-intro-card {
+  pointer-events: auto;
+}
+
+@keyframes campIntroFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.camp-intro-card {
+  max-width: 420px;
+  padding: 1rem 1.3rem 1.1rem;
+  border-radius: 14px;
+  border: 1px solid rgba(251, 191, 36, 0.28);
+  background: linear-gradient(180deg, rgba(24, 20, 12, 0.95), rgba(14, 12, 8, 0.95));
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  text-align: center;
+  pointer-events: auto;
+}
+.camp-intro-icon {
+  font-size: 2rem;
+  margin-bottom: 0.3rem;
+  filter: drop-shadow(0 0 8px rgba(251, 191, 36, 0.35));
+}
+.camp-intro-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fde68a;
+  margin-bottom: 0.35rem;
+}
+.camp-intro-text {
+  font-size: 0.82rem;
+  color: #d6d3c7;
+  line-height: 1.5;
+  margin-bottom: 0.55rem;
+}
+.camp-intro-cta {
+  font-size: 0.72rem;
+  color: #fbbf24;
+  font-style: italic;
+  animation: campCandidatePulse 2s ease-in-out infinite;
+}
+
+/* ── "choose" step: compact banner instead of full card ── */
+.camp-intro-overlay--banner {
+  /* Override the base overlay: pin to top, no blur */
+  align-items: flex-start !important;
+  justify-content: center !important;
+  pointer-events: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  background: linear-gradient(180deg,
+    rgba(6, 8, 12, 0.72) 0%,
+    rgba(6, 8, 12, 0) 100%) !important;
+  padding: 0.6rem 0.75rem 0 !important;
+}
+.camp-intro-banner {
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: 10px;
+  border: 1px solid rgba(251, 191, 36, 0.28);
+  background: rgba(16, 13, 6, 0.88);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  max-width: 420px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.camp-intro-banner-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+.camp-intro-banner-text {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #fde68a;
+}
+.camp-intro-banner-cta {
+  font-size: 0.72rem;
+  color: #fbbf24;
+  font-style: italic;
+  flex-shrink: 0;
+  animation: campCandidatePulse 2s ease-in-out infinite;
+}
+
+.camp-intro-buttons {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.7rem;
+}
+
+.camp-intro-next {
+  padding: 0.45rem 1.1rem;
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.5);
+  border-radius: 6px;
+  color: #fbbf24;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.camp-intro-next:hover {
+  background: rgba(251, 191, 36, 0.22);
+  border-color: #fbbf24;
+  color: #fde68a;
+}
+
+.camp-intro-skip {
+  padding: 0.3rem 0.7rem;
+  background: transparent;
+  border: 1px solid rgba(156, 163, 175, 0.35);
+  border-radius: 6px;
+  color: #9ca3af;
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.camp-intro-skip:hover {
+  border-color: rgba(251, 191, 36, 0.55);
+  color: #fbbf24;
+}
+
+/* Legend */
+.camp-map-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-right: 0.85rem;
+  font-size: 0.74rem;
+  color: #9ca3af;
+}
+.camp-map-legend-item .lg-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* ── Post-camp resource navigation panel ──────────────────────────────────── */
+.gather-resource-group {
+  margin-bottom: 0.75rem;
+}
+.gather-resource-group-header {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.2rem 0;
+  margin-bottom: 0.3rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.gather-resource-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  cursor: pointer;
+  gap: 0.5rem;
+  border: 1px solid transparent;
+  transition: background 0.15s, border-color 0.15s;
+  margin-bottom: 0.2rem;
+}
+.gather-resource-row:hover {
+  background: rgba(251, 191, 36, 0.07);
+  border-color: rgba(251, 191, 36, 0.2);
+}
+.gather-resource-row.is-selected {
+  background: rgba(251, 191, 36, 0.12);
+  border-color: rgba(251, 191, 36, 0.35);
+}
+.gather-resource-row.is-depleted {
+  opacity: 0.45;
+  cursor: default;
+}
+.gather-resource-row.is-depleted:hover {
+  background: transparent;
+  border-color: transparent;
+}
+.gather-resource-row.no-path .grr-meta {
+  color: #d97706;
+}
+/* Row left area */
+.grr-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  flex: 1;
+  min-width: 0;
+}
+.grr-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  line-height: 1.3;
+  margin-top: 0.05rem;
+}
+.grr-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.grr-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #f3f4f6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.grr-meta {
+  font-size: 0.7rem;
+  color: #9ca3af;
+}
+.grr-warn {
+  font-size: 0.68rem;
+  color: #f59e0b;
+  font-style: italic;
+}
+.grr-blocked {
+  font-size: 0.68rem;
+  color: #6b7280;
+  font-style: italic;
+}
+/* Row right area */
+.grr-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+.grr-energy {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #d1d5db;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.15rem 0.4rem;
+  border-radius: 5px;
+}
+.grr-cooldown {
+  font-size: 0.68rem;
+  color: #60a5fa;
+}
+/* Bottom hint */
+.gather-map-hint {
+  margin-top: 0.5rem;
+  font-size: 0.7rem;
+  color: #6b7280;
+  font-style: italic;
+}
+.camp-map-legend-item .lg-dot.lg-candidate {
+  background: #3a2a0e;
+  border-color: rgba(251, 191, 36, 0.7);
+  box-shadow: 0 0 6px rgba(251, 191, 36, 0.55);
+}
+.camp-map-legend-item .lg-dot.lg-discovered {
+  background: #263321;
+  border-color: rgba(110, 201, 118, 0.62);
+  box-shadow: 0 0 6px rgba(110, 201, 118, 0.26);
+}
+.camp-map-legend-item .lg-dot.lg-silhouette {
+  background: #1c2336;
+  border-color: rgba(120, 140, 180, 0.45);
+}
+.camp-map-legend-item .lg-dot.lg-hidden {
+  background: #253048;
+  border-color: rgba(0, 0, 0, 0.5);
+}
+
+/* Just-founded pulse: container flash after chooseCamp */
+@keyframes campJustFoundedPulse {
+  0%   { box-shadow: inset 0 0 0 0 rgba(251, 191, 36, 0.6); }
+  40%  { box-shadow: inset 0 0 40px 4px rgba(251, 191, 36, 0.45); }
+  100% { box-shadow: inset 0 0 0 0 rgba(251, 191, 36, 0); }
+}
+.camp-map-scene-wrap.camp-just-founded .camp-map-scene {
+  animation: campJustFoundedPulse 1.6s ease-out both;
+}
+
 body.is-prologue-active #automation-panel,
 body.is-prologue-active #log-panel {
   display: none;
@@ -2628,8 +3586,6 @@ body.is-prologue-active #research-widget {
   grid-column: 2;
   grid-row: 1;
   align-self: start;
-  position: sticky;
-  top: 0.5rem;
 }
 
 body.is-prologue-active #camp-map-panel {
@@ -2931,6 +3887,22 @@ body.is-prologue-active #game-main {
   background: rgba(17, 19, 24, 0.82);
 }
 
+.prologue-resource-groups {
+  gap: 0.7rem;
+}
+
+.prologue-resource-category {
+  background: rgba(20, 22, 30, 0.82);
+  border-color: rgba(164, 126, 67, 0.2);
+}
+
+.prologue-resource-group-note {
+  font-size: 0.67rem;
+  line-height: 1.35;
+  color: #8b93a7;
+  margin-bottom: 0.45rem;
+}
+
 .prologue-resource-total {
   font-size: 0.64rem;
   line-height: 1.2;
@@ -3060,4 +4032,1341 @@ body.is-prologue-active #game-main {
     bottom: 0.75rem;
     width: auto;
   }
+}
+
+
+/* --- Camp founding: modal footer + buttons shared ----------------------- */
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  padding: 0.9rem 1.25rem 1.1rem;
+  border-top: 1px solid #2a2d37;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.modal-btn {
+  padding: 0.55rem 1.05rem;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.05s;
+  line-height: 1.2;
+}
+.modal-btn:active { transform: translateY(1px); }
+.modal-btn--primary {
+  background: #3b2f7a;
+  color: #ede9fe;
+  border-color: #5b4fb7;
+}
+.modal-btn--primary:hover:not(:disabled) {
+  background: #4b3f9a;
+  border-color: #a78bfa;
+}
+.modal-btn--primary:disabled {
+  background: #2a2650;
+  color: #6b6a85;
+  border-color: #3a3760;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+.modal-btn--ghost {
+  background: transparent;
+  color: #bcbccd;
+  border-color: #3a3d4a;
+}
+.modal-btn--ghost:hover {
+  background: #232633;
+  color: #e4e4f2;
+}
+.modal-btn--support {
+  margin-right: auto;
+  background: rgba(240, 160, 96, 0.12);
+  color: #f2c48f;
+  border-color: rgba(240, 160, 96, 0.32);
+}
+.modal-btn--support:hover {
+  background: rgba(240, 160, 96, 0.2);
+  color: #ffe1bc;
+}
+.modal-panel--compact { max-width: 440px; }
+
+/* --- Camp founding confirm modal ---------------------------------------- */
+.modal-overlay--camp-found .modal-panel { border-color: #5b4fb7; }
+.camp-found-confirm-place {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 1.05rem;
+  margin-bottom: 0.6rem;
+}
+.camp-found-confirm-icon { font-size: 1.5rem; }
+.camp-found-confirm-name { color: #e4e4f2; font-weight: 600; }
+.camp-found-confirm-story {
+  color: #b8b5d4;
+  font-style: italic;
+  margin: 0 0 0.8rem;
+  line-height: 1.4;
+}
+.camp-found-confirm-cost {
+  background: #20213a;
+  border: 1px solid #2d2f4d;
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 0.6rem;
+}
+.camp-found-confirm-cost-label {
+  font-size: 0.82rem;
+  color: #9590b8;
+  margin-bottom: 0.25rem;
+}
+.camp-found-confirm-cost-line {
+  color: #e4e4f2;
+  font-size: 0.98rem;
+}
+.camp-found-confirm-progress {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.45rem;
+  margin-bottom: 0.6rem;
+}
+.camp-found-confirm-progress-item {
+  background: rgba(91, 79, 183, 0.08);
+  border: 1px solid rgba(91, 79, 183, 0.24);
+  border-radius: 6px;
+  padding: 0.45rem 0.6rem;
+}
+.camp-found-confirm-progress-item.is-done {
+  background: rgba(120, 220, 140, 0.08);
+  border-color: rgba(120, 220, 140, 0.25);
+}
+.camp-found-confirm-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: #ece8ff;
+  font-size: 0.9rem;
+}
+.camp-found-confirm-progress-meta {
+  margin-top: 0.18rem;
+  font-size: 0.78rem;
+  color: #bcb5ea;
+}
+.camp-found-confirm-progress-item.is-done .camp-found-confirm-progress-meta {
+  color: #a6e3a1;
+}
+.camp-found-confirm-missing {
+  color: #ffb88a;
+  background: rgba(255, 120, 80, 0.08);
+  border: 1px solid rgba(255, 120, 80, 0.25);
+  border-radius: 6px;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+/* Guidance: where to gather missing resources */
+.cfc-gather-hint {
+  margin-top: 0.55rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid rgba(255, 140, 80, 0.2);
+}
+.cfc-hint-label {
+  font-size: 0.78rem;
+  color: #e9a97c;
+  margin-bottom: 0.3rem;
+}
+.cfc-hint-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.cfc-hint-tiles span {
+  background: rgba(255, 160, 80, 0.12);
+  border: 1px solid rgba(255, 140, 60, 0.28);
+  border-radius: 4px;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.82rem;
+  color: #f5c896;
+}
+.cfc-hint-cache {
+  background: rgba(196, 154, 74, 0.15) !important;
+  border-color: rgba(196, 154, 74, 0.4) !important;
+  color: #e8cb7a !important;
+}
+.camp-found-confirm-ready {
+  color: #a6e3a1;
+  background: rgba(120, 220, 140, 0.08);
+  border: 1px solid rgba(120, 220, 140, 0.28);
+  border-radius: 6px;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.92rem;
+}
+
+/* --- Camp interior modal (stub) ---------------------------------------- */
+.modal-overlay--camp-interior .modal-panel { border-color: #f0a060; }
+.camp-interior-placeholder {
+  text-align: center;
+  padding: 1rem 0.5rem 0.4rem;
+}
+.camp-interior-placeholder-icon {
+  font-size: 3rem;
+  margin-bottom: 0.4rem;
+}
+.camp-interior-placeholder-title {
+  color: #f0c080;
+  margin: 0 0 0.6rem;
+  font-size: 1.15rem;
+}
+.camp-interior-placeholder-text {
+  color: #c8c5d8;
+  line-height: 1.5;
+  margin: 0 0 0.7rem;
+}
+.camp-interior-placeholder-hint {
+  color: #8b8aa0;
+  font-size: 0.88rem;
+  margin: 0;
+  font-style: italic;
+}
+
+/* --- Camp founding quest widget (pre-camp) ----------------------------- */
+.panel-camp-quest {
+  background: linear-gradient(135deg, #1a1f2e 0%, #251a2e 100%);
+  border: 1px solid #3a3560;
+  padding: 0.85rem 1rem 0.9rem;
+  margin-bottom: 0.6rem;
+}
+.panel-camp-quest.is-ready {
+  border-color: #7ab87a;
+  box-shadow: 0 0 0 1px rgba(122, 184, 122, 0.35), 0 0 24px rgba(122, 184, 122, 0.15);
+}
+.camp-quest-header { margin-bottom: 0.55rem; }
+.camp-quest-title {
+  margin: 0 0 0.2rem;
+  color: #c4b5e8;
+  font-size: 1rem;
+}
+.camp-quest-intro {
+  margin: 0;
+  color: #9892b2;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+.camp-quest-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.55rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.camp-quest-item {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  padding: 0.35rem 0.5rem;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.015);
+}
+.camp-quest-item.is-done {
+  background: rgba(120, 220, 140, 0.08);
+}
+.camp-quest-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 50%;
+  border: 1px solid #4a4670;
+  color: #6b6a85;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+.camp-quest-item.is-done .camp-quest-check {
+  background: #7ab87a;
+  color: #132013;
+  border-color: #7ab87a;
+}
+.camp-quest-text { color: #d4d0e8; font-size: 0.92rem; line-height: 1.3; }
+.camp-quest-item.is-done .camp-quest-text {
+  color: #8aa89a;
+  text-decoration: line-through;
+  text-decoration-color: rgba(138, 168, 154, 0.4);
+}
+.camp-quest-hint {
+  color: #7a7696;
+  font-size: 0.8rem;
+  margin-top: 0.12rem;
+  line-height: 1.3;
+}
+.camp-quest-summary {
+  color: #a8a3c4;
+  font-size: 0.88rem;
+  padding: 0.35rem 0.5rem;
+  border-top: 1px dashed #35315a;
+}
+.camp-quest-ready {
+  color: #a6e3a1;
+  font-weight: 600;
+  padding: 0.45rem 0.6rem;
+  background: rgba(120, 220, 140, 0.1);
+  border-radius: 5px;
+  border: 1px solid rgba(120, 220, 140, 0.35);
+  text-align: center;
+}
+
+/* --- Camp tile "beckon" (founded but not yet entered) ------------------ */
+.camp-tile.is-beckon polygon {
+  stroke: #f0a060;
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 6px rgba(240, 160, 96, 0.7));
+  animation: camp-beckon-pulse 1.8s ease-in-out infinite;
+}
+@keyframes camp-beckon-pulse {
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(240, 160, 96, 0.5)); }
+  50% { filter: drop-shadow(0 0 12px rgba(240, 160, 96, 0.95)); }
+}
+
+/* --- Pre-camp gather panel ----------------------------------------------- */
+.gather-precamp-progress {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+  gap: 0.55rem;
+  margin-bottom: 0.5rem;
+}
+.gather-precamp-res {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  padding: 0.42rem 0.6rem;
+  border-radius: 5px;
+  background: rgba(255, 120, 80, 0.1);
+  border: 1px solid rgba(255, 120, 80, 0.35);
+  color: #ffb88a;
+  font-size: 0.84rem;
+}
+.gather-precamp-res-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+.gather-precamp-res-meta {
+  font-size: 0.76rem;
+  color: #f0bc98;
+}
+.gather-precamp-res.is-done {
+  background: rgba(120, 220, 140, 0.1);
+  border-color: rgba(120, 220, 140, 0.4);
+  color: #a6e3a1;
+}
+.gather-precamp-res.is-done .gather-precamp-res-meta {
+  color: #a6e3a1;
+}
+.gather-precamp-ready {
+  color: #a6e3a1;
+  background: rgba(120, 220, 140, 0.08);
+  border: 1px solid rgba(120, 220, 140, 0.28);
+  border-radius: 6px;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.88rem;
+  margin-bottom: 0.55rem;
+}
+.gather-precamp-map-note {
+  margin-bottom: 0.55rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 6px;
+  background: rgba(196, 154, 74, 0.09);
+  border: 1px solid rgba(196, 154, 74, 0.25);
+  color: #e6c887;
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+/* Highlight action button when that resource is still needed */
+.action-btn--needed {
+  border-color: rgba(251, 191, 36, 0.5) !important;
+  background: rgba(251, 191, 36, 0.06) !important;
+}
+.action-btn--needed .btn-label {
+  color: #fde68a !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Camp Interior Screen — Visual game-like camp page
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.camp-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  background: #0c0e16;
+  overflow: hidden;
+}
+
+/* ── A: Top status bar ──────────────────────────────────────────────────── */
+.cs-topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  background: #13151f;
+  border-bottom: 1px solid #1e2130;
+  flex-shrink: 0;
+  min-height: 44px;
+}
+
+.cs-back-btn {
+  background: none;
+  border: 1px solid #2a2d3a;
+  border-radius: 6px;
+  color: #9a9ab0;
+  font-size: 0.82rem;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+.cs-back-btn:hover {
+  color: #e0e0e0;
+  border-color: #6a6d7a;
+  background: rgba(255,255,255,0.05);
+}
+
+.cs-topbar-title {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+.cs-topbar-icon { font-size: 1.15rem; }
+.cs-topbar-name {
+  font-size: 0.95rem;
+  color: #f0c080;
+  font-weight: 600;
+  white-space: nowrap;
+  max-width: 20ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cs-topbar-resources {
+  display: flex;
+  gap: 0.6rem;
+  flex: 1;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.cs-res-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.78rem;
+  color: #b8b5cc;
+  background: #181b27;
+  border: 1px solid #222535;
+  border-radius: 4px;
+  padding: 0.15rem 0.5rem;
+}
+.cs-res-chip-icon { font-size: 0.85rem; }
+.cs-res-chip-val { color: #e0dff5; font-weight: 500; }
+
+.cs-topbar-character {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  align-items: center;
+}
+.cs-char-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.78rem;
+  color: #b8b5cc;
+}
+.cs-char-bar {
+  width: 48px;
+  height: 5px;
+  background: #1a1d2a;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.cs-char-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+.cs-char-bar-fill--energy { background: #60a5fa; }
+.cs-char-bar-fill--satiety { background: #f59e0b; }
+
+/* ── Main area ──────────────────────────────────────────────────────────── */
+.cs-main {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ── B: Central visual scene ────────────────────────────────────────────── */
+.cs-scene-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.cs-scene {
+  position: relative;
+  width: 560px;
+  height: 440px;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  /* Base ground before the hearth appears */
+  background:
+    radial-gradient(ellipse 55% 50% at 48% 48%, rgba(90,70,45,0.18) 0%, rgba(60,50,35,0.10) 50%, transparent 100%),
+    radial-gradient(circle at 30% 25%, rgba(70,60,40,0.08) 0%, transparent 40%),
+    radial-gradient(circle at 70% 70%, rgba(60,55,38,0.06) 0%, transparent 35%),
+    linear-gradient(180deg, #12141e 0%, #15171f 100%);
+}
+/* Ambient scene decorations: ground paths, life traces */
+.cs-scene::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  /* Subtle radial "cleared area" around camp center */
+  background:
+    radial-gradient(ellipse 38% 30% at 48% 44%, rgba(120,100,60,0.06) 0%, transparent 100%);
+}
+.cs-scene::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  /* Vignette to darken edges — makes camp center pop */
+  background:
+    radial-gradient(ellipse 70% 65% at 50% 50%, transparent 50%, rgba(8,10,18,0.4) 100%);
+}
+
+/* Camp stage visual progression — scene gets warmer as more buildings are built */
+.cs-scene--stage-2::before {
+  background:
+    radial-gradient(ellipse 42% 34% at 48% 44%, rgba(140,110,60,0.08) 0%, transparent 100%);
+}
+.cs-scene--stage-3 {
+  background:
+    radial-gradient(ellipse 50% 45% at 48% 44%, rgba(255,160,60,0.13) 0%, rgba(255,120,40,0.05) 40%, transparent 100%),
+    radial-gradient(ellipse 60% 55% at 48% 48%, rgba(100,80,50,0.22) 0%, rgba(70,55,38,0.12) 50%, transparent 100%),
+    radial-gradient(circle at 30% 25%, rgba(80,65,42,0.10) 0%, transparent 40%),
+    radial-gradient(circle at 70% 70%, rgba(65,60,42,0.08) 0%, transparent 35%),
+    linear-gradient(180deg, #14161e 0%, #171920 100%);
+}
+.cs-scene--stage-3::before {
+  background:
+    radial-gradient(ellipse 48% 38% at 48% 44%, rgba(160,120,60,0.10) 0%, transparent 100%);
+}
+.cs-scene--stage-4 {
+  background:
+    radial-gradient(ellipse 55% 50% at 48% 44%, rgba(255,170,70,0.15) 0%, rgba(255,130,50,0.06) 40%, transparent 100%),
+    radial-gradient(ellipse 65% 58% at 48% 48%, rgba(110,85,55,0.24) 0%, rgba(80,60,40,0.13) 50%, transparent 100%),
+    radial-gradient(circle at 25% 22%, rgba(85,70,45,0.12) 0%, transparent 40%),
+    radial-gradient(circle at 75% 75%, rgba(70,65,45,0.10) 0%, transparent 35%),
+    linear-gradient(180deg, #15171f 0%, #181a22 100%);
+}
+.cs-scene--stage-4::before {
+  background:
+    radial-gradient(ellipse 52% 42% at 48% 44%, rgba(180,130,65,0.12) 0%, transparent 100%);
+}
+
+.cs-scene-hint {
+  position: absolute;
+  bottom: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.75rem;
+  color: #4a4860;
+  white-space: nowrap;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+.cs-scene-hint.is-hidden { opacity: 0; }
+
+/* ── Scene slots ────────────────────────────────────────────────────────── */
+.cs-slot {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  transition: transform 0.2s ease, filter 0.2s ease;
+  -webkit-user-select: none;
+  user-select: none;
+  z-index: 1;
+}
+.cs-slot:hover {
+  transform: translate(-50%, -50%) scale(1.10);
+  filter: brightness(1.18);
+}
+.cs-slot.is-selected {
+  transform: translate(-50%, -50%) scale(1.06);
+  filter: brightness(1.25) drop-shadow(0 0 10px rgba(240,160,80,0.5));
+}
+
+.cs-slot-icon {
+  font-size: 2.8rem;
+  line-height: 1;
+  text-align: center;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.5));
+}
+.cs-slot--campfire .cs-slot-icon {
+  font-size: 3.4rem;
+  filter: none;
+  animation: none;
+}
+.cs-slot--campfire .cs-slot-ground {
+  width: 100px;
+  height: 50px;
+  animation: none;
+}
+
+.cs-campfire-art {
+  position: relative;
+  display: block;
+  width: 86px;
+  height: 92px;
+  margin: 0 auto;
+}
+
+.cs-campfire-stones,
+.cs-campfire-coals,
+.cs-campfire-log,
+.cs-campfire-flame,
+.cs-campfire-smoke,
+.cs-campfire-spark {
+  position: absolute;
+  display: block;
+  pointer-events: none;
+}
+
+.cs-campfire-stones {
+  left: 10px;
+  right: 10px;
+  bottom: 18px;
+  height: 24px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 10% 58%, #91846e 0 5px, transparent 5.5px),
+    radial-gradient(circle at 26% 34%, #aa987d 0 6px, transparent 6.5px),
+    radial-gradient(circle at 43% 66%, #7f715f 0 5px, transparent 5.5px),
+    radial-gradient(circle at 58% 28%, #b0a084 0 6px, transparent 6.5px),
+    radial-gradient(circle at 74% 64%, #8a7b66 0 5px, transparent 5.5px),
+    radial-gradient(circle at 90% 44%, #a28f74 0 5px, transparent 5.5px);
+  opacity: 0.95;
+}
+
+.cs-campfire-log {
+  bottom: 24px;
+  width: 38px;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #8f6032 0%, #57371c 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.14), 0 2px 5px rgba(0,0,0,0.24);
+}
+
+.cs-campfire-log::after {
+  content: "";
+  position: absolute;
+  right: 2px;
+  top: 1px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #c4955d 0%, #80552f 72%);
+}
+
+.cs-campfire-log--left {
+  left: 17px;
+  transform: rotate(28deg);
+}
+
+.cs-campfire-log--right {
+  right: 17px;
+  transform: rotate(-28deg);
+}
+
+.cs-campfire-coals {
+  left: 28px;
+  right: 28px;
+  bottom: 24px;
+  height: 16px;
+  border-radius: 50%;
+}
+
+.cs-campfire-flame {
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 55% 55% 45% 45%;
+}
+
+.cs-campfire-smoke {
+  left: 50%;
+  top: 18px;
+  width: 28px;
+  height: 28px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(155,166,181,0.28) 0%, rgba(106,117,132,0.08) 68%, transparent 100%);
+  filter: blur(1px);
+  animation: cs-campfire-smoke 2.6s ease-in-out infinite;
+}
+
+.cs-campfire-spark {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,233,167,0.95) 0%, rgba(255,157,66,0.85) 55%, transparent 72%);
+  opacity: 0;
+}
+
+.cs-campfire-art--ready .cs-campfire-coals {
+  background: radial-gradient(ellipse, rgba(149,76,34,0.42) 0%, rgba(84,43,23,0.16) 72%, transparent 100%);
+  filter: blur(0.3px);
+}
+
+.cs-campfire-art--ready .cs-campfire-stones {
+  opacity: 1;
+}
+
+.cs-campfire-art--ready .cs-campfire-log {
+  background: linear-gradient(180deg, #9a6b38 0%, #5d3c21 100%);
+}
+
+.cs-slot--campfire-ready .cs-slot-ground {
+  background: radial-gradient(ellipse, rgba(155,108,52,0.14) 0%, rgba(98,68,35,0.08) 55%, transparent 82%);
+}
+
+.cs-slot--campfire-ready .cs-slot-label {
+  color: #d0b28a;
+}
+
+.cs-campfire-art--constructing .cs-campfire-coals {
+  background: radial-gradient(ellipse, rgba(207,97,36,0.45) 0%, rgba(123,53,22,0.20) 72%, transparent 100%);
+  filter: blur(0.5px);
+}
+
+.cs-campfire-art--constructing .cs-campfire-flame--front {
+  bottom: 28px;
+  width: 18px;
+  height: 26px;
+  background: linear-gradient(180deg, #ffd56b 0%, #ff9c45 52%, #d45a23 100%);
+  clip-path: polygon(50% 0%, 66% 18%, 88% 46%, 74% 100%, 26% 100%, 14% 58%, 24% 26%);
+  opacity: 0.82;
+  filter: drop-shadow(0 0 6px rgba(255,120,48,0.26));
+  animation: cs-fire-constructing 1.9s ease-in-out infinite alternate;
+}
+
+.cs-slot--campfire-constructing .cs-slot-ground {
+  background: radial-gradient(ellipse, rgba(202,103,41,0.18) 0%, rgba(132,61,24,0.10) 56%, transparent 82%);
+  animation: cs-fire-ground 2.6s ease-in-out infinite alternate;
+}
+
+.cs-slot--campfire-constructing .cs-slot-label {
+  color: #f2c17d;
+}
+
+.cs-campfire-art--live .cs-campfire-coals {
+  background: radial-gradient(ellipse, rgba(255,128,34,0.58) 0%, rgba(153,58,21,0.30) 68%, transparent 100%);
+  filter: blur(0.8px);
+  animation: cs-campfire-coals 1.6s ease-in-out infinite alternate;
+}
+
+.cs-campfire-art--live .cs-campfire-flame--back {
+  bottom: 28px;
+  width: 28px;
+  height: 38px;
+  background: linear-gradient(180deg, #fff0a8 0%, #ffbf58 32%, #ff8435 66%, #d95420 100%);
+  clip-path: polygon(50% 0%, 66% 15%, 90% 48%, 76% 100%, 24% 100%, 8% 60%, 18% 26%);
+  opacity: 0.72;
+  filter: blur(0.2px);
+  animation: cs-fire-live-back 1.8s ease-in-out infinite alternate;
+}
+
+.cs-campfire-art--live .cs-campfire-flame--front {
+  bottom: 26px;
+  width: 22px;
+  height: 32px;
+  background: linear-gradient(180deg, #fff4c1 0%, #ffd66e 26%, #ff9c47 62%, #e45b23 100%);
+  clip-path: polygon(50% 0%, 72% 20%, 92% 52%, 80% 100%, 20% 100%, 8% 58%, 22% 28%);
+  filter: drop-shadow(0 0 10px rgba(255,148,56,0.46));
+  animation: cs-fire-live-front 1.25s ease-in-out infinite alternate;
+}
+
+.cs-campfire-art--live .cs-campfire-spark--1 {
+  left: 24px;
+  bottom: 52px;
+  animation: cs-fire-spark 1.7s ease-in-out infinite;
+}
+
+.cs-campfire-art--live .cs-campfire-spark--2 {
+  left: 40px;
+  bottom: 58px;
+  animation: cs-fire-spark 1.95s ease-in-out 0.35s infinite;
+}
+
+.cs-campfire-art--live .cs-campfire-spark--3 {
+  left: 54px;
+  bottom: 50px;
+  animation: cs-fire-spark 1.55s ease-in-out 0.7s infinite;
+}
+
+.cs-slot--campfire-live .cs-slot-ground {
+  background: radial-gradient(ellipse, rgba(241,120,36,0.24) 0%, rgba(181,75,22,0.12) 48%, rgba(111,50,20,0.04) 66%, transparent 82%);
+  animation: cs-fire-ground 2.1s ease-in-out infinite alternate;
+}
+
+.cs-slot--campfire-live .cs-slot-label {
+  color: #ffd39a;
+}
+
+.cs-slot--campfire-live .cs-slot-icon {
+  animation: cs-fire-glow 2.1s ease-in-out infinite alternate;
+}
+@keyframes cs-fire-glow {
+  0%   { filter: drop-shadow(0 0 12px rgba(255,140,40,0.35)); }
+  100% { filter: drop-shadow(0 0 22px rgba(255,100,20,0.65)); }
+}
+@keyframes cs-fire-ground {
+  0%   { opacity: 0.7; }
+  100% { opacity: 1; }
+}
+
+@keyframes cs-campfire-smoke {
+  0% { transform: translateX(-50%) translateY(2px) scale(0.88); opacity: 0.18; }
+  100% { transform: translateX(-50%) translateY(-8px) scale(1.14); opacity: 0.5; }
+}
+
+@keyframes cs-campfire-coals {
+  0% { opacity: 0.78; transform: scale(0.96); }
+  100% { opacity: 1; transform: scale(1.05); }
+}
+
+@keyframes cs-fire-constructing {
+  0% { transform: translateX(-50%) scale(0.92); opacity: 0.64; }
+  100% { transform: translateX(-50%) scale(1.05); opacity: 0.9; }
+}
+
+@keyframes cs-fire-live-back {
+  0% { transform: translateX(-50%) scale(0.93) rotate(-2deg); }
+  100% { transform: translateX(-50%) scale(1.05) rotate(2deg); }
+}
+
+@keyframes cs-fire-live-front {
+  0% { transform: translateX(-50%) scale(0.9) rotate(1deg); }
+  100% { transform: translateX(-50%) scale(1.08) rotate(-2deg); }
+}
+
+@keyframes cs-fire-spark {
+  0% { transform: translateY(0) scale(0.6); opacity: 0; }
+  25% { opacity: 1; }
+  100% { transform: translateY(-24px) translateX(4px) scale(1); opacity: 0; }
+}
+
+.cs-slot--camp-center .cs-slot-icon {
+  font-size: 2.2rem;
+  color: #8c7757;
+  filter: drop-shadow(0 1px 5px rgba(0,0,0,0.45));
+}
+.cs-slot--camp-center .cs-slot-ground {
+  width: 112px;
+  height: 54px;
+  background: radial-gradient(ellipse, rgba(88,74,48,0.24) 0%, rgba(62,54,38,0.10) 60%, transparent 100%);
+}
+.cs-slot--camp-center .cs-slot-label {
+  color: #90816b;
+}
+
+.cs-slot--hearth-site .cs-slot-icon {
+  font-size: 2.3rem;
+  color: #a58463;
+  filter: drop-shadow(0 1px 5px rgba(0,0,0,0.45));
+}
+.cs-slot--hearth-site .cs-slot-ground {
+  width: 96px;
+  height: 44px;
+  background: radial-gradient(ellipse, rgba(120,88,52,0.18) 0%, rgba(76,60,40,0.08) 60%, transparent 100%);
+}
+.cs-slot--hearth-site .cs-slot-label {
+  color: #b59473;
+}
+
+.cs-slot-label {
+  margin-top: 0.2rem;
+  font-size: 0.7rem;
+  color: #9a9ab0;
+  text-align: center;
+  white-space: nowrap;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cs-slot.is-selected .cs-slot-label {
+  color: #f0c080;
+}
+
+.cs-slot-status {
+  font-size: 0.62rem;
+  color: #6a6880;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.7);
+}
+.cs-slot-status.is-built { color: #4ade80; font-weight: 500; }
+.cs-slot-status.is-constructing { color: #fbbf24; animation: cs-pulse 1.5s ease-in-out infinite; }
+@keyframes cs-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Discovered / undiscovered slot states */
+.cs-slot--undiscovered {
+  opacity: 0.25;
+  filter: grayscale(0.8);
+}
+.cs-slot--undiscovered .cs-slot-icon {
+  border: none;
+  background: none;
+  color: #2a2d3a;
+  font-size: 1.5rem;
+}
+
+/* Empty slot — meaningful place placeholder */
+.cs-slot--empty .cs-slot-icon {
+  font-size: 1.8rem;
+  color: #3a3d50;
+  border: 2px dashed #2a2d3a;
+  border-radius: 10px;
+  width: 60px;
+  height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
+  background: rgba(20,22,30,0.5);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+.cs-slot--empty:hover .cs-slot-icon {
+  border-color: #f0a060;
+  color: #d0a060;
+  background: rgba(240,160,80,0.06);
+}
+.cs-slot--empty .cs-slot-label {
+  color: #5a5a70;
+  font-style: italic;
+}
+.cs-slot--empty:hover .cs-slot-label {
+  color: #b8a080;
+}
+/* Ground patch under empty slot — faint prepared area */
+.cs-slot--empty .cs-slot-ground {
+  width: 68px;
+  height: 30px;
+  background: radial-gradient(ellipse, rgba(60,55,40,0.12) 0%, transparent 70%);
+  opacity: 0.5;
+}
+
+/* Ground circle under buildings — earthy presence */
+.cs-slot-ground {
+  position: absolute;
+  width: 80px;
+  height: 40px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(90,75,50,0.30) 0%, rgba(70,60,40,0.10) 60%, transparent 100%);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -10%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* ── C: Right context panel ─────────────────────────────────────────────── */
+.cs-detail {
+  width: 320px;
+  flex-shrink: 0;
+  background: #13151f;
+  border-left: 1px solid #1e2130;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.cs-detail-content {
+  padding: 1rem;
+  flex: 1;
+}
+
+.cs-detail-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 200px;
+  gap: 0.75rem;
+}
+.cs-detail-empty-icon { font-size: 2.5rem; opacity: 0.3; }
+.cs-detail-empty-text { font-size: 0.82rem; color: #4a4860; text-align: center; line-height: 1.5; }
+
+/* Detail panel sections */
+.cs-det-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  margin-bottom: 0.75rem;
+}
+.cs-det-header-icon { font-size: 2rem; line-height: 1; flex-shrink: 0; }
+.cs-det-header-info { flex: 1; min-width: 0; }
+.cs-det-name {
+  font-size: 1rem;
+  color: #e0dff5;
+  font-weight: 600;
+  margin: 0 0 0.15rem;
+}
+.cs-det-badge {
+  display: inline-block;
+  font-size: 0.68rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  font-weight: 500;
+}
+.cs-det-badge--built { background: rgba(74,222,128,0.12); color: #4ade80; border: 1px solid #4ade80; }
+.cs-det-badge--constructing { background: rgba(251,191,36,0.12); color: #fbbf24; border: 1px solid #fbbf24; }
+.cs-det-badge--available { background: rgba(96,165,250,0.12); color: #60a5fa; border: 1px solid #60a5fa; }
+.cs-det-badge--locked { background: rgba(122,120,148,0.12); color: #7a7894; border: 1px solid #3a3d4a; }
+
+.cs-det-desc {
+  font-size: 0.82rem;
+  color: #9a9ab0;
+  line-height: 1.45;
+  margin: 0 0 0.75rem;
+}
+
+.cs-det-section {
+  margin-bottom: 0.75rem;
+}
+.cs-det-section-title {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #5a5870;
+  margin: 0 0 0.4rem;
+}
+
+.cs-det-effects {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.cs-det-effect {
+  font-size: 0.78rem;
+  color: #a0e89a;
+  padding: 0.2rem 0.4rem;
+  background: rgba(74,222,128,0.06);
+  border-radius: 4px;
+}
+
+.cs-det-cost-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.cs-det-cost-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.78rem;
+  background: #1a1d2a;
+  border: 1px solid #222535;
+  border-radius: 4px;
+  padding: 0.15rem 0.45rem;
+  color: #b8b5cc;
+}
+.cs-det-cost-item.is-missing {
+  border-color: #f87171;
+  color: #fca5a5;
+  background: rgba(248,113,113,0.08);
+}
+
+.cs-det-progress {
+  margin: 0.5rem 0;
+}
+.cs-det-progress-bar {
+  width: 100%;
+  height: 6px;
+  background: #1a1d2a;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.cs-det-progress-fill {
+  height: 100%;
+  background: #fbbf24;
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+.cs-det-progress-text {
+  font-size: 0.72rem;
+  color: #fbbf24;
+  margin-top: 0.2rem;
+}
+
+.cs-det-action-btn {
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.55rem 0.75rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+.cs-det-action-btn--build {
+  background: #f0a060;
+  color: #12141e;
+}
+.cs-det-action-btn--build:hover { background: #f8b878; }
+.cs-det-action-btn--upgrade {
+  background: #4ade80;
+  color: #12141e;
+}
+.cs-det-action-btn--upgrade:hover { background: #6ee7a0; }
+.cs-det-action-btn:disabled,
+.cs-det-action-btn[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.cs-det-blocker {
+  font-size: 0.78rem;
+  color: #7c7a94;
+  font-style: italic;
+  margin-top: 0.4rem;
+  line-height: 1.4;
+}
+
+/* Automation status inside detail */
+.cs-det-auto {
+  background: #181b27;
+  border: 1px solid #222535;
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  margin-bottom: 0.5rem;
+}
+.cs-det-auto-title {
+  font-size: 0.72rem;
+  color: #6a6880;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.3rem;
+}
+.cs-det-auto-flow {
+  font-size: 0.82rem;
+  color: #c8c5d8;
+  margin-bottom: 0.15rem;
+}
+.cs-det-auto-state {
+  font-size: 0.75rem;
+}
+.cs-det-auto-state.is-running { color: #fbbf24; }
+.cs-det-auto-state.is-waiting { color: #f87171; }
+
+/* Upgrade section inside detail */
+.cs-det-upgrade {
+  background: #181b27;
+  border: 1px solid #222535;
+  border-radius: 6px;
+  padding: 0.6rem;
+  margin-top: 0.5rem;
+}
+.cs-det-upgrade.is-applied {
+  border-color: #4ade80;
+  background: rgba(74,222,128,0.04);
+}
+.cs-det-upgrade-name {
+  font-size: 0.88rem;
+  color: #e0dff5;
+  font-weight: 600;
+  margin-bottom: 0.2rem;
+}
+.cs-det-upgrade-desc {
+  font-size: 0.78rem;
+  color: #9a9ab0;
+  line-height: 1.4;
+  margin-bottom: 0.4rem;
+}
+
+/* ── D: Bottom dock ─────────────────────────────────────────────────────── */
+.cs-dock {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: #13151f;
+  border-top: 1px solid #1e2130;
+  flex-shrink: 0;
+  overflow-x: auto;
+  min-height: 68px;
+}
+
+.cs-dock-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #222535;
+  border-radius: 8px;
+  background: #181b27;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  min-width: 72px;
+  flex-shrink: 0;
+  position: relative;
+}
+.cs-dock-item:hover {
+  border-color: #3a3d4a;
+  background: #1e2130;
+}
+.cs-dock-item.is-selected {
+  border-color: #f0a060;
+  background: rgba(240,160,96,0.08);
+}
+.cs-dock-item.is-built {
+  border-color: #2a3d2a;
+}
+.cs-dock-item.is-constructing {
+  border-color: #3d3a20;
+}
+.cs-dock-item.is-empty {
+  border-style: dashed;
+  border-color: #2a2d3a;
+}
+.cs-dock-item.is-locked {
+  opacity: 0.4;
+  border-style: dotted;
+  border-color: #1e2030;
+}
+
+.cs-dock-icon { font-size: 1.4rem; line-height: 1; }
+.cs-dock-label {
+  font-size: 0.62rem;
+  color: #7c7a94;
+  white-space: nowrap;
+  max-width: 70px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+.cs-dock-item.is-selected .cs-dock-label { color: #f0c080; }
+.cs-dock-item.is-built .cs-dock-label { color: #9a9ab0; }
+.cs-dock-item.is-locked .cs-dock-label { color: #3a3a4a; }
+
+.cs-dock-status {
+  font-size: 0.52rem;
+  color: #4a4860;
+  margin-top: -0.05rem;
+}
+.cs-dock-status.is-built { color: #4ade80; }
+.cs-dock-status.is-constructing { color: #fbbf24; }
+
+.cs-dock-x {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  font-size: 0.55rem;
+  color: #4a4860;
+}
+
+/* ── Camp stage badge in topbar ──────────────────────────────────────────── */
+.cs-topbar-stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  color: #7c7a94;
+  background: #181b27;
+  border: 1px solid #222535;
+  border-radius: 4px;
+  padding: 0.15rem 0.5rem;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.cs-topbar-stage-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4a4860;
+}
+.cs-topbar-stage-dot.is-active { background: #f0a060; }
+.cs-topbar-stage-dot.is-done { background: #4ade80; }
+
+/* ── Detail panel role description for empty slot ───────────────────────── */
+.cs-det-role {
+  font-size: 0.78rem;
+  color: #8a8a9a;
+  line-height: 1.5;
+  margin-bottom: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  background: rgba(240,200,120,0.03);
+  border-left: 2px solid rgba(240,160,80,0.2);
+  border-radius: 0 4px 4px 0;
+}
+.cs-det-role strong {
+  color: #c0b8a0;
+  font-weight: 600;
+}
+
+/* ── Camp info summary (shown in detail panel when campfire selected) ──── */
+.cs-camp-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.cs-camp-summary-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: #9a9ab0;
+}
+.cs-camp-summary-val { color: #e0dff5; font-weight: 500; }
+
+/* ── Responsive: narrow screens ─────────────────────────────────────────── */
+@media (max-width: 800px) {
+  .cs-main { flex-direction: column; }
+  .cs-detail {
+    width: 100%;
+    max-height: 45vh;
+    border-left: none;
+    border-top: 1px solid #1e2130;
+  }
+  .cs-scene { width: 400px; height: 320px; }
 }
