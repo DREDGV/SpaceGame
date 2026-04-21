@@ -1,0 +1,215 @@
+/* Era Progress */
+.panel-era-progress h3 {
+  margin-bottom: 0.4rem;
+  font-size: 1.05rem;
+}
+
+.panel-era-progress {
+  padding-top: 0.9rem;
+  padding-bottom: 0.9rem;
+}
+
+.era-description {
+  font-size: 0.85rem;
+  color: #9ca3af;
+  margin-bottom: 0.65rem;
+}
+
+.era-progress-bar {
+  position: relative;
+  height: 24px;
+  background: #1a1d27;
+  border: 1px solid #2f3442;
+  border-radius: 4px;
+  margin-bottom: 0.65rem;
+  overflow: hidden;
+}
+
+.era-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #10b981, #059669);
+  transition: width 0.3s ease;
+}
+
+.era-progress-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.era-milestones {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.era-milestone {
+  font-size: 0.82rem;
+  line-height: 1.4;
+  padding: 0.25rem 0;
+}
+
+.era-milestone.completed {
+  color: #10b981;
+}
+
+.era-milestone.pending {
+  color: #6b7280;
+}
+
+.era-milestone-summary {
+  font-size: 0.78rem;
+  color: #4b7a5e;
+  padding: 0.15rem 0;
+}
+
+/* Tactical goal inside era panel */
+.era-goal-block {
+  margin-top: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  background: rgba(251, 191, 36, 0.06);
+  border: 1px solid rgba(251, 191, 36, 0.2);
+  border-radius: 6px;
+}
+
+.era-goal-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: baseline;
+}
+
+.era-goal-label {
+  font-size: 0.68rem;
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
+.era-goal-text {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #fbbf24;
+}
+
+.era-goal-hint {
+  font-size: 0.68rem;
+  color: #8b93a7;
+  margin-top: 0.25rem;
+  line-height: 1.3;
+}
+
+.era-goal-bar {
+  height: 4px;
+  background: #1a1d27;
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 0.35rem;
+}
+
+.era-goal-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #fbbf24, #f59e0b);
+  transition: width 0.3s ease;
+}
+
+.era-goal-done {
+  margin-top: 0.5rem;
+  font-size: 0.72rem;
+  color: #22c55e;
+}
+
+/* Compact stats line */
+.era-stats {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid #2a2d37;
+  font-size: 0.68rem;
+  color: #6b7280;
+}
+
+/* ─── Prologue compact strip (sidebar, no checklist duplication) ── */
+.era-prologue-strip {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.era-prologue-strip-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #f3f4f6;
+  flex-shrink: 0;
+}
+
+.era-prologue-strip-bar {
+  flex: 1;
+  min-width: 60px;
+  height: 6px;
+  background: #1a1d27;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.era-prologue-strip-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #c49a4a, #f5dfa0);
+  transition: width 0.4s ease;
+}
+
+.era-prologue-strip-chips {
+  display: flex;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+
+.era-prologue-chip {
+  padding: 0.12rem 0.4rem;
+  border-radius: 999px;
+  background: rgba(196, 154, 74, 0.1);
+  border: 1px solid rgba(196, 154, 74, 0.25);
+  color: #d7cab5;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+/* Service button in header */
+.header-service-btn {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.78rem;
+  background: transparent;
+  color: #6b7280;
+  border: 1px solid #3a3d47;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.header-service-btn:hover {
+  color: #a78bfa;
+  border-color: #a78bfa;
+}
+
+/* Automation Toggle Button */
+.automation-toggle-btn {
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  background: #374151;
+  color: #d1d5db;
+  border: 1px solid #4b5563;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.automation-toggle-btn:hover {
+  background: #4b5563;
+}

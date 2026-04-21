@@ -1,5 +1,16 @@
 // Game data definitions — Primitive Stage (Core Loop v4: Onboarding)
 
+const TWIG_ICON_SVG = `<svg class="branch-icon-svg" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" preserveAspectRatio="xMidYMid meet">
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14 50 C24 42, 34 32, 48 18" stroke="#8a5a2b" stroke-width="6" />
+    <path d="M25 39 L18 29" stroke="#8a5a2b" stroke-width="4.5" />
+    <path d="M34 30 L28 20" stroke="#8a5a2b" stroke-width="4.2" />
+    <path d="M41 23 L52 22" stroke="#8a5a2b" stroke-width="4" />
+    <path d="M16 50 L12 57" stroke="#6f451e" stroke-width="5" />
+    <path d="M47 18 L53 11" stroke="#6f451e" stroke-width="3.5" />
+  </g>
+</svg>`;
+
 const GAME_DATA = {
   // ─── Camp founding intro (shown over the map before chooseCamp) ───
   campFoundingIntro: {
@@ -27,8 +38,8 @@ const GAME_DATA = {
         id: "choose",
         icon: "🏕️",
         title: "Выбери место для лагеря.",
-        text: "От выбора зависит, с какой стороны ты начнёшь открывать карту. Нажми на понравившийся участок и подтверди выбор.",
-        cta: "Выберите один из трёх светящихся участков",
+        text: "От выбора зависит, с какой стороны ты начнёшь открывать карту. Нажми на любом открытом участке и подтверди выбор.",
+        cta: "Выберите любое открытое место на карте (три подсвеченных — рекомендованные)",
         advanceMode: "choose",
       },
     ],
@@ -214,6 +225,8 @@ const GAME_DATA = {
       "gather_stone",
       "gather_fiber",
       "gather_supplies",
+      "gather_water",
+      "gather_food",
     ],
     visibleResourceIds: ["wood", "stone", "fiber", "crude_tools"],
     recipeIds: ["craft_crude_tools"],
@@ -306,7 +319,7 @@ const GAME_DATA = {
         id: "dry_tinder",
         order: 5,
         name: "Сухая растопка",
-        icon: "🌿",
+        icon: TWIG_ICON_SVG,
         description:
           "Для первого огня нужен не просто хворост, а сухая мелочь: трава, тонкая кора, ломкие веточки и волокно, которое быстро схватывает жар.",
         conditionText:
@@ -511,7 +524,7 @@ const GAME_DATA = {
         distanceFromCamp: 0,
         terrainType: "clearing",
         state: "camp_candidate",
-        icon: "◉",
+        icon: "🌿",
         name: "Открытая поляна",
         shortLabel: "Поляна",
         description:
@@ -530,7 +543,7 @@ const GAME_DATA = {
         distanceFromCamp: 1,
         terrainType: "brush",
         state: "discovered",
-        icon: "🌿",
+        icon: TWIG_ICON_SVG,
         name: "Сухие ветви",
         description:
           "Кустарник и сухой хворост рядом со стоянкой. Здесь проще всего начать поиск топлива и первых заготовок.",
@@ -608,7 +621,7 @@ const GAME_DATA = {
         distanceFromCamp: 1,
         terrainType: "grove",
         state: "hidden",
-        icon: "🍂",
+        icon: TWIG_ICON_SVG,
         name: "Сухая ложбина",
         description:
           "Неглубокая ложбина, где ветер меньше треплет траву и проще заметить сухой хворост для растопки.",
@@ -678,7 +691,7 @@ const GAME_DATA = {
         distanceFromCamp: 1,
         terrainType: "clearing",
         state: "hidden",
-        icon: "🛖",
+        icon: "⛺",
         name: "Место под укрытие",
         description:
           "Небольшое ровное место рядом с основанной стоянкой. Здесь можно поставить первое жильё ещё до того, как появится устойчивый очаг.",
@@ -937,6 +950,13 @@ const GAME_DATA = {
         "Оснастка, которая ускоряет ручной труд и усиливает экономику.",
       order: 4,
     },
+    supplies: {
+      id: "supplies",
+      label: "Пища и вода",
+      description:
+        "То, что поддерживает человека в выходах: еда, вода и короткие запасы для отдыха.",
+      order: 5,
+    },
   },
 
   resources: {
@@ -944,18 +964,7 @@ const GAME_DATA = {
       name: "Дерево",
       prologueName: "Ветки",
       icon: "🪵",
-      prologueIcon: `<svg class="branch-icon-svg" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" preserveAspectRatio="xMidYMid meet">
-        <g fill="none" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M18 46 C26 38, 35 28, 46 16" stroke="#8a5a2b" stroke-width="6" />
-          <path d="M28 36 L20 26" stroke="#8a5a2b" stroke-width="4.5" />
-          <path d="M36 28 L30 18" stroke="#8a5a2b" stroke-width="4.2" />
-          <path d="M42 22 L52 22" stroke="#8a5a2b" stroke-width="4" />
-          <path d="M16 46 L13 53" stroke="#6f451e" stroke-width="5" />
-          <ellipse cx="18" cy="25" rx="5.5" ry="3.6" fill="#7fb34d" stroke="#5d8d34" stroke-width="1.5" transform="rotate(-25 18 25)" />
-          <ellipse cx="31" cy="17" rx="5.2" ry="3.4" fill="#8cbc58" stroke="#5d8d34" stroke-width="1.5" transform="rotate(-38 31 17)" />
-          <ellipse cx="54" cy="22" rx="5.5" ry="3.6" fill="#8cbc58" stroke="#5d8d34" stroke-width="1.5" transform="rotate(10 54 22)" />
-        </g>
-      </svg>`,
+      prologueIcon: TWIG_ICON_SVG,
       color: "#8B5A2B",
       description: "Базовое сырье для досок, топлива и строительства.",
       storageCategory: "raw",
@@ -1060,6 +1069,26 @@ const GAME_DATA = {
       storageCategory: "materials",
       storageSize: 1,
       carryWeight: 2.4,
+    },
+    food: {
+      name: "Еда",
+      icon: "🫐",
+      color: "#7B2E8D",
+      description:
+        "Ягоды, корни и дикие грибы. Утоляет голод и восстанавливает сытость при отдыхе.",
+      storageCategory: "supplies",
+      storageSize: 1,
+      carryWeight: 0.5,
+    },
+    water: {
+      name: "Вода",
+      icon: "💧",
+      color: "#1E90FF",
+      description:
+        "Чистая вода из ручья. Восстанавливает водный запас и немного сил при отдыхе.",
+      storageCategory: "supplies",
+      storageSize: 1,
+      carryWeight: 1.5,
     },
   },
 
@@ -1233,11 +1262,11 @@ const GAME_DATA = {
       id: "gather_wood",
       name: "Собрать дерево",
       prologueName: "Собрать ветки",
-      prologueIcon: "🌿",
+      prologueIcon: TWIG_ICON_SVG,
       icon: "🪓",
       output: { wood: 1 },
       energyCost: 1,
-      cooldown: 1600,
+      cooldown: 1000,
       unlockedBy: null,
       description: "Базовый сбор для всех ранних цепочек.",
       prologueDescription:
@@ -1251,7 +1280,7 @@ const GAME_DATA = {
       icon: "⛏️",
       output: { stone: 1 },
       energyCost: 1,
-      cooldown: 1900,
+      cooldown: 1200,
       unlockedBy: null,
       description: "Нужен для инструментов и деталей мастерской.",
       prologueDescription:
@@ -1263,7 +1292,7 @@ const GAME_DATA = {
       icon: "🤲",
       output: { clay: 1 },
       energyCost: 1,
-      cooldown: 1700,
+      cooldown: 1000,
       unlockedBy: null,
       description: "Запускает ветку кирпича и обжига.",
       hiddenInPrologue: true,
@@ -1276,7 +1305,7 @@ const GAME_DATA = {
       icon: "🌾",
       output: { fiber: 1 },
       energyCost: 1,
-      cooldown: 1500,
+      cooldown: 800,
       unlockedBy: null,
       description:
         "Полезно для улучшений и построек, где нужен связующий материал.",
@@ -1289,13 +1318,33 @@ const GAME_DATA = {
       icon: "🧺",
       output: { wood: 2, stone: 2, fiber: 1 },
       energyCost: 0,
-      cooldown: 2200,
+      cooldown: 1200,
       unlockedBy: null,
       mapOnly: true,
       deliveryMode: "multi-trip",
       description: "Из тайника сразу выходит дерево, камень и немного волокна.",
       prologueDescription:
         "Чьи-то брошенные припасы. В одной связке — ветки, камни и волокно. Этого хватит для первого костра.",
+    },
+    gather_water: {
+      id: "gather_water",
+      name: "Набрать воду",
+      icon: "💧",
+      output: { water: 1 },
+      energyCost: 1,
+      cooldown: 800,
+      unlockedBy: null,
+      description: "Холодная вода из ручья. При отдыхе восстанавливает силы.",
+    },
+    gather_food: {
+      id: "gather_food",
+      name: "Собрать еду",
+      icon: "🫐",
+      output: { food: 1 },
+      energyCost: 1,
+      cooldown: 1000,
+      unlockedBy: null,
+      description: "Ягоды, корни и грибы. При отдыхе восстанавливают сытость.",
     },
   },
 
@@ -1453,6 +1502,7 @@ const GAME_DATA = {
         energy: { maxBonus: 3, regenIntervalBonusMs: 1500 },
         character: {
           maxSatietyBonus: 2,
+          maxHydrationBonus: 1,
           enduranceBonus: 1,
           recoveryRatingBonus: 1,
         },
@@ -1644,27 +1694,34 @@ const GAME_DATA = {
 // ─── Changelog data ─────────────────────────────────────────────────────────
 const CHANGELOG_DATA = [
   {
-    version: "v0.1.15",
-    date: "2026-04-19",
-    title: "Карта мира, интро, исследования, логистика, задержка тултипов",
+    version: "v0.1.16",
+    date: "2026-04-22",
+    title: "Еда, вода и исправление краша карты",
     changes: [
-      { type: "added", text: "Атмосферный экран интро с SVG-костром и нарративом о рассвете человечества" },
-      { type: "added", text: "Гексагональная карта мира: 37 тайлов, туман войны, маркер лагеря, тайлы-наполнители" },
-      { type: "added", text: "Навигация по карте: pan/drag мышью, защита от клика после перетаскивания" },
-      { type: "added", text: "Визуал карты: зоны, богатство ресурсов, лоровые аннотации, анимации тумана" },
-      { type: "added", text: "Исследования вынесены в отдельное модальное окно с виджетом в шапке" },
-      { type: "added", text: "Очередь исследований: несколько техов, отмена, индикатор нехватки ресурсов" },
-      { type: "added", text: "Полноциклная логистика сбора: outbound → gather → return с фазовой анимацией" },
-      { type: "added", text: "Фазовая анимация маршрута: жёлтая линия туда, зелёный маркер при сборе, синяя обратно" },
-      { type: "added", text: "Задержка 480 мс на тултипы над тайлами — устранено перекрытие обзора" },
-      { type: "improved", text: "Панель эры перемещена в начало сайдбара, шрифты увеличены" },
-      { type: "improved", text: "Коэффициенты времени пути: состояние персонажа, местность, дистанция, нагрузка, тропа" },
-      { type: "fixed", text: "Баг: getCharacterCondition() возвращал объект, Number(obj)=NaN блокировал весь сбор" },
-      { type: "fixed", text: "Баг: анимация перемещения персонажа не показывалась из-за NaN в totalMs" },
-      { type: "fixed", text: "Баг: this.game.builtBuildings исправлено на this.game.buildings" },
-      { type: "fixed", text: "Баг: клик по тайлу после перетаскивания карты срабатывал как выбор" },
-      { type: "fixed", text: "Баг: горизонтальный скролл в сайдбаре при длинных подсказках" },
-      { type: "fixed", text: "Субпиксельные зазоры между гексагональными тайлами карты" },
+      {
+        type: "added",
+        text: "Еда и вода добавлены как отдельные ресурсы и включены в ранний цикл",
+      },
+      {
+        type: "improved",
+        text: "Вода теперь участвует в состоянии персонажа, логистике и отдыхе",
+      },
+      {
+        type: "improved",
+        text: "Карта, персонаж и панели интерфейса показывают расход еды и воды",
+      },
+      {
+        type: "fixed",
+        text: "Устранён краш при сборе еды и воды на карте",
+      },
+      {
+        type: "fixed",
+        text: "Технические SVG-фрагменты больше не попадают в подсказки как мусорный текст",
+      },
+      {
+        type: "fixed",
+        text: "Клик по тайлам карты больше не оставляет лишнюю рамку фокуса",
+      },
     ],
   },
   {

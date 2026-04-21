@@ -1,0 +1,390 @@
+/* Panels */
+.panel {
+  background: #1a1d27;
+  border: 1px solid #2a2d37;
+  border-radius: 8px;
+  padding: 1rem;
+  min-width: 0;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    background 0.16s ease;
+}
+
+#resources-panel {
+  overflow-x: hidden;
+}
+
+.panel:hover {
+  border-color: #3a4b72;
+  box-shadow:
+    0 0 0 1px rgba(96, 165, 250, 0.16),
+    0 0 16px rgba(96, 165, 250, 0.08);
+}
+
+/* Intro panel */
+.panel-intro {
+  border-color: #a78bfa;
+  background: linear-gradient(135deg, #1a1d27, #252836);
+  margin-bottom: 1rem;
+  display: block;
+}
+
+.intro-content {
+  text-align: center;
+}
+
+.intro-text {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: #d1d5db;
+  margin-bottom: 1rem;
+}
+
+.intro-dismiss {
+  padding: 0.5rem 2rem;
+  background: #a78bfa;
+  color: #0f1117;
+  border: none;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.intro-dismiss:hover {
+  background: #8b6cf0;
+}
+
+/* Onboarding panels */
+.panel-onboarding-intro {
+  position: relative;
+  overflow: hidden;
+  padding: 0;
+  border-color: #6b4c2a;
+  background: #0c0a08;
+  margin-bottom: 0.5rem;
+  min-height: 480px;
+  display: flex;
+  align-items: stretch;
+}
+
+/* Hero image — full-bleed background */
+.intro-hero-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 30%;
+  opacity: 1;
+  filter: brightness(1.8) saturate(1.1);
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Gradient overlay: only bottom fade for text readability */
+.intro-hero-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(8, 6, 3, 0.0) 0%,
+    rgba(8, 6, 3, 0.0) 45%,
+    rgba(8, 6, 3, 0.55) 75%,
+    rgba(8, 6, 3, 0.82) 100%
+  );
+  pointer-events: none;
+}
+
+/* Content block sits above image */
+.onboarding-intro-content {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  padding: 2rem 3.0rem 2.2rem;
+  max-width: 800px;
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  /* ─── ЗАТЕМНЕНИЕ ПОД ТЕКСТОМ ─────────────────────────────────────
+     background: цвет тени. rgba(R, G, B, прозрачность)
+       0.0 = полностью прозрачно  /  1.0 = глухой чёрный
+     border-radius: скругление углов подложки
+  ─────────────────────────────────────────────────────────────── */
+  background: rgba(5, 4, 2, 0.58);
+  border-radius: 30px;
+}
+
+/* Subtle era label above title */
+.intro-era-label {
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #c49a4a;
+  margin-bottom: 0.6rem;
+  opacity: 0.85;
+}
+
+.onboarding-intro-title {
+  font-size: 1.7rem;
+  font-weight: 800;
+  color: #f5dfa0;
+  margin-bottom: 1.5rem;
+  text-shadow: 0 2px 12px rgba(0,0,0,0.8);
+  letter-spacing: 0.02em;
+}
+
+.onboarding-intro-text {
+  font-size: 0.97rem;
+  line-height: 1.75;
+  color: #d6cbba;
+  margin-bottom: 1.75rem;
+  text-align: left;
+  text-shadow: 0 1px 6px rgba(0,0,0,0.7);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 660px;
+}
+
+.onboarding-intro-text p:last-child {
+  text-align: center;
+  font-style: italic;
+  color: #c49a4a;
+  margin-top: 0.25rem;
+}
+
+/* Cinematic opening paragraph (lede) */
+.intro-lede {
+  font-size: 1.05rem;
+  line-height: 1.9;
+  font-style: italic;
+  color: #ede5d4;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.95);
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid rgba(196, 154, 74, 0.22);
+  margin-bottom: 0.15rem !important;
+}
+
+/* Subtitle under main title */
+.intro-subtitle {
+  font-size: 0.83rem;
+  letter-spacing: 0.04em;
+  color: #b8a882;
+  font-style: italic;
+  opacity: 0.9;
+  margin-bottom: 1.1rem;
+}
+
+/* Decorative divider before buttons */
+.intro-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  margin: 0.65rem 0 0.4rem;
+  color: rgba(196, 154, 74, 0.55);
+}
+.intro-divider::before,
+.intro-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(196, 154, 74, 0.22);
+}
+.intro-divider span {
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+}
+
+.onboarding-intro-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.ob-btn {
+  padding: 0.6rem 2rem;
+  border: none;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.ob-btn:active {
+  transform: scale(0.97);
+}
+
+.ob-btn-start {
+  background: #c49a4a;
+  color: #0c0a08;
+}
+
+.ob-btn-start:hover {
+  background: #dbb55e;
+}
+
+.ob-btn-skip {
+  background: rgba(55, 65, 81, 0.7);
+  color: #9ca3af;
+  border: 1px solid #4b5563;
+}
+
+.ob-btn-skip:hover {
+  background: rgba(75, 85, 99, 0.8);
+}
+
+.ob-btn-skip-small {
+  padding: 0.25rem 0.75rem;
+  background: #374151;
+  color: #9ca3af;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.ob-btn-skip-small:hover {
+  background: #4b5563;
+}
+
+/* Step-by-step onboarding panel */
+.panel-onboarding-step {
+  border-color: #fbbf24;
+  margin-bottom: 1rem;
+}
+
+.onboarding-step-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.onboarding-step-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.onboarding-step-header h3 {
+  margin: 0;
+  padding: 0;
+  border: none;
+  font-size: 0.9rem;
+  color: #fbbf24;
+}
+
+.onboarding-step-text {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e0e0e0;
+}
+
+.onboarding-step-hint {
+  font-size: 0.8rem;
+  color: #9ca3af;
+  font-style: italic;
+}
+
+.onboarding-step-bar {
+  width: 100%;
+  height: 6px;
+  background: #141620;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 0.25rem;
+}
+
+.onboarding-step-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #fbbf24, #f59e0b);
+  transition: width 0.3s ease;
+}
+
+/* Goals panel — removed, goals now inside era-progress */
+
+.storage-warning {
+  margin-bottom: 0.6rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 6px;
+  font-size: 0.76rem;
+  line-height: 1.35;
+  border: 1px solid transparent;
+}
+
+.storage-warning.is-near {
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #fbbf24;
+}
+
+.storage-warning.is-full {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+}
+
+.storage-summary {
+  margin-bottom: 0.45rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid #2d3341;
+  background: #141620;
+  color: #bfc8da;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.storage-bar {
+  position: relative;
+  width: 100%;
+  height: 14px;
+  margin-bottom: 0.5rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #10141f;
+  border: 1px solid #2d3341;
+}
+
+.storage-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #22c55e, #84cc16);
+  transition: width 0.2s ease;
+}
+
+.storage-bar-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: #d1d5db;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.55);
+}
+
+.storage-bar.is-near .storage-bar-fill {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.storage-bar.is-critical .storage-bar-fill {
+  background: linear-gradient(90deg, #ef4444, #f87171);
+}
+
+.panel h3 {
+  font-size: 1rem;
+  color: #a78bfa;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #2a2d37;
+}

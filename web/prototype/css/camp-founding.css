@@ -1,0 +1,364 @@
+/* --- Camp founding: modal footer + buttons shared ----------------------- */
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  padding: 0.9rem 1.25rem 1.1rem;
+  border-top: 1px solid #2a2d37;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.modal-btn {
+  padding: 0.55rem 1.05rem;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.05s;
+  line-height: 1.2;
+}
+.modal-btn:active { transform: translateY(1px); }
+.modal-btn--primary {
+  background: #3b2f7a;
+  color: #ede9fe;
+  border-color: #5b4fb7;
+}
+.modal-btn--primary:hover:not(:disabled) {
+  background: #4b3f9a;
+  border-color: #a78bfa;
+}
+.modal-btn--primary:disabled {
+  background: #2a2650;
+  color: #6b6a85;
+  border-color: #3a3760;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+.modal-btn--ghost {
+  background: transparent;
+  color: #bcbccd;
+  border-color: #3a3d4a;
+}
+.modal-btn--ghost:hover {
+  background: #232633;
+  color: #e4e4f2;
+}
+.modal-btn--support {
+  margin-right: auto;
+  background: rgba(240, 160, 96, 0.12);
+  color: #f2c48f;
+  border-color: rgba(240, 160, 96, 0.32);
+}
+.modal-btn--support:hover {
+  background: rgba(240, 160, 96, 0.2);
+  color: #ffe1bc;
+}
+.modal-panel--compact { max-width: 440px; }
+
+/* --- Camp founding confirm modal ---------------------------------------- */
+.modal-overlay--camp-found .modal-panel { border-color: #5b4fb7; }
+.camp-found-confirm-place {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 1.05rem;
+  margin-bottom: 0.6rem;
+}
+.camp-found-confirm-icon { font-size: 1.5rem; }
+.camp-found-confirm-name { color: #e4e4f2; font-weight: 600; }
+.camp-found-confirm-story {
+  color: #b8b5d4;
+  font-style: italic;
+  margin: 0 0 0.8rem;
+  line-height: 1.4;
+}
+.camp-found-confirm-cost {
+  background: #20213a;
+  border: 1px solid #2d2f4d;
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 0.6rem;
+}
+.camp-found-confirm-cost-label {
+  font-size: 0.82rem;
+  color: #9590b8;
+  margin-bottom: 0.25rem;
+}
+.camp-found-confirm-cost-line {
+  color: #e4e4f2;
+  font-size: 0.98rem;
+}
+.camp-found-confirm-progress {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.45rem;
+  margin-bottom: 0.6rem;
+}
+.camp-found-confirm-progress-item {
+  background: rgba(91, 79, 183, 0.08);
+  border: 1px solid rgba(91, 79, 183, 0.24);
+  border-radius: 6px;
+  padding: 0.45rem 0.6rem;
+}
+.camp-found-confirm-progress-item.is-done {
+  background: rgba(120, 220, 140, 0.08);
+  border-color: rgba(120, 220, 140, 0.25);
+}
+.camp-found-confirm-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: #ece8ff;
+  font-size: 0.9rem;
+}
+.camp-found-confirm-progress-meta {
+  margin-top: 0.18rem;
+  font-size: 0.78rem;
+  color: #bcb5ea;
+}
+.camp-found-confirm-progress-item.is-done .camp-found-confirm-progress-meta {
+  color: #a6e3a1;
+}
+.camp-found-confirm-missing {
+  color: #ffb88a;
+  background: rgba(255, 120, 80, 0.08);
+  border: 1px solid rgba(255, 120, 80, 0.25);
+  border-radius: 6px;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+/* Guidance: where to gather missing resources */
+.cfc-gather-hint {
+  margin-top: 0.55rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid rgba(255, 140, 80, 0.2);
+}
+.cfc-hint-label {
+  font-size: 0.78rem;
+  color: #e9a97c;
+  margin-bottom: 0.3rem;
+}
+.cfc-hint-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.cfc-hint-tiles span {
+  background: rgba(255, 160, 80, 0.12);
+  border: 1px solid rgba(255, 140, 60, 0.28);
+  border-radius: 4px;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.82rem;
+  color: #f5c896;
+}
+.cfc-hint-cache {
+  background: rgba(196, 154, 74, 0.15) !important;
+  border-color: rgba(196, 154, 74, 0.4) !important;
+  color: #e8cb7a !important;
+}
+.camp-found-confirm-ready {
+  color: #a6e3a1;
+  background: rgba(120, 220, 140, 0.08);
+  border: 1px solid rgba(120, 220, 140, 0.28);
+  border-radius: 6px;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.92rem;
+}
+
+/* --- Camp interior modal (stub) ---------------------------------------- */
+.modal-overlay--camp-interior .modal-panel { border-color: #f0a060; }
+.camp-interior-placeholder {
+  text-align: center;
+  padding: 1rem 0.5rem 0.4rem;
+}
+.camp-interior-placeholder-icon {
+  font-size: 3rem;
+  margin-bottom: 0.4rem;
+}
+.camp-interior-placeholder-title {
+  color: #f0c080;
+  margin: 0 0 0.6rem;
+  font-size: 1.15rem;
+}
+.camp-interior-placeholder-text {
+  color: #c8c5d8;
+  line-height: 1.5;
+  margin: 0 0 0.7rem;
+}
+.camp-interior-placeholder-hint {
+  color: #8b8aa0;
+  font-size: 0.88rem;
+  margin: 0;
+  font-style: italic;
+}
+
+/* --- Camp founding quest widget (pre-camp) ----------------------------- */
+.panel-camp-quest {
+  background: linear-gradient(135deg, #1a1f2e 0%, #251a2e 100%);
+  border: 1px solid #3a3560;
+  padding: 0.85rem 1rem 0.9rem;
+  margin-bottom: 0.6rem;
+}
+.panel-camp-quest.is-ready {
+  border-color: #7ab87a;
+  box-shadow: 0 0 0 1px rgba(122, 184, 122, 0.35), 0 0 24px rgba(122, 184, 122, 0.15);
+}
+.camp-quest-header { margin-bottom: 0.55rem; }
+.camp-quest-title {
+  margin: 0 0 0.2rem;
+  color: #c4b5e8;
+  font-size: 1rem;
+}
+.camp-quest-intro {
+  margin: 0;
+  color: #9892b2;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+.camp-quest-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.55rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.camp-quest-item {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  padding: 0.35rem 0.5rem;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.015);
+}
+.camp-quest-item.is-done {
+  background: rgba(120, 220, 140, 0.08);
+}
+.camp-quest-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 50%;
+  border: 1px solid #4a4670;
+  color: #6b6a85;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+.camp-quest-item.is-done .camp-quest-check {
+  background: #7ab87a;
+  color: #132013;
+  border-color: #7ab87a;
+}
+.camp-quest-text { color: #d4d0e8; font-size: 0.92rem; line-height: 1.3; }
+.camp-quest-item.is-done .camp-quest-text {
+  color: #8aa89a;
+  text-decoration: line-through;
+  text-decoration-color: rgba(138, 168, 154, 0.4);
+}
+.camp-quest-hint {
+  color: #7a7696;
+  font-size: 0.8rem;
+  margin-top: 0.12rem;
+  line-height: 1.3;
+}
+.camp-quest-summary {
+  color: #a8a3c4;
+  font-size: 0.88rem;
+  padding: 0.35rem 0.5rem;
+  border-top: 1px dashed #35315a;
+}
+.camp-quest-ready {
+  color: #a6e3a1;
+  font-weight: 600;
+  padding: 0.45rem 0.6rem;
+  background: rgba(120, 220, 140, 0.1);
+  border-radius: 5px;
+  border: 1px solid rgba(120, 220, 140, 0.35);
+  text-align: center;
+}
+
+/* --- Camp tile "beckon" (founded but not yet entered) ------------------ */
+.camp-tile.is-beckon polygon {
+  stroke: #f0a060;
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 6px rgba(240, 160, 96, 0.7));
+  animation: camp-beckon-pulse 1.8s ease-in-out infinite;
+}
+@keyframes camp-beckon-pulse {
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(240, 160, 96, 0.5)); }
+  50% { filter: drop-shadow(0 0 12px rgba(240, 160, 96, 0.95)); }
+}
+
+/* --- Pre-camp gather panel ----------------------------------------------- */
+.gather-precamp-progress {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+  gap: 0.55rem;
+  margin-bottom: 0.5rem;
+}
+.gather-precamp-res {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  padding: 0.42rem 0.6rem;
+  border-radius: 5px;
+  background: rgba(255, 120, 80, 0.1);
+  border: 1px solid rgba(255, 120, 80, 0.35);
+  color: #ffb88a;
+  font-size: 0.84rem;
+}
+.gather-precamp-res-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+.gather-precamp-res-meta {
+  font-size: 0.76rem;
+  color: #f0bc98;
+}
+.gather-precamp-res.is-done {
+  background: rgba(120, 220, 140, 0.1);
+  border-color: rgba(120, 220, 140, 0.4);
+  color: #a6e3a1;
+}
+.gather-precamp-res.is-done .gather-precamp-res-meta {
+  color: #a6e3a1;
+}
+.gather-precamp-ready {
+  color: #a6e3a1;
+  background: rgba(120, 220, 140, 0.08);
+  border: 1px solid rgba(120, 220, 140, 0.28);
+  border-radius: 6px;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.88rem;
+  margin-bottom: 0.55rem;
+}
+.gather-precamp-map-note {
+  margin-bottom: 0.55rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 6px;
+  background: rgba(196, 154, 74, 0.09);
+  border: 1px solid rgba(196, 154, 74, 0.25);
+  color: #e6c887;
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+/* Highlight action button when that resource is still needed */
+.action-btn--needed {
+  border-color: rgba(251, 191, 36, 0.5) !important;
+  background: rgba(251, 191, 36, 0.06) !important;
+}
+.action-btn--needed .btn-label {
+  color: #fde68a !important;
+}

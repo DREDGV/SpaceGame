@@ -1,0 +1,218 @@
+/* Resource grid */
+.resource-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 0.5rem;
+}
+
+.storage-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  max-height: none;
+  overflow-y: auto;
+  padding-right: 0.15rem;
+}
+
+.storage-category {
+  padding: 0.5rem;
+  border: 1px solid #262b37;
+  border-radius: 8px;
+  background: #141620;
+}
+
+.storage-category-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.4rem;
+}
+
+.storage-category-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #f3f4f6;
+}
+
+.storage-category-meta {
+  font-size: 0.68rem;
+  color: #9ca3af;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.storage-resource-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.resource-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.6rem;
+  background: #141620;
+  border-radius: 6px;
+}
+
+.resource-icon {
+  font-size: 1.2rem;
+}
+
+.resource-icon svg,
+.btn-icon svg,
+.building-icon svg,
+.tech-icon svg {
+  display: block;
+  width: 1.18em;
+  height: 1.18em;
+  flex-shrink: 0;
+}
+
+.plank-icon-svg {
+  display: inline-block;
+  width: 1.15em;
+  height: 1.15em;
+  vertical-align: -0.18em;
+  flex-shrink: 0;
+}
+
+.branch-icon-svg {
+  display: inline-block;
+  width: 1.15em;
+  height: 1.15em;
+  vertical-align: -0.15em;
+  flex-shrink: 0;
+}
+
+.resource-icon .plank-icon-svg,
+.resource-icon .branch-icon-svg,
+.btn-icon .plank-icon-svg,
+.btn-icon .branch-icon-svg,
+.building-icon .plank-icon-svg,
+.building-icon .branch-icon-svg,
+.tech-icon .plank-icon-svg {
+  display: block;
+  width: 1.18em;
+  height: 1.18em;
+}
+
+.resource-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.resource-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #f3f4f6;
+}
+
+.resource-desc {
+  font-size: 0.68rem;
+  line-height: 1.2;
+  color: #8b93a7;
+}
+
+.resource-count {
+  font-weight: bold;
+  color: #fbbf24;
+}
+
+.storage-resource-row {
+  padding: 0.42rem 0.5rem;
+  border: 1px solid #262b37;
+  border-radius: 7px;
+  background: #171a23;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.storage-resource-row.is-near {
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+.storage-resource-row.is-high {
+  border-color: rgba(239, 68, 68, 0.28);
+}
+
+.storage-resource-row.is-full {
+  background: rgba(61, 24, 24, 0.34);
+  border-color: rgba(239, 68, 68, 0.45);
+}
+
+.storage-resource-row.is-overflowed {
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.24);
+}
+
+.storage-resource-main {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.storage-resource-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.storage-resource-count {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #fbbf24;
+  white-space: nowrap;
+}
+
+.storage-overflow-badge {
+  margin-top: 0.12rem;
+  font-size: 0.64rem;
+  line-height: 1.2;
+  color: #fca5a5;
+}
+
+.storage-resource-state {
+  margin-top: 0.35rem;
+  font-size: 0.7rem;
+  line-height: 1.3;
+  color: #bfc8da;
+}
+
+.storage-resource-row.is-full .storage-resource-state,
+.storage-resource-row.is-overflowed .storage-resource-state {
+  color: #fca5a5;
+}
+
+.storage-resource-bar {
+  width: 100%;
+  height: 6px;
+  margin-top: 0.4rem;
+  background: #0f1117;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.storage-resource-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #22c55e, #84cc16);
+  transition: width 0.18s ease;
+}
+
+.storage-resource-row.is-near .storage-resource-bar-fill {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.storage-resource-row.is-high .storage-resource-bar-fill,
+.storage-resource-row.is-full .storage-resource-bar-fill,
+.storage-resource-row.is-overflowed .storage-resource-bar-fill {
+  background: linear-gradient(90deg, #ef4444, #f87171);
+}

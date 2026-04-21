@@ -51,6 +51,7 @@ class GameState {
 
     const characterConf = data.character || {};
     const satietyConf = characterConf.satiety || {};
+    const hydrationConf = characterConf.hydration || {};
     const carryConf = characterConf.carry || {};
     this.characterTitle = characterConf.title || "Ведущий стоянки";
     this.characterRole = characterConf.role || "";
@@ -60,6 +61,12 @@ class GameState {
     this.maxSatiety = this.baseSatietyMax;
     this.satiety = this.maxSatiety;
     this.satietyMaxBonus = 0;
+    this.baseHydrationMax = Number.isFinite(hydrationConf.max)
+      ? hydrationConf.max
+      : 10;
+    this.maxHydration = this.baseHydrationMax;
+    this.hydration = this.maxHydration;
+    this.hydrationMaxBonus = 0;
     this.characterRecoveryBonusPerTick = 0;
     this.carryCapacityBonus = 0;
     this.enduranceBonus = 0;
@@ -529,7 +536,10 @@ class GameState {
   chooseCamp(tileId) {
     const tile = this._getCampMapTile(tileId);
     if (!tile) return false;
-    if (tile.state !== "camp_candidate" && !tile.isCampCandidate) return false;
+    // Allow any visible non-resource tile as camp site (not just pre-marked candidates)
+    if (tile.actionId) return false; // Resource/gather tiles can't be camp
+    const tileState = this.getCampTileState(tileId);
+    if (tileState === "hidden") return false;
 
     // Ritual gating: resources + energy must be available
     const check = this.canFoundCamp();
@@ -569,7 +579,11 @@ class GameState {
     // Select the camp tile
     this.localCampMap.selectedTileId = tileId;
 
-    // Sync map with new origin (reveals starting resource tiles)
+    // Ensure there are resource tiles within reach of the new camp.
+    // If the chosen tile has no wood/stone/fiber within radius 1, generate them.
+    this._ensureStartingResourceTiles(tileId);
+
+    // Sync map with new origin (reveals starting resource tiles + generated ones)
     this._syncLocalCampMap({ pushStory: false });
 
     this.addLog(`🏕️ Лагерь основан: "${tile.name}".`);
@@ -654,11 +668,15 @@ class GameState {
     let description =
       grass.description || "Спокойный участок местности рядом с лагерем.";
 
+    // Distance bonus: 0 at d=1, +1 per ring further out
+    const distBonus = Math.max(0, distanceFromCamp - 1);
+
     if (roll <= 1) {
       terrain = brush;
       actionId = "gather_wood";
       resourceType = "wood";
-      resourceAmount = 3 + (hash % 4);
+      // d=1: 3-5  d=2: 7-9  d=3: 11-13  d=4: 15-17
+      resourceAmount = 3 + (hash % 3) + distBonus * 4;
       name = distanceFromCamp <= 1 ? "Хворост рядом" : "Заросли хвороста";
       description =
         "Здесь можно собрать ещё немного сухих ветвей и хвороста для лагеря.";
@@ -666,7 +684,8 @@ class GameState {
       terrain = grass;
       actionId = "gather_fiber";
       resourceType = "fiber";
-      resourceAmount = 2 + (hash % 4);
+      // d=1: 2-4  d=2: 5-7  d=3: 8-10  d=4: 11-13
+      resourceAmount = 2 + (hash % 3) + distBonus * 3;
       name = distanceFromCamp <= 1 ? "Жёсткая трава" : "Полоса волокон";
       description =
         "Трава и волокна здесь пригодны для простых связок и грубых заготовок.";
@@ -674,7 +693,8 @@ class GameState {
       terrain = rocks;
       actionId = "gather_stone";
       resourceType = "stone";
-      resourceAmount = 2 + (hash % 3);
+      // d=1: 2-3  d=2: 5-6  d=3: 8-9  d=4: 11-12
+      resourceAmount = 2 + (hash % 2) + distBonus * 3;
       name = distanceFromCamp <= 1 ? "Камни рядом" : "Каменная гряда";
       description =
         "Небольшой выход породы. Тут можно подобрать подходящие камни и сколы.";
@@ -723,6 +743,127 @@ class GameState {
       resourceType,
       resourceAmount,
     };
+  }
+
+  // ─── Dynamic resource tile generation ─────────────────────────────────────
+
+  // After camp is founded at any tile: if wood, stone, or fiber are not within
+  // radius 1, create virtual resource tiles at adjacent empty positions.
+  _ensureStartingResourceTiles(campTileId) {
+    const campTile = this._getCampMapTile(campTileId);
+    if (!campTile) return;
+
+    // Check which resources are already within radius 1
+    const allTiles = this._getCampMapTiles();
+    const needed = new Set(["wood", "stone", "fiber"]);
+    for (const t of Object.values(allTiles)) {
+      if (t.resourceType && needed.has(t.resourceType)) {
+        const dist = this._getCampTileLiveDist(t);
+        if (dist <= 1) needed.delete(t.resourceType);
+      }
+    }
+    if (needed.size === 0) return;
+
+    // Find adjacent positions not already occupied
+    const DIRECTIONS = [
+      [1, 0],
+      [1, -1],
+      [0, -1],
+      [-1, 0],
+      [-1, 1],
+      [0, 1],
+    ];
+    const usedCoords = new Set(
+      Object.values(allTiles).map((t) => `${t.q},${t.r}`),
+    );
+    const freePositions = DIRECTIONS.map(([dq, dr]) => [
+      campTile.q + dq,
+      campTile.r + dr,
+    ]).filter(([q, r]) => !usedCoords.has(`${q},${r}`));
+
+    const defs = {
+      wood: {
+        icon: "🌿",
+        name: "Ветви рядом",
+        terrainType: "brush",
+        actionId: "gather_wood",
+        amount: 10,
+      },
+      stone: {
+        icon: "🪨",
+        name: "Камни рядом",
+        terrainType: "rock",
+        actionId: "gather_stone",
+        amount: 8,
+      },
+      fiber: {
+        icon: "🌾",
+        name: "Трава рядом",
+        terrainType: "grass",
+        actionId: "gather_fiber",
+        amount: 7,
+      },
+    };
+
+    if (!this.localCampMap.generatedTiles)
+      this.localCampMap.generatedTiles = {};
+
+    let posIdx = 0;
+    for (const resource of needed) {
+      if (posIdx >= freePositions.length) break;
+      const [q, r] = freePositions[posIdx++];
+      const def = defs[resource];
+      const id = `gen_${resource}_${String(q).replace("-", "m")}_${String(r).replace("-", "m")}`;
+      this.localCampMap.generatedTiles[id] = {
+        id,
+        q,
+        r,
+        terrainType: def.terrainType,
+        state: "discovered",
+        icon: def.icon,
+        name: def.name,
+        description:
+          "Ближайший источник ресурсов рядом с выбранным местом лагеря.",
+        actionId: def.actionId,
+        resourceType: resource,
+        resourceAmount: def.amount,
+        isGenerated: true,
+      };
+      this.localCampMap.tileStates[id] = "discovered";
+      this.localCampMap.tileResourceRemaining[id] = def.amount;
+    }
+
+    // Invalidate tile cache so generated tiles are picked up on next access
+    this._campMapTilesCache = null;
+  }
+
+  // Reveal a silhouette/hidden tile (used for the exploration travel feature).
+  discoverCampTile(tileId) {
+    if (!tileId) return false;
+    const tile = this._getCampMapTile(tileId);
+    if (!tile) return false;
+    const current = this.getCampTileState(tileId);
+    if (
+      current === "camp" ||
+      current === "developed" ||
+      current === "discovered" ||
+      current === "camp_candidate"
+    ) {
+      return false; // already revealed
+    }
+    this.localCampMap.tileStates[tileId] = "discovered";
+    this._syncLocalCampMap({ pushStory: false });
+    this.addLog(`🔍 Открыт новый участок: "${tile.name}".`);
+    this.markDirty();
+    return true;
+  }
+
+  // Helper: return full tile details for the best tile matching a gather action.
+  // Used by the gather panel to start map travel animation.
+  getBestGatherTileDetails(actionId) {
+    const tile = this._getPreferredCampGatherTile(actionId);
+    if (!tile) return null;
+    return this.getCampMapTileDetails(tile.id);
   }
 
   _getCampNeighborTileIds(tileId) {
@@ -871,6 +1012,16 @@ class GameState {
       }
     }
 
+    // Merge in dynamically generated resource tiles (created after camp founding)
+    for (const [id, vtile] of Object.entries(
+      this.localCampMap?.generatedTiles || {},
+    )) {
+      if (!tiles[id]) {
+        tiles[id] = vtile;
+        tilesByCoord.set(this._getCampMapCoordKey(vtile.q, vtile.r), vtile);
+      }
+    }
+
     this._campMapTilesCache = tiles;
     return tiles;
   }
@@ -914,6 +1065,7 @@ class GameState {
       readyStoryShown: false,
       appliedUpgrades: [],
       campSettings: { name: "" },
+      generatedTiles: {},
     };
   }
 
@@ -974,7 +1126,28 @@ class GameState {
       raw?.buildingPlacements || {},
     )) {
       if (!this.data.buildings[buildingId] || !tiles[tileId]) continue;
+      // Only restore placement if the tile still accepts this building
+      const tileDef = tiles[tileId];
+      if (
+        !Array.isArray(tileDef.buildOptions) ||
+        !tileDef.buildOptions.includes(buildingId)
+      ) {
+        continue;
+      }
       defaults.buildingPlacements[buildingId] = tileId;
+    }
+
+    // Downgrade "developed" state for tiles that no longer support buildings
+    for (const [tileId, state] of Object.entries(defaults.tileStates)) {
+      if (state !== "developed") continue;
+      const tileDef = tiles[tileId];
+      if (
+        !tileDef ||
+        !Array.isArray(tileDef.buildOptions) ||
+        tileDef.buildOptions.length === 0
+      ) {
+        defaults.tileStates[tileId] = "discovered";
+      }
     }
 
     if (tiles[raw?.selectedTileId]) {
@@ -1037,6 +1210,29 @@ class GameState {
             ? raw.campSettings.name.slice(0, 40)
             : "",
       };
+    }
+
+    // Restore dynamically generated resource tiles (created after camp founding)
+    if (raw?.generatedTiles && typeof raw.generatedTiles === "object") {
+      defaults.generatedTiles = {};
+      for (const [id, tile] of Object.entries(raw.generatedTiles)) {
+        if (
+          tile &&
+          typeof tile === "object" &&
+          tile.id === id &&
+          Number.isFinite(tile.q) &&
+          Number.isFinite(tile.r) &&
+          tile.actionId
+        ) {
+          defaults.generatedTiles[id] = tile;
+          defaults.tileStates[id] = "discovered";
+          defaults.tileResourceRemaining[id] = Number.isFinite(
+            raw?.tileResourceRemaining?.[id],
+          )
+            ? Math.max(0, raw.tileResourceRemaining[id])
+            : (tile.resourceAmount ?? 0);
+        }
+      }
     }
 
     return defaults;
@@ -1152,7 +1348,7 @@ class GameState {
       const tech = this.data.tech[techId];
       if (!tech) continue;
       if (tech.effect?.craftDiscount) {
-        craftDiscount = Math.max(craftDiscount, tech.effect.craftDiscount);
+        craftDiscount += tech.effect.craftDiscount;
       }
       if (tech.effect?.buildTimeMultiplier) {
         buildTimeMultiplier *= tech.effect.buildTimeMultiplier;
@@ -1233,6 +1429,7 @@ class GameState {
 
   _recalculateCharacterStats() {
     let satietyMaxBonus = 0;
+    let hydrationMaxBonus = 0;
     let recoveryBonusPerTick = 0;
     let carryCapacityBonus = 0;
     let enduranceBonus = 0;
@@ -1243,6 +1440,7 @@ class GameState {
       const effect = this.data.tech[techId]?.effect?.character;
       if (!effect) continue;
       satietyMaxBonus += effect.maxSatietyBonus || 0;
+      hydrationMaxBonus += effect.maxHydrationBonus || 0;
       recoveryBonusPerTick += effect.recoveryBonusPerTick || 0;
       carryCapacityBonus += effect.carryCapacityBonus || 0;
       enduranceBonus += effect.enduranceBonus || 0;
@@ -1254,6 +1452,7 @@ class GameState {
       const effect = this.data.buildings[buildingId]?.effect?.character;
       if (!effect) continue;
       satietyMaxBonus += effect.maxSatietyBonus || 0;
+      hydrationMaxBonus += effect.maxHydrationBonus || 0;
       recoveryBonusPerTick += effect.recoveryBonusPerTick || 0;
       carryCapacityBonus += effect.carryCapacityBonus || 0;
       enduranceBonus += effect.enduranceBonus || 0;
@@ -1265,6 +1464,7 @@ class GameState {
       const effect = this.data.buildingUpgrades?.[upgradeId]?.effect?.character;
       if (!effect) continue;
       satietyMaxBonus += effect.maxSatietyBonus || 0;
+      hydrationMaxBonus += effect.maxHydrationBonus || 0;
       recoveryBonusPerTick += effect.recoveryBonusPerTick || 0;
       carryCapacityBonus += effect.carryCapacityBonus || 0;
       enduranceBonus += effect.enduranceBonus || 0;
@@ -1273,18 +1473,35 @@ class GameState {
     }
 
     this.satietyMaxBonus = satietyMaxBonus;
+    this.hydrationMaxBonus = hydrationMaxBonus;
     this.characterRecoveryBonusPerTick = recoveryBonusPerTick;
     this.carryCapacityBonus = carryCapacityBonus;
     this.enduranceBonus = enduranceBonus;
     this.fieldcraftBonus = fieldcraftBonus;
     this.recoveryRatingBonus = recoveryRatingBonus;
     this.maxSatiety = this.baseSatietyMax + satietyMaxBonus;
+    this.maxHydration = this.baseHydrationMax + hydrationMaxBonus;
     this.carryCapacity = this.baseCarryCapacity + carryCapacityBonus;
     this.satiety = Math.min(this.satiety, this.maxSatiety);
+    this.hydration = Math.min(this.hydration, this.maxHydration);
   }
 
   _ensureCampBuildingPlacements() {
     const mapTiles = this._getCampMapTiles();
+
+    // Clean up stale placements where the tile no longer accepts the building
+    for (const [buildingId, tileId] of Object.entries(
+      this.localCampMap.buildingPlacements,
+    )) {
+      const tile = mapTiles[tileId];
+      if (
+        !tile ||
+        !Array.isArray(tile.buildOptions) ||
+        !tile.buildOptions.includes(buildingId)
+      ) {
+        delete this.localCampMap.buildingPlacements[buildingId];
+      }
+    }
 
     for (const buildingId of Object.keys(this.buildings)) {
       if (this.localCampMap.buildingPlacements[buildingId]) continue;
@@ -1399,8 +1616,15 @@ class GameState {
       }
 
       const placedBuildingId = this.getCampPlacedBuildingId(tileId);
+      // Only mark as developed if the building's tile still has matching buildOptions
       if (placedBuildingId) {
-        desiredState = "developed";
+        const tileDef = tiles[tileId];
+        if (
+          Array.isArray(tileDef?.buildOptions) &&
+          tileDef.buildOptions.includes(placedBuildingId)
+        ) {
+          desiredState = "developed";
+        }
       } else if (this.activeConstruction?.tileId === tileId) {
         desiredState = this._getHigherCampTileState(desiredState, "developed");
       }
@@ -1564,6 +1788,14 @@ class GameState {
       terrainPenalty +
       delivery.tripPenalty +
       (condition.gatherCostPenalty || 0);
+    const effortProfile = {
+      distance,
+      routeDistance,
+      deliveryPenalty: delivery.tripPenalty,
+      pathLevel: path.id,
+    };
+    const satietyCost = this._getSatietyDrainForBuild(effortProfile);
+    const hydrationCost = this._getHydrationDrainForBuild(effortProfile);
 
     let blockedReason = "";
     if (this._getCampTileLiveDist(tile) <= 0) {
@@ -1631,6 +1863,8 @@ class GameState {
       project,
       cost,
       energyCost,
+      satietyCost,
+      hydrationCost,
       totalLoad: delivery.totalLoad,
       load: delivery.perTripLoad,
       carryCapacity: delivery.carryCapacity,
@@ -1932,7 +2166,8 @@ class GameState {
 
     this.localCampMap.pathLevels[tileId] = "trail";
     this._markCampTileDeveloped(tileId);
-    this._drainSatiety(0.18);
+    this._drainSatiety(project.satietyCost || 0.18);
+    this._drainHydration(project.hydrationCost || 0.14);
     this._syncCharacterConditionState();
 
     this.addLog(
@@ -2274,6 +2509,7 @@ class GameState {
         totalResourcesCollected: this.totalResourcesCollected,
         energy: this.energy,
         satiety: this.satiety,
+        hydration: this.hydration,
         lastManualRestAt: this.lastManualRestAt,
         energyRegenRemainingMs: this.getEnergyRegenRemaining(),
         onboarding: { ...this.onboarding },
@@ -2376,6 +2612,9 @@ class GameState {
     this.satiety = Number.isFinite(state.satiety)
       ? Math.max(0, Math.min(this.maxSatiety, state.satiety))
       : this.maxSatiety;
+    this.hydration = Number.isFinite(state.hydration)
+      ? Math.max(0, Math.min(this.maxHydration, state.hydration))
+      : this.maxHydration;
     this.lastManualRestAt = Number.isFinite(state.lastManualRestAt)
       ? state.lastManualRestAt
       : 0;
@@ -3081,6 +3320,10 @@ class GameState {
     return Math.max(0, Math.min(this.maxSatiety, value));
   }
 
+  _clampHydration(value) {
+    return Math.max(0, Math.min(this.maxHydration, value));
+  }
+
   _getCharacterConditionConfig(conditionId) {
     return this.data.character?.conditions?.[conditionId] || null;
   }
@@ -3088,12 +3331,18 @@ class GameState {
   getCharacterCondition() {
     const satietyRatio =
       this.maxSatiety > 0 ? this.satiety / this.maxSatiety : 1;
+    const hydrationRatio =
+      this.maxHydration > 0 ? this.hydration / this.maxHydration : 1;
     const energyRatio = this.maxEnergy > 0 ? this.energy / this.maxEnergy : 1;
 
     let conditionId = "stable";
-    if (satietyRatio <= 0.2 || energyRatio <= 0.15) {
+    if (satietyRatio <= 0.2 || hydrationRatio <= 0.2 || energyRatio <= 0.15) {
       conditionId = "exhausted";
-    } else if (satietyRatio <= 0.5 || energyRatio <= 0.35) {
+    } else if (
+      satietyRatio <= 0.5 ||
+      hydrationRatio <= 0.5 ||
+      energyRatio <= 0.35
+    ) {
       conditionId = "weakened";
     }
 
@@ -3118,6 +3367,7 @@ class GameState {
       baseMaxSafeDistance: config.maxSafeDistance,
       maxSafeDistance,
       satietyRatio,
+      hydrationRatio,
       energyRatio,
     };
   }
@@ -3264,6 +3514,10 @@ class GameState {
     const recoveryRating = this.getCharacterRecoveryRating();
     const energyMissing = Math.max(0, this.maxEnergy - this.energy);
     const satietyMissing = Math.max(0, this.maxSatiety - this.satiety);
+    const hydrationMissing = Math.max(0, this.maxHydration - this.hydration);
+    const hydrationConf = this.data.character?.hydration || {};
+    const foodRecovery = this.data.character?.satiety?.foodRecovery || 1.5;
+    const waterRecovery = hydrationConf.waterRecovery || 3;
 
     let energyGain = restConf.baseEnergy || 2;
     let satietyGain = restConf.baseSatiety || 0.45;
@@ -3302,9 +3556,33 @@ class GameState {
       satietyMissing,
       Math.max(0, Number(satietyGain.toFixed(2))),
     );
+    const hasFood = (this.resources.food || 0) >= 1;
+    const hasWater = (this.resources.water || 0) >= 1;
+    const foodBonusSatiety = hasFood
+      ? Math.min(
+          Math.max(0, satietyMissing - satietyRecovery),
+          foodRecovery,
+        )
+      : 0;
+    const willUseFood = foodBonusSatiety > 0.05;
+    const willUseWater =
+      hasWater &&
+      (hydrationMissing > 0.05 || energyMissing > energyRecovery);
+    const hydrationRecovery = willUseWater
+      ? Math.min(hydrationMissing, waterRecovery)
+      : 0;
+    const waterBonusEnergy = willUseWater
+      ? Math.min(1, Math.max(0, energyMissing - energyRecovery))
+      : 0;
 
     let blockedReason = "";
-    if (energyMissing <= 0 && satietyMissing <= 0.05) {
+    if (
+      energyRecovery <= 0 &&
+      satietyRecovery <= 0.05 &&
+      hydrationRecovery <= 0.05 &&
+      foodBonusSatiety <= 0.05 &&
+      waterBonusEnergy <= 0
+    ) {
       blockedReason = "Персонажу пока не нужна передышка.";
     } else if (remainingMs > 0) {
       blockedReason = `Передышка будет доступна снова через ${Math.ceil(remainingMs / 1000)}с.`;
@@ -3326,6 +3604,13 @@ class GameState {
       note,
       energyGain: energyRecovery,
       satietyGain: satietyRecovery,
+      hydrationGain: hydrationRecovery,
+      foodBonusSatiety,
+      waterBonusEnergy,
+      willUseFood,
+      willUseWater,
+      hasFood,
+      hasWater,
       cooldownMs,
       remainingMs,
       blockedReason,
@@ -3340,16 +3625,49 @@ class GameState {
 
     const beforeEnergy = this.energy;
     const beforeSatiety = this.satiety;
-    this.energy = Math.min(this.maxEnergy, this.energy + profile.energyGain);
-    this.satiety = this._clampSatiety(this.satiety + profile.satietyGain);
+    const beforeHydration = this.hydration;
+
+    const foodConsumed = profile.willUseFood && (this.resources.food || 0) >= 1;
+    const waterConsumed =
+      profile.willUseWater && (this.resources.water || 0) >= 1;
+    if (foodConsumed) {
+      this.resources.food -= 1;
+    }
+    if (waterConsumed) {
+      this.resources.water -= 1;
+    }
+
+    this.energy = Math.min(
+      this.maxEnergy,
+      this.energy + profile.energyGain + (waterConsumed ? profile.waterBonusEnergy : 0),
+    );
+    this.satiety = this._clampSatiety(
+      this.satiety +
+        profile.satietyGain +
+        (foodConsumed ? profile.foodBonusSatiety : 0),
+    );
+    this.hydration = this._clampHydration(
+      this.hydration + (waterConsumed ? profile.hydrationGain : 0),
+    );
     this.lastManualRestAt = Date.now();
     this.lastEnergyRegen = Date.now();
     this._syncCharacterConditionState();
 
     const energyRecovered = this.energy - beforeEnergy;
     const satietyRecovered = this.satiety - beforeSatiety;
+    const hydrationRecovered = this.hydration - beforeHydration;
+    const bonusParts = [];
+    if (foodConsumed) bonusParts.push("еда 🫐 +сытость");
+    if (waterConsumed) {
+      bonusParts.push(
+        profile.hydrationGain > 0
+          ? "вода 💧 +водный запас"
+          : "вода 💧 +силы",
+      );
+    }
+    const bonusNote = bonusParts.length ? ` (${bonusParts.join(", ")})` : "";
     this.addLog(
-      `🛌 ${profile.label}: +${energyRecovered} сил, +${satietyRecovered.toFixed(1)} сытости.`,
+      `🛌 ${profile.label}: +${energyRecovered} сил, +${satietyRecovered.toFixed(1)} сытости, +${hydrationRecovered.toFixed(1)} воды${bonusNote}.`,
     );
     this.markDirty();
     this.saveGame(true);
@@ -3369,15 +3687,15 @@ class GameState {
         return {
           icon: "🥀",
           title: "Силы на исходе",
-          text: "Голод и усталость уже мешают дальним выходам. Теперь каждое тяжёлое действие нужно выбирать осторожнее.",
-          log: "🥀 Персонаж ослаблен: дальние выходы и тяжёлая работа стали заметно труднее.",
+          text: "Голод, жажда или усталость уже мешают дальним выходам. Теперь каждое тяжёлое действие нужно выбирать осторожнее.",
+          log: "🥀 Персонаж ослаблен: голод, жажда или усталость заметно утяжеляют работу.",
         };
       case "exhausted":
         return {
           icon: "🪫",
           title: "Истощение",
-          text: "Сейчас безопасны только самые близкие действия у стоянки. Нужны отдых, огонь и короткая передышка.",
-          log: "🪫 Персонаж истощён: далеко от стоянки сейчас лучше не уходить.",
+          text: "Сейчас безопасны только самые близкие действия у стоянки. Нужны отдых, вода, еда и короткая передышка.",
+          log: "🪫 Персонаж истощён: без воды, еды и отдыха далеко от стоянки лучше не уходить.",
         };
       default:
         return null;
@@ -3572,11 +3890,32 @@ class GameState {
     return recovery;
   }
 
+  _getHydrationRecoveryPerTick() {
+    const hydrationConf = this.data.character?.hydration || {};
+    let recovery = hydrationConf.passiveRecoveryPerTick || 0;
+
+    if (this.buildings.rest_tent) {
+      recovery += hydrationConf.restTentRecoveryBonusPerTick || 0;
+    }
+    if (this.buildings.storage) {
+      recovery += hydrationConf.storageRecoveryBonusPerTick || 0;
+    }
+
+    return recovery;
+  }
+
   _drainSatiety(amount) {
     if (!Number.isFinite(amount) || amount <= 0) return 0;
     const before = this.satiety;
     this.satiety = this._clampSatiety(this.satiety - amount);
     return before - this.satiety;
+  }
+
+  _drainHydration(amount) {
+    if (!Number.isFinite(amount) || amount <= 0) return 0;
+    const before = this.hydration;
+    this.hydration = this._clampHydration(this.hydration - amount);
+    return before - this.hydration;
   }
 
   _getSatietyDrainForGather(profile) {
@@ -3594,6 +3933,21 @@ class GameState {
     );
   }
 
+  _getHydrationDrainForGather(profile) {
+    const hydrationConf = this.data.character?.hydration || {};
+    const baseDrain = hydrationConf.gatherDrain || 0;
+    if (!profile) return baseDrain;
+
+    return Math.max(
+      0.06,
+      baseDrain +
+        Math.max(0, (profile.routeDistance ?? profile.distance) - 1) * 0.06 +
+        Math.max(0, profile.deliveryPenalty || 0) * 0.06 +
+        (profile.loadPct >= 0.85 ? 0.05 : 0) -
+        (profile.pathLevel && profile.pathLevel !== "none" ? 0.05 : 0),
+    );
+  }
+
   _getSatietyDrainForBuild(profile = null) {
     const baseDrain = this.data.character?.satiety?.buildDrain || 0;
     if (!profile) return baseDrain;
@@ -3603,6 +3957,18 @@ class GameState {
         Math.max(0, (profile.routeDistance ?? profile.distance) - 1) * 0.08 +
         Math.max(0, profile.deliveryPenalty || 0) * 0.08 -
         (profile.pathLevel && profile.pathLevel !== "none" ? 0.08 : 0),
+    );
+  }
+
+  _getHydrationDrainForBuild(profile = null) {
+    const baseDrain = this.data.character?.hydration?.buildDrain || 0;
+    if (!profile) return baseDrain;
+    return Math.max(
+      0.08,
+      baseDrain +
+        Math.max(0, (profile.routeDistance ?? profile.distance) - 1) * 0.06 +
+        Math.max(0, profile.deliveryPenalty || 0) * 0.06 -
+        (profile.pathLevel && profile.pathLevel !== "none" ? 0.05 : 0),
     );
   }
 
@@ -3671,7 +4037,10 @@ class GameState {
           limitedByCarry: false,
         }
       : this._limitOutputByCarry(rawOutput);
-    const supplyLimited = this._limitOutputByTileSupply(carryLimited.output, tile);
+    const supplyLimited = this._limitOutputByTileSupply(
+      carryLimited.output,
+      tile,
+    );
     const output = supplyLimited.output;
     const totalLoad = this._getOutputCarryLoad(output);
     const delivery = this._getDeliveryProfile(totalLoad, carryCapacity);
@@ -3699,6 +4068,15 @@ class GameState {
       delivery.tripPenalty +
       loadPenalty +
       (condition.gatherCostPenalty || 0);
+    const effortProfile = {
+      distance,
+      routeDistance,
+      deliveryPenalty: delivery.tripPenalty,
+      loadPct,
+      pathLevel: path.id,
+    };
+    const satietyCost = this._getSatietyDrainForGather(effortProfile);
+    const hydrationCost = this._getHydrationDrainForGather(effortProfile);
 
     let blockedReason = "";
     if (!tile) {
@@ -3762,15 +4140,14 @@ class GameState {
       routeDistance,
       energyCost,
       baseEnergyCost: action.energyCost,
+      satietyCost,
+      hydrationCost,
       distancePenalty,
       terrainPenalty,
       fieldcraftRelief,
       loadPenalty,
       effortLabel: this._getLogisticsEffortLabel(
-        distancePenalty +
-          terrainPenalty +
-          loadPenalty +
-          delivery.tripPenalty,
+        distancePenalty + terrainPenalty + loadPenalty + delivery.tripPenalty,
       ),
       limitedByCarry: carryLimited.limitedByCarry,
       limitedBySupply: supplyLimited.limitedBySupply,
@@ -3828,6 +4205,14 @@ class GameState {
       terrainPenalty +
       delivery.tripPenalty +
       (condition.gatherCostPenalty || 0);
+    const effortProfile = {
+      distance,
+      routeDistance,
+      deliveryPenalty: delivery.tripPenalty,
+      pathLevel: path.id,
+    };
+    const satietyCost = this._getSatietyDrainForBuild(effortProfile);
+    const hydrationCost = this._getHydrationDrainForBuild(effortProfile);
     let blockedReason = "";
 
     if (
@@ -3878,6 +4263,8 @@ class GameState {
       pathIcon: path.icon,
       routeDistance,
       energyCost,
+      satietyCost,
+      hydrationCost,
       terrainLabel: terrain.label,
       terrainPenalty,
       fieldcraftRelief,
@@ -3954,6 +4341,14 @@ class GameState {
         pct: this.maxSatiety > 0 ? this.satiety / this.maxSatiety : 0,
         recoveryPerTick: this._getSatietyRecoveryPerTick(),
       },
+      hydration: {
+        current: this.hydration,
+        max: this.maxHydration,
+        baseMax: this.baseHydrationMax,
+        maxBonus: this.hydrationMaxBonus || 0,
+        pct: this.maxHydration > 0 ? this.hydration / this.maxHydration : 0,
+        recoveryPerTick: this._getHydrationRecoveryPerTick(),
+      },
       carry: {
         capacity: this.getCharacterCarryCapacity(),
         baseCapacity: this.baseCarryCapacity,
@@ -3990,6 +4385,7 @@ class GameState {
 
     const before = this.energy;
     const satietyBefore = this.satiety;
+    const hydrationBefore = this.hydration;
     this.energy = Math.min(
       this.energy + this.energyRegenPerTick,
       this.maxEnergy,
@@ -3997,13 +4393,20 @@ class GameState {
     this.satiety = this._clampSatiety(
       this.satiety + this._getSatietyRecoveryPerTick(),
     );
+    this.hydration = this._clampHydration(
+      this.hydration + this._getHydrationRecoveryPerTick(),
+    );
     this.lastEnergyRegen = now;
     this._syncCharacterConditionState();
 
     if (this.energy !== before && !this.isPrologueActive()) {
       this.addLog(`⚡ +${this.energy - before} энергии`);
       this.markDirty();
-    } else if (this.energy !== before || this.satiety !== satietyBefore) {
+    } else if (
+      this.energy !== before ||
+      this.satiety !== satietyBefore ||
+      this.hydration !== hydrationBefore
+    ) {
       this.markDirty();
     }
   }
@@ -4105,6 +4508,7 @@ class GameState {
     const action = this.data.gatherActions[actionId];
     if (!this.spendEnergy(profile.energyCost)) return false;
     this._drainSatiety(this._getSatietyDrainForGather(profile));
+    this._drainHydration(this._getHydrationDrainForGather(profile));
     this._syncCharacterConditionState();
 
     const output = profile.output;
@@ -4112,7 +4516,6 @@ class GameState {
       this.addResource(id, amount);
     }
     if (mappedTile) {
-      this._markCampTileDeveloped(mappedTile.id);
       if (
         Number.isFinite(this.localCampMap.tileResourceRemaining[mappedTile.id])
       ) {
@@ -4139,7 +4542,10 @@ class GameState {
     } else {
       this.addLog(
         `+${Object.entries(output)
-          .map(([id, amount]) => `${this.data.resources[id].icon}${amount}`)
+          .map(([id, amount]) => {
+            const resource = this.data.resources[id];
+            return `${resource?.icon || id}${amount}`;
+          })
           .join(" ")} (⚡-${profile.energyCost})`,
       );
     }
@@ -4385,6 +4791,7 @@ class GameState {
 
     const durationMs = this.getBuildDuration(buildingId);
     this._drainSatiety(this._getSatietyDrainForBuild(buildProfile));
+    this._drainHydration(this._getHydrationDrainForBuild(buildProfile));
     this._syncCharacterConditionState();
     this.activeConstruction = {
       buildingId,
@@ -4435,8 +4842,7 @@ class GameState {
         type: "prologue",
         icon: "⛺",
         title: "Появилось первое жильё",
-        text:
-          "Палатка уже держит ветер и сырость. Стоянка стала местом, где можно не просто дожидаться утра, а оставаться дольше одного случайного вечера.",
+        text: "Палатка уже держит ветер и сырость. Стоянка стала местом, где можно не просто дожидаться утра, а оставаться дольше одного случайного вечера.",
         ttlMs: 8000,
       });
     }
@@ -4458,6 +4864,11 @@ class GameState {
             `🏗️ Построено: ${building.icon} ${building.name}`
         : `🏗️ Построено: ${building.icon} ${building.name}`,
     );
+    if (building.effect?.maxResourceCap) {
+      this.addLog(
+        `📦 Лимит ресурсов увеличен до ${building.effect.maxResourceCap}`,
+      );
+    }
     this._checkPrologueInsights();
     this._checkOnboarding();
     this._checkGoals();

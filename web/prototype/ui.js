@@ -13,281 +13,9 @@ class UI {
     this.characterPanelExpanded = false;
     this._restCooldownTimer = null;
     this._gatherCooldownTimer = null;
-    this._campTravelTimer = null;
-    this._campTravelAction = null;
     this._campIntroTimer = null;
     this._justFoundedTimer = null;
-    this._tooltipTimer = null;
     this.bindStaticControls();
-  }
-
-  _showTooltipDelayed(tooltipEl, text, delayMs = 1500) {
-    if (this._tooltipTimer) clearTimeout(this._tooltipTimer);
-    this._tooltipTimer = setTimeout(() => {
-      this._tooltipTimer = null;
-      tooltipEl.textContent = text;
-      tooltipEl.hidden = false;
-    }, delayMs);
-  }
-
-  _hideTooltip(tooltipEl) {
-    if (this._tooltipTimer) {
-      clearTimeout(this._tooltipTimer);
-      this._tooltipTimer = null;
-    }
-    tooltipEl.hidden = true;
-  }
-
-  _scheduleGatherCooldownRefresh(cooldownMs) {
-    clearTimeout(this._gatherCooldownTimer);
-    if (!Number.isFinite(cooldownMs) || cooldownMs <= 0) return;
-
-    let elapsed = 0;
-    const tickInterval = 200;
-    const tick = () => {
-      elapsed += tickInterval;
-      this.render({ forcePanels: true });
-      if (elapsed < cooldownMs) {
-        this._gatherCooldownTimer = setTimeout(tick, tickInterval);
-      }
-    };
-    this._gatherCooldownTimer = setTimeout(tick, tickInterval);
-  }
-
-  _getCampTravelPlan(details) {
-    if (!details || !details.action) {
-      return { outboundMs: 0, gatherMs: 0, returnMs: 0, totalMs: 0 };
-    }
-
-    const profile = details.gatherProfile || null;
-    const routeDistance = Math.max(
-      0,
-      Number.isFinite(profile?.routeDistance)
-        ? profile.routeDistance
-        : details.distanceFromCamp || 0,
-    );
-    const trips = Math.max(1, Number(profile?.deliveryTrips || 1));
-    const terrainPenalty = Math.max(0, Number(profile?.terrainPenalty || 0));
-    const distancePenalty = Math.max(0, Number(profile?.distancePenalty || 0));
-    const loadPenalty = Math.max(0, Number(profile?.loadPenalty || 0));
-    const carryCapacity = Math.max(
-      1,
-      Number(
-        profile?.carryCapacity || this.game.getCharacterCarryCapacity() || 1,
-      ),
-    );
-    const loadRatio = Math.max(
-      0,
-      Math.min(2.8, Number(profile?.load || 0) / carryCapacity),
-    );
-    const noPath =
-      routeDistance > 0 &&
-      (!details.pathData || details.pathData.id === "none");
-
-    // getCharacterCondition() возвращает объект {id, ...}, а не число.
-    // Преобразуем в числовой коэффициент 0..1: чем лучше состояние, тем ближе к 1.
-    const conditionObj =
-      profile?.condition && typeof profile.condition === "object"
-        ? profile.condition
-        : this.game.getCharacterCondition?.() || { id: "stable" };
-    const conditionId = conditionObj.id || "stable";
-    const condition =
-      conditionId === "exhausted"
-        ? 0.25
-        : conditionId === "weakened"
-          ? 0.55
-          : 1.0;
-
-    const characterState = this.game.getCharacterState?.() || null;
-    const fieldcraft = Math.max(
-      0,
-      Number(
-        characterState?.fieldcraft || characterState?.stats?.fieldcraft || 0,
-      ),
-    );
-    const endurance = Math.max(
-      0,
-      Number(
-        characterState?.endurance || characterState?.stats?.endurance || 0,
-      ),
-    );
-    const researchedCount = Object.keys(this.game.researched || {}).length;
-    const builtCount = Object.keys(this.game.buildings || {}).length;
-    const isEarlyStage = researchedCount <= 2 && builtCount <= 2;
-
-    // Ключевые коэффициенты логистики: путь, местность, нагрузка, состояние.
-    const terrainCoef = 1 + terrainPenalty * 0.14;
-    const distanceCoef = 1 + routeDistance * 0.11 + distancePenalty * 0.12;
-    const pathCoef = noPath ? 1.2 : details.pathData?.id === "trail" ? 0.9 : 1;
-    const conditionCoef = 1 + (1 - condition) * 0.58;
-    const stageCoef = isEarlyStage && routeDistance > 0 ? 1.28 : 1;
-    const skillCoef = Math.max(
-      0.72,
-      1 - fieldcraft * 0.045 - endurance * 0.028,
-    );
-
-    const baseLegMs = 1120 + Math.max(0, trips - 1) * 160;
-    const outboundMs = Math.round(
-      Math.max(
-        900,
-        Math.min(
-          6200,
-          baseLegMs *
-            terrainCoef *
-            distanceCoef *
-            pathCoef *
-            conditionCoef *
-            stageCoef *
-            skillCoef,
-        ),
-      ),
-    );
-
-    const gatherCoef =
-      1 +
-      loadRatio * 0.16 +
-      Math.max(0, trips - 1) * 0.08 +
-      (profile?.limitedByCarry ? 0.12 : 0);
-    const gatherMs = Math.round(
-      Math.max(
-        520,
-        Math.min(
-          2600,
-          (Math.max(900, Number(details.action.cooldown || 1200)) * 0.82 +
-            240) *
-            gatherCoef *
-            conditionCoef *
-            0.9,
-        ),
-      ),
-    );
-
-    const returnLoadCoef =
-      1 +
-      loadRatio * 0.42 +
-      loadPenalty * 0.14 +
-      (profile?.limitedByCarry ? 0.16 : 0);
-    const returnMs = Math.round(
-      Math.max(1000, Math.min(7800, outboundMs * returnLoadCoef)),
-    );
-
-    return {
-      outboundMs,
-      gatherMs,
-      returnMs,
-      totalMs: outboundMs + gatherMs + returnMs,
-    };
-  }
-
-  _estimateCampActionTravelMs(details) {
-    return this._getCampTravelPlan(details).totalMs;
-  }
-
-  _getCampTravelPhaseState(travelAction, now = Date.now()) {
-    if (!travelAction) return null;
-
-    const totalRemainingMs = Math.max(0, travelAction.endsAt - now);
-    if (now < travelAction.outboundEndsAt) {
-      return {
-        phase: "outbound",
-        phaseLabel: "Переход к участку",
-        progress: Math.max(
-          0,
-          Math.min(
-            1,
-            (now - travelAction.startAt) / Math.max(1, travelAction.outboundMs),
-          ),
-        ),
-        phaseRemainingMs: Math.max(0, travelAction.outboundEndsAt - now),
-        totalRemainingMs,
-      };
-    }
-    if (now < travelAction.gatherEndsAt) {
-      return {
-        phase: "gather",
-        phaseLabel: "Сбор ресурсов",
-        progress: 1,
-        phaseRemainingMs: Math.max(0, travelAction.gatherEndsAt - now),
-        totalRemainingMs,
-      };
-    }
-    return {
-      phase: "return",
-      phaseLabel: "Возвращение в лагерь",
-      progress: Math.max(
-        0,
-        Math.min(
-          1,
-          (now - travelAction.gatherEndsAt) /
-            Math.max(1, travelAction.returnMs),
-        ),
-      ),
-      phaseRemainingMs: Math.max(0, travelAction.endsAt - now),
-      totalRemainingMs,
-    };
-  }
-
-  _startCampTileTravel(details) {
-    if (!details?.action || this._campTravelAction) return false;
-
-    const travelPlan = this._getCampTravelPlan(details);
-    if (!travelPlan.totalMs) return false;
-
-    const startAt = Date.now();
-    const outboundEndsAt = startAt + travelPlan.outboundMs;
-    const gatherEndsAt = outboundEndsAt + travelPlan.gatherMs;
-    this._campTravelAction = {
-      tileId: details.id,
-      actionId: details.action.id,
-      startAt,
-      outboundMs: travelPlan.outboundMs,
-      gatherMs: travelPlan.gatherMs,
-      returnMs: travelPlan.returnMs,
-      outboundEndsAt,
-      gatherEndsAt,
-      endsAt: gatherEndsAt + travelPlan.returnMs,
-    };
-    this._scheduleCampTileTravelTick();
-    this.render({ forcePanels: true });
-    return true;
-  }
-
-  _clearCampTileTravel() {
-    if (this._campTravelTimer) {
-      clearTimeout(this._campTravelTimer);
-      this._campTravelTimer = null;
-    }
-    this._campTravelAction = null;
-  }
-
-  _scheduleCampTileTravelTick() {
-    if (!this._campTravelAction) return;
-    if (this._campTravelTimer) clearTimeout(this._campTravelTimer);
-
-    const remaining = this._campTravelAction.endsAt - Date.now();
-    if (remaining <= 0) {
-      this._finalizeCampTileTravel();
-      return;
-    }
-
-    this.render({ forcePanels: true });
-    this._campTravelTimer = setTimeout(
-      () => this._scheduleCampTileTravelTick(),
-      120,
-    );
-  }
-
-  _finalizeCampTileTravel() {
-    const task = this._campTravelAction;
-    if (!task) return;
-
-    this._clearCampTileTravel();
-    const ok = this.game.performCampTileAction(task.tileId);
-    this.render({ forcePanels: true });
-    if (!ok) return;
-
-    const cooldownMs = this.data.gatherActions?.[task.actionId]?.cooldown || 0;
-    this._scheduleGatherCooldownRefresh(cooldownMs);
   }
 
   bindStaticControls() {
@@ -475,20 +203,20 @@ class UI {
   }
 
   bindKnowledgeModal() {
-    const btn = document.getElementById("knowledge-book-btn");
     const modal = document.getElementById("knowledge-modal");
     const closeBtn = document.getElementById("knowledge-modal-close-btn");
-    if (!btn || !modal || !closeBtn) return;
+    if (!modal || !closeBtn) return;
 
     const open = () => this.openKnowledgeModal();
 
     const close = () => {
       modal.style.display = "none";
       document.body.style.overflow = "";
-      btn.focus();
     };
 
-    btn.addEventListener("click", open);
+    document.addEventListener("click", (e) => {
+      if (e.target.closest(".js-knowledge-open")) open();
+    });
     closeBtn.addEventListener("click", close);
     modal.addEventListener("click", (e) => {
       if (e.target === modal) close();
@@ -583,8 +311,8 @@ class UI {
       const missing = Math.max(0, needed - have);
       return {
         resId,
-        icon: resDef.icon || "",
-        name: resDef.name || resId,
+        icon: this.getResourceDisplayIcon(resId),
+        name: this.getResourceDisplayName(resId),
         have,
         needed,
         missing,
@@ -687,9 +415,8 @@ class UI {
     for (const [resId, amount] of Object.entries(
       check.missingResources || {},
     )) {
-      const resDef = this.data.resources?.[resId];
       missingParts.push(
-        `${resDef?.icon || ""} ${resDef?.name || resId}: не хватает ${amount}`,
+        `${this.getResourceDisplayIcon(resId)} ${this.getResourceDisplayName(resId)}: не хватает ${amount}`,
       );
     }
     if (check.lacksEnergy) missingParts.push("⚡ Не хватает сил");
@@ -987,6 +714,7 @@ class UI {
             this.game.resourceTotals?.[id] > 0,
         )
         .map((id) => {
+          const def = this.data.resources[id];
           const val = this.game.resources[id] || 0;
           return `<span class="cs-res-chip"><span class="cs-res-chip-icon">${this.getResourceDisplayIcon(id)}</span> <span class="cs-res-chip-val">${val}</span></span>`;
         })
@@ -1672,21 +1400,6 @@ class UI {
     const isIntroScreen = this.game.shouldShowOnboardingIntro();
     document.body.classList.toggle("is-prologue-active", isPrologue);
     document.body.classList.toggle("is-intro-screen", isIntroScreen);
-
-    const bookBtn = document.getElementById("knowledge-book-btn");
-    if (bookBtn) {
-      const entries = this.game.getKnowledgeEntries().length;
-      if (entries > 0) {
-        bookBtn.setAttribute("data-badge", String(entries));
-      } else {
-        bookBtn.removeAttribute("data-badge");
-      }
-      bookBtn.classList.toggle("has-badge", entries > 0);
-      bookBtn.classList.toggle(
-        "is-highlighted",
-        this.game.getActiveStoryEvent()?.type === "knowledge",
-      );
-    }
   }
 
   renderPrologueLayoutState() {
@@ -1795,15 +1508,6 @@ class UI {
     const selectedActionCooldown = selected.action
       ? this.game.getCooldownRemaining(selected.action.id)
       : 0;
-    const activeTravel = this._campTravelAction;
-    const selectedTravel =
-      activeTravel && activeTravel.tileId === selected.id ? activeTravel : null;
-    const selectedTravelState = selectedTravel
-      ? this._getCampTravelPhaseState(selectedTravel)
-      : null;
-    const selectedTravelDurationMs = selected.action
-      ? this._estimateCampActionTravelMs(selected)
-      : 0;
 
     let detailsActionBlock = "";
     if (selected.construction) {
@@ -1831,9 +1535,8 @@ class UI {
       for (const [resId, amount] of Object.entries(
         foundCheck.missingResources || {},
       )) {
-        const resDef = this.data.resources?.[resId];
         missingLines.push(
-          `Не хватает ${resDef?.icon || ""} ${resDef?.name || resId}: ${amount}`,
+          `Не хватает ${this.getResourceDisplayIcon(resId)} ${this.getResourceDisplayName(resId)}: ${amount}`,
         );
       }
       if (foundCheck.lacksEnergy) missingLines.push("⚡ Недостаточно сил");
@@ -1891,22 +1594,12 @@ class UI {
         <div class="camp-map-note">${campRestProfile.blockedReason || campRestProfile.note}</div>
       `;
     } else if (selected.action && selectedActionCopy) {
-      const travelingOtherTile = activeTravel && !selectedTravel;
-      const gatherDisabled = !selected.canGather || !!activeTravel;
-      const gatherBtnLabel = selectedTravelState
-        ? `🧍 ${selectedTravelState.phaseLabel}`
-        : travelingOtherTile
-          ? "🧍 Персонаж уже в выходе"
-          : `${selectedActionCopy.icon} ${selectedActionCopy.name}`;
-
       detailsActionBlock = `
         <div class="camp-map-action-meta">
           <span>Находка: ${selectedActionOutput}</span>
           <span>Энергия: -${selectedActionProfile?.energyCost ?? selected.action.energyCost}</span>
           <span>Путь: ${selectedActionProfile?.zoneLabel || (selected.distanceFromCamp === 0 ? "центр" : selected.distanceFromCamp === 1 ? "ближняя зона" : "дальний выход")}</span>
           <span>Местность: ${selectedActionProfile?.terrainLabel || "обычный участок"}</span>
-          <span>Время сбора: ${this.formatSeconds(selected.action.cooldown || 0)}</span>
-          <span>Логистика: ${this.formatSeconds(selectedTravelDurationMs)} (туда/сбор/обратно)</span>
           ${(selected.distanceFromCamp || 0) > 0 ? `<span>Тропа: ${selected.pathData?.icon || "·"} ${selected.pathData?.label || "Без тропы"}</span>` : ""}
           ${(selected.distanceFromCamp || 0) > 0 && selectedActionProfile?.effortLabel ? `<span>Усилие: ${selectedActionProfile.effortLabel}</span>` : ""}
           <span>Нагрузка: ${this.formatNumber(selectedActionProfile?.load || 0)} / ${this.formatNumber(selectedActionProfile?.carryCapacity || this.game.getCharacterCarryCapacity())}</span>
@@ -1915,16 +1608,6 @@ class UI {
         ${
           selectedActionProfile?.blockedReason
             ? `<div class="camp-map-note is-empty">${selectedActionProfile.blockedReason}</div>`
-            : ""
-        }
-        ${
-          selectedTravelState
-            ? `<div class="camp-map-note is-waiting">${selectedTravelState.phaseLabel}. До завершения выхода: ${this.formatCooldownMs(selectedTravelState.totalRemainingMs)}.</div>`
-            : ""
-        }
-        ${
-          travelingOtherTile
-            ? `<div class="camp-map-note is-waiting">Персонаж занят на другом участке. Дождитесь завершения текущего выхода.</div>`
             : ""
         }
         ${
@@ -1939,11 +1622,11 @@ class UI {
         }
         <button
           id="camp-map-primary-action"
-          class="camp-map-primary-btn${gatherDisabled ? " disabled" : ""}"
+          class="camp-map-primary-btn${selected.canGather ? "" : " disabled"}"
           type="button"
-          aria-disabled="${gatherDisabled ? "true" : "false"}"
+          aria-disabled="${selected.canGather ? "false" : "true"}"
         >
-          ${gatherBtnLabel}
+          ${selectedActionCopy.icon} ${selectedActionCopy.name}
         </button>
       `;
       if (selectedResourceStock) {
@@ -2209,17 +1892,29 @@ class UI {
           this.render({ forcePanels: true });
           return;
         }
-        if (selected.action) {
-          if (!this._startCampTileTravel(selected)) {
-            this.render({ forcePanels: true });
-          }
-          return;
-        }
         if (!this.game.performCampTileAction(selected.id)) {
           this.render({ forcePanels: true });
           return;
         }
         this.render({ forcePanels: true });
+        // Schedule forced re-renders during cooldown countdown and at expiry,
+        // so the button auto-unlocks and the timer badge stays accurate
+        // even when the player's cursor keeps the hover-guard active.
+        const cooldownMs = selected.action?.cooldown;
+        if (cooldownMs > 0) {
+          clearTimeout(this._gatherCooldownTimer);
+          // Tick every ~200ms while cooling down to keep the countdown badge fresh
+          let elapsed = 0;
+          const tickInterval = 200;
+          const tick = () => {
+            elapsed += tickInterval;
+            this.render({ forcePanels: true });
+            if (elapsed < cooldownMs) {
+              this._gatherCooldownTimer = setTimeout(tick, tickInterval);
+            }
+          };
+          this._gatherCooldownTimer = setTimeout(tick, tickInterval);
+        }
       });
     }
 
@@ -2328,14 +2023,12 @@ class UI {
       const rh = r * 0.5;
       const hStep = HR * 1.5;
       const vStep = HR * Math.sqrt(3);
-      const tileCoordById = {};
 
       let tileIndex = 0;
       const tileGroups = mapState.tiles
         .map((tile) => {
           const cx = tile.q * hStep;
           const cy = (tile.r + tile.q * 0.5) * vStep;
-          tileCoordById[tile.id] = { x: cx, y: cy };
 
           // Flat-top hex polygon points — clockwise from right vertex
           const pts = [
@@ -2423,64 +2116,7 @@ class UI {
         })
         .join("\n");
 
-      let travelOverlay = "";
-      if (this._campTravelAction) {
-        const targetCoord =
-          tileCoordById[this._campTravelAction.tileId] || null;
-        const campTile =
-          mapState.tiles.find((tile) => tile.state === "camp") ||
-          mapState.tiles.find((tile) => tile.id === "camp_clearing") ||
-          mapState.tiles.find((tile) => (tile.distanceFromCamp || 0) === 0) ||
-          null;
-        const startCoord = campTile ? tileCoordById[campTile.id] : null;
-        if (targetCoord && startCoord) {
-          const travelState = this._getCampTravelPhaseState(
-            this._campTravelAction,
-          );
-          if (travelState) {
-            let markerX = startCoord.x;
-            let markerY = startCoord.y;
-            if (travelState.phase === "outbound") {
-              markerX =
-                startCoord.x +
-                (targetCoord.x - startCoord.x) * travelState.progress;
-              markerY =
-                startCoord.y +
-                (targetCoord.y - startCoord.y) * travelState.progress;
-            } else if (travelState.phase === "gather") {
-              markerX = targetCoord.x;
-              markerY = targetCoord.y;
-            } else {
-              markerX =
-                targetCoord.x +
-                (startCoord.x - targetCoord.x) * travelState.progress;
-              markerY =
-                targetCoord.y +
-                (startCoord.y - targetCoord.y) * travelState.progress;
-            }
-
-            const routeClass =
-              travelState.phase === "return"
-                ? "camp-map-travel-route is-return"
-                : "camp-map-travel-route";
-            const markerClass =
-              travelState.phase === "gather"
-                ? "camp-map-travel-marker is-gathering"
-                : "camp-map-travel-marker";
-
-            travelOverlay = `
-              <g class="camp-map-travel-layer" aria-hidden="true">
-                <path class="${routeClass}" d="M ${startCoord.x.toFixed(1)} ${startCoord.y.toFixed(1)} L ${targetCoord.x.toFixed(1)} ${targetCoord.y.toFixed(1)}" />
-                <circle class="${markerClass}" cx="${markerX.toFixed(1)}" cy="${markerY.toFixed(1)}" r="8" />
-                <text class="camp-map-travel-icon" x="${markerX.toFixed(1)}" y="${(markerY + 0.5).toFixed(1)}">🧍</text>
-                <text class="camp-map-travel-timer" x="${markerX.toFixed(1)}" y="${(markerY - 14).toFixed(1)}">${this.formatCooldownMs(travelState.totalRemainingMs)}</text>
-              </g>
-            `;
-          }
-        }
-      }
-
-      svgEl.innerHTML = `${tileGroups}${travelOverlay}`;
+      svgEl.innerHTML = tileGroups;
 
       for (const tile of mapState.tiles) {
         const group = svgEl.querySelector(`[data-tile-id="${tile.id}"]`);
@@ -2496,7 +2132,8 @@ class UI {
               "Подойдёт ближе, когда лагерь будет основан.",
             ].join("\n");
             group.addEventListener("mouseenter", () => {
-              this._showTooltipDelayed(tooltipEl, silhouetteTip);
+              tooltipEl.textContent = silhouetteTip;
+              tooltipEl.hidden = false;
             });
             group.addEventListener("mousemove", (e) => {
               const rect = sceneEl.getBoundingClientRect();
@@ -2506,7 +2143,7 @@ class UI {
               tooltipEl.style.top = `${Math.max(0, ty)}px`;
             });
             group.addEventListener("mouseleave", () => {
-              this._hideTooltip(tooltipEl);
+              tooltipEl.hidden = true;
             });
           }
           continue;
@@ -2515,14 +2152,25 @@ class UI {
         // Build tooltip text (SVG <g> elements don't support ::after)
         let tipText;
         if (tile.state === "camp_candidate") {
-          tipText = this.formatTooltipText([
+          tipText = [
             `📍 ${tile.name}`,
             tile.description,
             tile.campCandidateHint || "Здесь можно основать лагерь.",
             "▶ Нажмите, чтобы выбрать это место",
-          ]);
+          ]
+            .filter(Boolean)
+            .join("\n");
         } else {
-          const lines = [tile.name, tile.description];
+          const lines = [
+            tile.name,
+            tile.description,
+            `Состояние: ${this.getCampTileStateLabel(tile.state)}`,
+            `Дистанция от стоянки: ${tile.distanceFromCamp}`,
+          ];
+          if ((tile.distanceFromCamp || 0) > 0) {
+            const pathData = this.game.getCampPathData(tile.id);
+            lines.push(`Тропа: ${pathData.icon} ${pathData.label}`);
+          }
           if (tile.actionId) {
             const action = this.data.gatherActions[tile.actionId];
             const actionCopy = this.getGatherActionCopy(action);
@@ -2532,9 +2180,12 @@ class UI {
             lines.push(`Действие: ${actionCopy.icon} ${actionCopy.name}`);
             if (profile) {
               lines.push(
-                `Выход: ${this.formatResourcePairsPlain(profile.output, { plus: true })}`,
+                `Выход: ${this.formatResourcePairs(profile.output, { plus: true })}`,
               );
-              lines.push(`Цена: -${profile.energyCost} энергии`);
+              lines.push(
+                `Энергия: -${profile.energyCost} · Нагрузка ${this.formatNumber(profile.load)} / ${this.formatNumber(profile.carryCapacity)}`,
+              );
+              lines.push(`Местность: ${profile.terrainLabel}`);
               if (profile.blockedReason) lines.push(profile.blockedReason);
             }
           }
@@ -2551,12 +2202,13 @@ class UI {
               .join(", ");
             lines.push(`Участок: ${optionNames}`);
           }
-          tipText = this.formatTooltipText(lines);
+          tipText = lines.filter(Boolean).join("\n");
         }
 
         if (tooltipEl) {
           group.addEventListener("mouseenter", () => {
-            this._showTooltipDelayed(tooltipEl, tipText);
+            tooltipEl.textContent = tipText;
+            tooltipEl.hidden = false;
             // Pre-camp: advance intro 1→2 when hovering a candidate, and
             // show preview of tiles that would be revealed after the choice.
             if (tile.state === "camp_candidate") {
@@ -2593,7 +2245,7 @@ class UI {
             tooltipEl.style.top = `${Math.max(0, ty)}px`;
           });
           group.addEventListener("mouseleave", () => {
-            this._hideTooltip(tooltipEl);
+            tooltipEl.hidden = true;
             if (tile.state === "camp_candidate") {
               svgEl
                 .querySelectorAll(".is-preview-reach")
@@ -2614,9 +2266,13 @@ class UI {
             this.openCampScreen();
             return;
           }
-          // Other tiles: click only selects. Action is explicit via right panel
-          // so gather spam/misclicks are less likely.
+          // Other tiles: first click selects (reveals sidebar action),
+          // second click on the same tile executes the action.
+          const wasSelected = this.game.getSelectedCampTileId() === tile.id;
           this.game.selectCampTile(tile.id);
+          if (wasSelected) {
+            this.game.performCampTileAction(tile.id);
+          }
           this.render({ forcePanels: true });
         });
       }
@@ -2840,23 +2496,17 @@ class UI {
   }
 
   formatResourcePairs(resourceMap, { plus = false, decimals = 0 } = {}) {
+    const isPrologue = this.game?.isPrologueActive?.();
     return Object.entries(resourceMap)
       .map(([id, amount]) => {
+        const res = this.data.resources[id];
+        const icon =
+          isPrologue && res?.prologueIcon ? res.prologueIcon : res?.icon || "";
         const value =
           decimals > 0 ? Number(amount).toFixed(decimals) : String(amount);
-        return `${this.getResourceDisplayIcon(id)}${plus ? "+" : ""}${value}`;
+        return `${icon}${plus ? "+" : ""}${value}`;
       })
       .join(" ");
-  }
-
-  formatResourcePairsPlain(resourceMap, { plus = false, decimals = 0 } = {}) {
-    return Object.entries(resourceMap)
-      .map(([id, amount]) => {
-        const value =
-          decimals > 0 ? Number(amount).toFixed(decimals) : String(amount);
-        return `${this.getResourceDisplayName(id)} ${plus ? "+" : ""}${value}`;
-      })
-      .join(", ");
   }
 
   formatSeconds(ms) {
@@ -2894,14 +2544,7 @@ class UI {
   formatTooltipText(lines) {
     return lines
       .filter((line) => typeof line === "string" && line.trim().length > 0)
-      .map((line) =>
-        line
-          .trim()
-          .replace(/<[^>]*>/g, "")
-          .replace(/\s+/g, " ")
-          .trim(),
-      )
-      .filter((line) => line.length > 0)
+      .map((line) => line.trim())
       .join("\n");
   }
 
@@ -3038,9 +2681,8 @@ class UI {
     if (forcePanels || !this.isPanelHovered("automation-panel")) {
       this.renderAutomationPanel();
     }
-    if (forcePanels || !this.isPanelHovered("research-widget")) {
-      this.renderResearchWidget();
-    }
+    this.renderResearchWidget();
+    this.renderKnowledgeWidget();
     const _rModal = document.getElementById("research-modal");
     if (
       _rModal &&
@@ -3613,6 +3255,7 @@ class UI {
                   : resource.description;
 
         grouped.get(groupKey).push({
+          id,
           resource,
           resourceName,
           resourceDesc,
@@ -3633,26 +3276,23 @@ class UI {
             <div class="storage-category-title">${meta.label}</div>
             <div class="storage-category-meta">${items.length}</div>
           </div>
+          <div class="prologue-resource-group-note">${meta.description}</div>
         `;
-        this.setTooltip(section.querySelector(".storage-category-header"), [
-          meta.label,
-          meta.description || "Категория ресурсов",
-          `Предметов в группе: ${items.length}`,
-        ]);
 
         const list = document.createElement("div");
         list.className = "storage-resource-list";
 
         for (const itemData of items) {
-          const { resource, resourceName, resourceDesc, amount, total } =
+          const { id, resource, resourceName, resourceDesc, amount, total } =
             itemData;
 
           const item = document.createElement("div");
           item.className = "resource-item prologue-resource-item";
           item.innerHTML = `
-            <span class="resource-icon" style="color:${resource.color}">${this.getResourceDisplayIcon(resource.id)}</span>
+            <span class="resource-icon" style="color:${resource.color}">${this.getResourceDisplayIcon(id)}</span>
             <div class="resource-text">
               <span class="resource-name">${resourceName}</span>
+              <span class="resource-desc">${resourceDesc}</span>
               <span class="prologue-resource-total">Найдено всего: ${total}</span>
             </div>
             <span class="resource-count">${amount}</span>
@@ -3736,7 +3376,6 @@ class UI {
     if (recentOverflow) {
       const overflowNotice = document.createElement("div");
       overflowNotice.className = "storage-warning is-full";
-      const resource = this.data.resources[recentOverflow.id];
       overflowNotice.textContent = `Переполнение: ${this.getResourceDisplayIcon(recentOverflow.id)} ${this.getResourceDisplayName(recentOverflow.id)} -${recentOverflow.lost}`;
       this.setTooltip(overflowNotice, [
         "Последнее переполнение склада",
@@ -3859,6 +3498,7 @@ class UI {
   /** Prologue mode: classic action buttons for abstract hand-gathering. */
   _renderGatherPrologue(container) {
     container.innerHTML = "";
+    const isTraveling = !!this._campTravelAction;
 
     const title = document.createElement("h3");
     title.textContent =
@@ -3910,9 +3550,10 @@ class UI {
         ${profile?.limitedByCarry ? '<span class="btn-cooldown">🎒 Переносимость ограничивает вынос</span>' : ""}
         ${cooldown > 0 ? `<span class="btn-cooldown">⏳ ${this.formatCooldownMs(cooldown)}</span>` : ""}
         ${!this.game.hasEnergy(effectiveEnergyCost) && cooldown === 0 ? '<span class="btn-cooldown">⚡ Нет сил</span>' : ""}
+        ${isTraveling ? '<span class="btn-cooldown">🧍 В пути…</span>' : ""}
       `;
       btn.classList.toggle("cooldown", disabled);
-      btn.classList.toggle("busy", cooldown > 0);
+      btn.classList.toggle("busy", cooldown > 0 || isTraveling);
       btn.setAttribute("aria-disabled", disabled ? "true" : "false");
       this.setTooltip(btn, [
         copy.name,
@@ -3926,6 +3567,18 @@ class UI {
         profile?.blockedReason || "",
       ]);
       btn.addEventListener("click", () => {
+        // Prefer sending character on a map travel trip to the tile
+        if (!this._campTravelAction) {
+          const tileDetails = this.game.getBestGatherTileDetails(id);
+          if (tileDetails?.action && tileDetails.canGather) {
+            this.game.selectCampTile(tileDetails.id);
+            if (this._startCampTileTravel(tileDetails)) {
+              this.render({ forcePanels: true });
+              return;
+            }
+          }
+        }
+        // Fallback: direct gather (already traveling, no tile, or travel failed)
         this.game.gather(id);
         this.render({ forcePanels: true });
       });
@@ -3957,7 +3610,7 @@ class UI {
 
     // ── Header ──
     const title = document.createElement("h3");
-    title.textContent = "🪓 Подготовка к основанию";
+    title.textContent = intro.questTitle || "⛺ Подготовка к основанию лагеря";
     container.appendChild(title);
 
     // ── Resource progress strip ──
@@ -4052,6 +3705,18 @@ class UI {
       btn.classList.toggle("busy", cooldown > 0);
       btn.setAttribute("aria-disabled", disabled ? "true" : "false");
       btn.addEventListener("click", () => {
+        // Prefer sending character on a map travel trip to the tile
+        if (!this._campTravelAction) {
+          const tileDetails = this.game.getBestGatherTileDetails(id);
+          if (tileDetails?.action && tileDetails.canGather) {
+            this.game.selectCampTile(tileDetails.id);
+            if (this._startCampTileTravel(tileDetails)) {
+              this.render({ forcePanels: true });
+              return;
+            }
+          }
+        }
+        // Fallback: direct gather (already traveling, no tile, or travel failed)
         this.game.gather(id);
         this.render({ forcePanels: true });
       });

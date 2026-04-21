@@ -12,6 +12,10 @@
   const game = new GameState(GAME_DATA);
   const ui = new UI(game);
 
+  // Expose to dev panel (dev-only, safe to remove in production)
+  window.game = game;
+  window.ui = ui;
+
   // Initial render
   ui.render({ forcePanels: true });
 
@@ -60,7 +64,9 @@
 
   if (!game.loadedFromSave) {
     game.addLog("🌍 Путь начинается с голых рук и первых наблюдений.");
-    game.addLog("🖐️ Собирайте ветки, камни и волокно, чтобы открыть первые озарения.");
+    game.addLog(
+      "🖐️ Собирайте ветки, камни и волокно, чтобы открыть первые озарения.",
+    );
     game.addLog("📚 Первые открытия будут складываться в Книгу знаний.");
     game.markDirty();
     game.saveGame(true);

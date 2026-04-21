@@ -1,0 +1,968 @@
+/* ═══════════════════════════════════════════════════════════
+   Intro screen: show only prologue panel, hide everything else
+   ═══════════════════════════════════════════════════════════ */
+body.is-intro-screen #game-header,
+body.is-intro-screen #game-layout,
+body.is-intro-screen #onboarding-step-panel,
+body.is-intro-screen #story-event-layer {
+  display: none !important;
+}
+
+body.is-intro-screen #onboarding-intro-panel {
+  min-height: calc(100vh - 2rem);
+  margin-bottom: 0;
+}
+
+body.is-prologue-active {
+  background:
+    radial-gradient(circle at top, rgba(127, 72, 28, 0.16), transparent 36%),
+    #0d0f14;
+}
+
+body.is-prologue-active #app {
+  max-width: 1380px;
+}
+
+body.is-prologue-active #game-header {
+  border-bottom-color: rgba(145, 102, 48, 0.45);
+}
+
+body.is-prologue-active .panel:not(.panel-onboarding-intro):not(.panel-onboarding-step) {
+  border-color: rgba(102, 78, 46, 0.45);
+  background: linear-gradient(180deg, #181913, #15171d);
+}
+
+body.is-prologue-active .panel:hover {
+  border-color: rgba(145, 102, 48, 0.6);
+  box-shadow:
+    0 0 0 1px rgba(145, 102, 48, 0.12),
+    0 0 14px rgba(145, 102, 48, 0.08);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Camp founding intro — narrative overlay + silhouettes + arrival animation
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Scene wrapper positioning context */
+.camp-map-scene-wrap.is-pre-camp {
+  position: relative;
+}
+
+/* ── Silhouette state: between hidden and discovered, no interaction ── */
+.camp-tile.is-silhouette polygon {
+  fill: #1c2336 !important;
+  stroke: rgba(120, 140, 180, 0.25) !important;
+  stroke-width: 0.5 !important;
+  pointer-events: all; /* allow hover for tooltip */
+  cursor: default;
+}
+.camp-tile.is-silhouette .tile-icon {
+  opacity: 0.22;
+  fill: #9aa4b8;
+  visibility: visible;
+}
+.camp-tile.is-silhouette:hover polygon {
+  fill: #222c44 !important;
+  stroke: rgba(150, 170, 210, 0.45) !important;
+}
+
+/* ── Terrain-based candidate palette — three moods ── */
+.camp-tile.is-camp_candidate.terrain-clearing polygon {
+  fill: #3a2a0e !important; /* warm sand */
+  stroke: rgba(251, 191, 36, 0.6) !important;
+}
+.camp-tile.is-camp_candidate.terrain-clearing:hover polygon,
+.camp-tile.is-camp_candidate.terrain-clearing.is-preview-source polygon {
+  fill: #4a3612 !important;
+  stroke: rgba(251, 210, 90, 1) !important;
+}
+.camp-tile.is-camp_candidate.terrain-grove polygon {
+  fill: #1f2d16 !important; /* forest green */
+  stroke: rgba(134, 239, 172, 0.55) !important;
+  animation: campCandidatePulseGrove 2s ease-in-out infinite !important;
+}
+.camp-tile.is-camp_candidate.terrain-grove:hover polygon,
+.camp-tile.is-camp_candidate.terrain-grove.is-preview-source polygon {
+  fill: #2b3d1e !important;
+  stroke: rgba(180, 245, 200, 0.95) !important;
+}
+.camp-tile.is-camp_candidate.terrain-ridge polygon {
+  fill: #2a2a2e !important; /* dry stony grey */
+  stroke: rgba(203, 213, 225, 0.55) !important;
+  animation: campCandidatePulseRidge 2s ease-in-out infinite !important;
+}
+.camp-tile.is-camp_candidate.terrain-ridge:hover polygon,
+.camp-tile.is-camp_candidate.terrain-ridge.is-preview-source polygon {
+  fill: #3a3a3e !important;
+  stroke: rgba(240, 245, 255, 0.95) !important;
+}
+
+@keyframes campCandidatePulseGrove {
+  0%, 100% { stroke: rgba(134, 239, 172, 0.35); }
+  50%      { stroke: rgba(134, 239, 172, 0.9); }
+}
+@keyframes campCandidatePulseRidge {
+  0%, 100% { stroke: rgba(203, 213, 225, 0.3); }
+  50%      { stroke: rgba(203, 213, 225, 0.8); }
+}
+
+/* ── Short label under candidate icon ── */
+.camp-tile .tile-label {
+  font-family: system-ui, 'Segoe UI', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: central;
+  fill: rgba(248, 250, 252, 0.85);
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  text-transform: uppercase;
+}
+.camp-tile.is-camp_candidate .tile-label {
+  fill: rgba(251, 191, 36, 0.95);
+}
+.camp-tile.is-camp_candidate.terrain-grove .tile-label {
+  fill: rgba(180, 245, 200, 0.95);
+}
+.camp-tile.is-camp_candidate.terrain-ridge .tile-label {
+  fill: rgba(230, 238, 250, 0.95);
+}
+
+/* ── Preview reach — candidate hover highlights neighbour tiles ── */
+.camp-tile.is-preview-reach polygon {
+  fill: rgba(45, 58, 82, 0.62) !important;
+  stroke: rgba(251, 191, 36, 0.45) !important;
+  stroke-width: 1 !important;
+  transition: fill 0.18s ease, stroke 0.18s ease;
+}
+.camp-tile.is-preview-reach .tile-icon {
+  opacity: 0.68 !important;
+  fill: #f5e7c6 !important;
+  visibility: visible;
+}
+
+/* ── Arrival cascade — tiles emerge one by one on first render ── */
+@keyframes tileEmerge {
+  0%   { opacity: 0; transform: scale(0.4); }
+  60%  { opacity: 0.9; transform: scale(1.06); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.camp-map-scene.is-arriving .camp-tile {
+  transform-origin: center;
+  transform-box: fill-box;
+  opacity: 0;
+  animation: tileEmerge 0.55s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* ── Intro overlay (narrative card over the map) ── */
+.camp-intro-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.2rem;
+  background: linear-gradient(180deg,
+    rgba(6, 8, 12, 0.55) 0%,
+    rgba(6, 8, 12, 0.25) 40%,
+    rgba(6, 8, 12, 0.55) 100%);
+  -webkit-backdrop-filter: blur(1.5px);
+  backdrop-filter: blur(1.5px);
+  pointer-events: auto;
+  cursor: pointer;
+  animation: campIntroFadeIn 0.5s ease both;
+}
+.camp-intro-overlay[data-intro-step="survey"],
+.camp-intro-overlay[data-intro-step="choose"] {
+  align-items: flex-start;
+  background: linear-gradient(180deg,
+    rgba(6, 8, 12, 0.82) 0%,
+    rgba(6, 8, 12, 0.4) 45%,
+    rgba(6, 8, 12, 0.02) 100%);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  /* Tiles below need hover/click — let events pass through the background */
+  pointer-events: none;
+  cursor: default;
+}
+/* Keep the card itself interactive (skip button, future controls) */
+.camp-intro-overlay[data-intro-step="survey"] .camp-intro-card,
+.camp-intro-overlay[data-intro-step="choose"] .camp-intro-card {
+  pointer-events: auto;
+}
+
+@keyframes campIntroFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.camp-intro-card {
+  max-width: 420px;
+  padding: 1rem 1.3rem 1.1rem;
+  border-radius: 14px;
+  border: 1px solid rgba(251, 191, 36, 0.28);
+  background: linear-gradient(180deg, rgba(24, 20, 12, 0.95), rgba(14, 12, 8, 0.95));
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  text-align: center;
+  pointer-events: auto;
+}
+.camp-intro-icon {
+  font-size: 2rem;
+  margin-bottom: 0.3rem;
+  filter: drop-shadow(0 0 8px rgba(251, 191, 36, 0.35));
+}
+.camp-intro-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fde68a;
+  margin-bottom: 0.35rem;
+}
+.camp-intro-text {
+  font-size: 0.82rem;
+  color: #d6d3c7;
+  line-height: 1.5;
+  margin-bottom: 0.55rem;
+}
+.camp-intro-cta {
+  font-size: 0.72rem;
+  color: #fbbf24;
+  font-style: italic;
+  animation: campCandidatePulse 2s ease-in-out infinite;
+}
+
+/* ── "choose" step: compact banner instead of full card ── */
+.camp-intro-overlay--banner {
+  /* Override the base overlay: pin to top, no blur */
+  align-items: flex-start !important;
+  justify-content: center !important;
+  pointer-events: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  background: linear-gradient(180deg,
+    rgba(6, 8, 12, 0.72) 0%,
+    rgba(6, 8, 12, 0) 100%) !important;
+  padding: 0.6rem 0.75rem 0 !important;
+}
+.camp-intro-banner {
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: 10px;
+  border: 1px solid rgba(251, 191, 36, 0.28);
+  background: rgba(16, 13, 6, 0.88);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  max-width: 420px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.camp-intro-banner-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+.camp-intro-banner-text {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #fde68a;
+}
+.camp-intro-banner-cta {
+  font-size: 0.72rem;
+  color: #fbbf24;
+  font-style: italic;
+  flex-shrink: 0;
+  animation: campCandidatePulse 2s ease-in-out infinite;
+}
+
+.camp-intro-buttons {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.7rem;
+}
+
+.camp-intro-next {
+  padding: 0.45rem 1.1rem;
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.5);
+  border-radius: 6px;
+  color: #fbbf24;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.camp-intro-next:hover {
+  background: rgba(251, 191, 36, 0.22);
+  border-color: #fbbf24;
+  color: #fde68a;
+}
+
+.camp-intro-skip {
+  padding: 0.3rem 0.7rem;
+  background: transparent;
+  border: 1px solid rgba(156, 163, 175, 0.35);
+  border-radius: 6px;
+  color: #9ca3af;
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.camp-intro-skip:hover {
+  border-color: rgba(251, 191, 36, 0.55);
+  color: #fbbf24;
+}
+
+/* Legend */
+.camp-map-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-right: 0.85rem;
+  font-size: 0.74rem;
+  color: #9ca3af;
+}
+.camp-map-legend-item .lg-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* ── Post-camp resource navigation panel ──────────────────────────────────── */
+.gather-resource-group {
+  margin-bottom: 0.75rem;
+}
+.gather-resource-group-header {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.2rem 0;
+  margin-bottom: 0.3rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.gather-resource-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  cursor: pointer;
+  gap: 0.5rem;
+  border: 1px solid transparent;
+  transition: background 0.15s, border-color 0.15s;
+  margin-bottom: 0.2rem;
+}
+.gather-resource-row:hover {
+  background: rgba(251, 191, 36, 0.07);
+  border-color: rgba(251, 191, 36, 0.2);
+}
+.gather-resource-row.is-selected {
+  background: rgba(251, 191, 36, 0.12);
+  border-color: rgba(251, 191, 36, 0.35);
+}
+.gather-resource-row.is-depleted {
+  opacity: 0.45;
+  cursor: default;
+}
+.gather-resource-row.is-depleted:hover {
+  background: transparent;
+  border-color: transparent;
+}
+.gather-resource-row.no-path .grr-meta {
+  color: #d97706;
+}
+/* Row left area */
+.grr-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  flex: 1;
+  min-width: 0;
+}
+.grr-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  line-height: 1.3;
+  margin-top: 0.05rem;
+}
+.grr-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.grr-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #f3f4f6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.grr-meta {
+  font-size: 0.7rem;
+  color: #9ca3af;
+}
+.grr-warn {
+  font-size: 0.68rem;
+  color: #f59e0b;
+  font-style: italic;
+}
+.grr-blocked {
+  font-size: 0.68rem;
+  color: #6b7280;
+  font-style: italic;
+}
+/* Row right area */
+.grr-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+.grr-energy {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #d1d5db;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.15rem 0.4rem;
+  border-radius: 5px;
+}
+.grr-cooldown {
+  font-size: 0.68rem;
+  color: #60a5fa;
+}
+.grr-output {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #86efac;
+}
+/* Pre-camp tile rows: wrap so the gather button goes full-width below */
+.gather-resource-row--precamp {
+  flex-wrap: wrap;
+}
+.gather-resource-row.is-needed {
+  border-color: rgba(251, 191, 36, 0.32);
+  background: rgba(251, 191, 36, 0.05);
+}
+.gather-resource-row.is-needed:hover {
+  background: rgba(251, 191, 36, 0.1);
+}
+/* Inline gather button inside a tile row */
+.action-btn--gather-tile {
+  flex: 0 0 100%;
+  margin-top: 0.35rem;
+  padding: 0.28rem 0.6rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  background: rgba(34, 197, 94, 0.13);
+  border: 1px solid rgba(34, 197, 94, 0.38);
+  color: #86efac;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s, border-color 0.15s;
+}
+.action-btn--gather-tile:hover {
+  background: rgba(34, 197, 94, 0.24);
+  border-color: rgba(34, 197, 94, 0.6);
+}
+/* Bottom hint */
+.gather-map-hint {
+  margin-top: 0.5rem;
+  font-size: 0.7rem;
+  color: #6b7280;
+  font-style: italic;
+}
+.camp-map-legend-item .lg-dot.lg-candidate {
+  background: #3a2a0e;
+  border-color: rgba(251, 191, 36, 0.7);
+  box-shadow: 0 0 6px rgba(251, 191, 36, 0.55);
+}
+.camp-map-legend-item .lg-dot.lg-discovered {
+  background: #263321;
+  border-color: rgba(110, 201, 118, 0.62);
+  box-shadow: 0 0 6px rgba(110, 201, 118, 0.26);
+}
+.camp-map-legend-item .lg-dot.lg-silhouette {
+  background: #1c2336;
+  border-color: rgba(120, 140, 180, 0.45);
+}
+.camp-map-legend-item .lg-dot.lg-hidden {
+  background: #253048;
+  border-color: rgba(0, 0, 0, 0.5);
+}
+
+/* Just-founded pulse: container flash after chooseCamp */
+@keyframes campJustFoundedPulse {
+  0%   { box-shadow: inset 0 0 0 0 rgba(251, 191, 36, 0.6); }
+  40%  { box-shadow: inset 0 0 40px 4px rgba(251, 191, 36, 0.45); }
+  100% { box-shadow: inset 0 0 0 0 rgba(251, 191, 36, 0); }
+}
+.camp-map-scene-wrap.camp-just-founded .camp-map-scene {
+  animation: campJustFoundedPulse 1.6s ease-out both;
+}
+
+body.is-prologue-active #automation-panel,
+body.is-prologue-active #log-panel {
+  display: none;
+}
+
+body.is-prologue-active #research-widget {
+  order: initial;
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+}
+
+body.is-prologue-active #camp-map-panel {
+  grid-column: 1 / -1;
+  order: initial;
+}
+
+body.is-prologue-active .camp-map-scene {
+  border-color: rgba(145, 102, 48, 0.34);
+  background:
+    radial-gradient(circle at 25% 22%, rgba(201, 138, 54, 0.12), transparent 28%),
+    radial-gradient(circle at 72% 72%, rgba(113, 91, 48, 0.12), transparent 32%),
+    linear-gradient(180deg, #171712, #11120f);
+}
+
+body.is-prologue-active .camp-map-details {
+  border-color: rgba(145, 102, 48, 0.28);
+  background: rgba(22, 19, 14, 0.92);
+}
+
+body.is-prologue-active #actions-row {
+  order: initial;
+  grid-column: 1;
+}
+
+body.is-prologue-active #actions-row.is-single {
+  grid-template-columns: 1fr;
+  max-width: none;
+}
+
+body.is-prologue-active #systems-row {
+  order: initial;
+  grid-column: 1 / -1;
+  grid-template-columns: 1fr;
+}
+
+body.is-prologue-active #game-sidebar {
+  gap: 0.9rem;
+}
+
+body.is-prologue-active #game-layout {
+  grid-template-columns: 290px minmax(0, 1fr);
+  gap: 1.2rem;
+}
+
+body.is-prologue-active #game-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 1rem;
+  align-items: start;
+}
+
+.header-service-btn.has-badge {
+  position: relative;
+}
+
+.header-service-btn.has-badge::after {
+  content: attr(data-badge);
+  position: absolute;
+  top: -0.35rem;
+  right: -0.35rem;
+  min-width: 1rem;
+  height: 1rem;
+  padding: 0 0.18rem;
+  border-radius: 999px;
+  background: #fbbf24;
+  color: #0f1117;
+  font-size: 0.63rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(15, 17, 23, 0.85);
+}
+
+.header-service-btn.is-highlighted {
+  color: #f5dfa0;
+  border-color: #c49a4a;
+}
+
+.story-event-layer {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 950;
+  width: min(360px, calc(100vw - 2rem));
+  pointer-events: none;
+}
+
+.story-event {
+  pointer-events: auto;
+  display: flex;
+  gap: 0.8rem;
+  align-items: flex-start;
+  padding: 0.85rem 0.95rem;
+  border-radius: 14px;
+  border: 1px solid rgba(164, 126, 67, 0.42);
+  background: rgba(19, 18, 14, 0.95);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38);
+  animation: story-pop 0.22s ease-out;
+}
+
+.story-event--insight {
+  border-color: rgba(251, 191, 36, 0.42);
+}
+
+.story-event--knowledge {
+  border-color: rgba(96, 165, 250, 0.42);
+}
+
+.story-event--map {
+  border-color: rgba(96, 165, 250, 0.42);
+}
+
+.story-event--campfire,
+.story-event--transition {
+  border-color: rgba(249, 115, 22, 0.45);
+}
+
+.story-event-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.story-event-kicker {
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: #c49a4a;
+  margin-bottom: 0.28rem;
+}
+
+.story-event-title {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #f3f4f6;
+}
+
+.story-event-text {
+  margin-top: 0.28rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: #d0c6b5;
+}
+
+.story-event-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.45rem;
+}
+
+.story-event-action,
+.story-event-close {
+  border-radius: 8px;
+  border: 1px solid #3c414e;
+  background: #171b24;
+  color: #d5dbe8;
+  cursor: pointer;
+}
+
+.story-event-action {
+  padding: 0.35rem 0.6rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.story-event-close {
+  width: 1.8rem;
+  height: 1.8rem;
+  font-size: 0.82rem;
+}
+
+.story-event-action:hover,
+.story-event-close:hover {
+  border-color: #a78bfa;
+  color: #f3f4f6;
+}
+
+@keyframes story-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.prologue-focus-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(280px, 1fr);
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.prologue-focus-main,
+.prologue-focus-aside {
+  min-width: 0;
+}
+
+.prologue-focus-kicker {
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: #b89e73;
+  margin-bottom: 0.45rem;
+}
+
+.prologue-scene-text {
+  margin-top: 0.6rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid rgba(164, 126, 67, 0.24);
+  background: rgba(18, 15, 10, 0.55);
+  color: #d7cab5;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.prologue-step-meta,
+.prologue-step-actions {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  margin-top: 0.65rem;
+}
+
+.prologue-step-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(18, 15, 10, 0.62);
+  border: 1px solid rgba(164, 126, 67, 0.24);
+  color: #eadfc9;
+  font-size: 0.71rem;
+  font-weight: 700;
+}
+
+.prologue-link-btn {
+  padding: 0.42rem 0.72rem;
+  border-radius: 8px;
+  border: 1px solid rgba(164, 126, 67, 0.3);
+  background: rgba(17, 19, 24, 0.86);
+  color: #d8c7ff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.prologue-link-btn:hover {
+  border-color: #a78bfa;
+  color: #f3f4f6;
+}
+
+.prologue-focus-aside {
+  padding: 0.8rem 0.9rem;
+  border-radius: 12px;
+  border: 1px solid rgba(164, 126, 67, 0.28);
+  background:
+    linear-gradient(180deg, rgba(74, 47, 16, 0.18), rgba(18, 16, 13, 0.68)),
+    #171a22;
+}
+
+.prologue-focus-aside-title {
+  font-size: 0.86rem;
+  font-weight: 800;
+  color: #f5dfa0;
+}
+
+.prologue-focus-aside-text {
+  margin-top: 0.38rem;
+  font-size: 0.77rem;
+  line-height: 1.45;
+  color: #d7cab5;
+}
+
+.prologue-fire-readiness {
+  margin-top: 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.38rem;
+}
+
+.prologue-fire-item {
+  font-size: 0.76rem;
+  line-height: 1.35;
+  color: #9ca3af;
+}
+
+.prologue-fire-item.done {
+  color: #f5dfa0;
+}
+
+.prologue-resource-item {
+  border: 1px solid rgba(164, 126, 67, 0.18);
+  background: rgba(17, 19, 24, 0.82);
+}
+
+.prologue-resource-groups {
+  gap: 0.7rem;
+}
+
+.prologue-resource-category {
+  background: rgba(20, 22, 30, 0.82);
+  border-color: rgba(164, 126, 67, 0.2);
+}
+
+.prologue-resource-group-note {
+  font-size: 0.67rem;
+  line-height: 1.35;
+  color: #8b93a7;
+  margin-bottom: 0.45rem;
+}
+
+.prologue-resource-total {
+  font-size: 0.64rem;
+  line-height: 1.2;
+  color: #6b7280;
+}
+
+.action-btn--prologue {
+  padding: 0.7rem 0.75rem;
+  gap: 0.18rem;
+  border-color: rgba(164, 126, 67, 0.24);
+  background:
+    linear-gradient(180deg, rgba(67, 45, 20, 0.18), rgba(37, 40, 54, 0.9)),
+    #252836;
+}
+
+.action-btn--prologue .btn-desc {
+  margin-bottom: 0.06rem;
+}
+
+.btn-meta-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  align-items: center;
+}
+
+.action-btn--prologue:hover:not(:disabled):not(.cooldown) {
+  border-color: rgba(196, 154, 74, 0.4);
+  background:
+    linear-gradient(180deg, rgba(88, 56, 22, 0.2), rgba(39, 43, 55, 0.94)),
+    #272b37;
+}
+
+.prologue-inline-note {
+  margin-top: 0.35rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 8px;
+  background: rgba(18, 15, 10, 0.42);
+  border: 1px solid rgba(164, 126, 67, 0.2);
+  color: #d7cab5;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.prologue-campfire-banner {
+  margin-bottom: 0.75rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 10px;
+  border: 1px solid rgba(249, 115, 22, 0.22);
+  background:
+    linear-gradient(180deg, rgba(122, 54, 12, 0.16), rgba(20, 18, 14, 0.75)),
+    #171b24;
+}
+
+.prologue-campfire-title {
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: #fbbf24;
+}
+
+.prologue-campfire-text {
+  margin-top: 0.28rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: #d7cab5;
+}
+
+.knowledge-intro {
+  margin-bottom: 0.9rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 10px;
+  border: 1px solid #2c3140;
+  background: #141822;
+  color: #c7cfdd;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.knowledge-entry-meta {
+  margin-bottom: 0.3rem;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #8b93a7;
+}
+
+@media (max-width: 900px) {
+  .camp-map-body {
+    grid-template-columns: 1fr;
+  }
+
+  .prologue-focus-layout {
+    grid-template-columns: 1fr;
+  }
+
+  body.is-prologue-active #game-main {
+    grid-template-columns: 1fr;
+  }
+
+  body.is-prologue-active #research-widget,
+  body.is-prologue-active #actions-row,
+  body.is-prologue-active #systems-row {
+    grid-column: 1;
+    grid-row: auto;
+    position: static;
+  }
+}
+
+@media (max-width: 640px) {
+  .camp-map-header {
+    flex-direction: column;
+  }
+
+  .camp-map-chips,
+  .camp-map-details-meta {
+    justify-content: flex-start;
+  }
+
+  .camp-map-scene {
+    min-width: 100%;
+  }
+
+  .story-event-layer {
+    top: auto;
+    right: 0.75rem;
+    left: 0.75rem;
+    bottom: 0.75rem;
+    width: auto;
+  }
+}

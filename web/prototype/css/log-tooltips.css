@@ -1,0 +1,129 @@
+/* Log */
+.log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+
+.log-header h3 {
+  margin: 0;
+}
+
+.log-toggle-btn {
+  background: none;
+  border: none;
+  color: #6b7280;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.log-toggle-btn:hover {
+  color: #d1d5db;
+}
+
+.log-preview {
+  font-size: 0.8rem;
+  color: #6b7280;
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 0.1rem;
+}
+
+.log-entries {
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: 0.35rem;
+}
+
+.log-entries.is-hidden {
+  display: none;
+}
+
+.log-entry {
+  padding: 0.25rem 0;
+  font-size: 0.85rem;
+  border-bottom: 1px solid #1f2130;
+  color: #d1d5db;
+}
+
+/* Progress — merged into era-progress */
+
+/* Hint text */
+.hint {
+  font-size: 0.8rem;
+  color: #6b7280;
+  font-style: italic;
+}
+
+/* Unified compact tooltips */
+.has-tooltip {
+  position: relative;
+}
+
+.has-tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translate(-50%, 6px);
+  max-width: 240px;
+  width: max-content;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid #3a3d47;
+  border-radius: 6px;
+  background: rgba(15, 17, 23, 0.98);
+  color: #d1d5db;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  white-space: pre-line;
+  text-align: left;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  z-index: 40;
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease,
+    visibility 0.12s ease;
+}
+
+.has-tooltip:hover::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+}
+
+/* Tooltips inside sidebar: anchor to left edge so they don't overflow right */
+#game-sidebar .has-tooltip::after {
+  left: 0;
+  right: auto;
+  transform: translateY(6px);
+  max-width: 220px;
+  width: max-content;
+}
+#game-sidebar .has-tooltip:hover::after {
+  transform: translateY(0);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a1d27;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3a3d47;
+  border-radius: 3px;
+}

@@ -3,8 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SpaceGame — v0.1.15</title>
-    <link rel="stylesheet" href="prototype/style.css" />
+    <title>SpaceGame — v0.1.16</title>
+    <!-- CSS modules (split from style.css, Phase 2 refactor) -->
+    <link rel="stylesheet" href="prototype/css/base.css" />
+    <link rel="stylesheet" href="prototype/css/map-local.css" />
+    <link rel="stylesheet" href="prototype/css/prologue-onboarding.css" />
+    <link rel="stylesheet" href="prototype/css/resources.css" />
+    <link rel="stylesheet" href="prototype/css/character.css" />
+    <link rel="stylesheet" href="prototype/css/actions.css" />
+    <link rel="stylesheet" href="prototype/css/buildings.css" />
+    <link rel="stylesheet" href="prototype/css/automation.css" />
+    <link rel="stylesheet" href="prototype/css/log-tooltips.css" />
+    <link rel="stylesheet" href="prototype/css/era-progress.css" />
+    <link rel="stylesheet" href="prototype/css/research.css" />
+    <link rel="stylesheet" href="prototype/css/modals.css" />
+    <link rel="stylesheet" href="prototype/css/hex-map.css" />
+    <link rel="stylesheet" href="prototype/css/camp-founding.css" />
+    <link rel="stylesheet" href="prototype/css/camp-screen.css" />
   </head>
   <body>
     <div id="app">
@@ -12,10 +27,9 @@
         <div class="header-top">
           <div class="header-title-block">
             <h1 id="game-title">🌌 SpaceGame</h1>
-            <span id="version-badge" class="version-badge">v0.1.15</span>
           </div>
           <div class="header-actions">
-            <button id="changelog-btn" class="header-changelog-btn" type="button" title="История изменений">📋 v0.1.15</button>
+            <button id="changelog-btn" class="header-changelog-btn" type="button" title="История изменений">📋 v0.1.16</button>
             <div class="save-status-wrap">
               <button id="save-status" class="save-status" type="button" title="Нажмите для смены интервала автосохранения">Новая игра</button>
               <div id="save-interval-popup" class="save-interval-popup" hidden>
@@ -25,9 +39,9 @@
                 </label>
               </div>
             </div>
-            <button id="restart-onboarding-btn" class="header-service-btn" type="button" title="Начать пролог заново">🌄</button>
-            <button id="knowledge-book-btn" class="header-service-btn" type="button" title="Книга знаний">📚</button>
-            <button id="reset-progress-btn" class="header-reset-btn" type="button">Новая игра</button>
+            <button id="restart-onboarding-btn" class="header-service-btn" type="button" title="Начать пролог заново">🌄 Пролог</button>
+
+            <button id="reset-progress-btn" class="header-reset-btn" type="button">Сбросить прогресс</button>
           </div>
         </div>
       </header>
@@ -61,8 +75,12 @@
             <section id="automation-panel" class="panel"></section>
           </div>
 
-          <!-- Research widget: compact button-card opening the research modal -->
-          <div id="research-widget" class="panel research-widget"></div>
+          <!-- Science panel: research / insights / knowledge grouped together -->
+          <div id="science-panel" class="panel science-panel">
+            <div id="research-widget" class="science-slot"></div>
+            <div class="science-divider"></div>
+            <div id="knowledge-widget" class="science-slot"></div>
+          </div>
 
           <section id="log-panel" class="panel"></section>
         </main>
@@ -158,10 +176,38 @@
       </div>
     </div>
 
-    <!-- Data & Logic -->
+    <!-- Data (game-data.js declares GAME_DATA={}, modules extend it via Object.assign) -->
     <script src="prototype/data/game-data.js"></script>
+    <script src="prototype/data/narrative.js"></script>
+    <script src="prototype/data/terrain.js"></script>
+    <script src="prototype/data/world.js"></script>
+    <script src="prototype/data/character.js"></script>
+    <script src="prototype/data/production.js"></script>
     <script src="prototype/game-state.js"></script>
+
+    <!-- UI base class (coordinator) -->
     <script src="prototype/ui.js"></script>
+
+    <!-- UI modules — extend UI.prototype -->
+    <script src="prototype/ui/core/ui-utils.js"></script>
+    <script src="prototype/ui/core/ui-tooltips.js"></script>
+    <script src="prototype/ui/map/camp-map-ui.js"></script>
+    <script src="prototype/ui/camp/camp-founding-ui.js"></script>
+    <script src="prototype/ui/camp/camp-screen-ui.js"></script>
+    <script src="prototype/ui/panels/character-panel-ui.js"></script>
+    <script src="prototype/ui/panels/resources-ui.js"></script>
+    <script src="prototype/ui/panels/gather-ui.js"></script>
+    <script src="prototype/ui/panels/crafting-ui.js"></script>
+    <script src="prototype/ui/panels/buildings-ui.js"></script>
+    <script src="prototype/ui/panels/log-ui.js"></script>
+    <script src="prototype/ui/panels/era-progress-ui.js"></script>
+    <script src="prototype/ui/research/research-ui.js"></script>
+    <script src="prototype/ui/knowledge/knowledge-ui.js"></script>
+    <script src="prototype/ui/onboarding/onboarding-ui.js"></script>
+    <script src="prototype/ui/story/story-events-ui.js"></script>
+
     <script src="prototype/app.js"></script>
+    <!-- DEV ONLY: remove before release -->
+    <script src="prototype/dev-panel.js"></script>
   </body>
 </html>
