@@ -106,6 +106,9 @@ class UI {
     this.bindResearchModal();
     this.bindKnowledgeModal();
     this.bindCampModals();
+    if (typeof this.bindCharacterModal === "function") {
+      this.bindCharacterModal();
+    }
   }
 
   bindChangelogModal() {
@@ -501,7 +504,7 @@ class UI {
     screen.style.display = "flex";
     document.body.style.overflow = "hidden";
     this._selectedCampSlot = null;
-    this.renderCampScreen();
+    this.renderCampScreen({ force: true });
     document.getElementById("cs-back-btn")?.focus();
   }
 
@@ -1326,7 +1329,7 @@ class UI {
     if (buildBtn) {
       buildBtn.addEventListener("click", () => {
         this.game.build(slot.buildingId);
-        this.renderCampScreen();
+        this.renderCampScreen({ force: true });
         this.render({ forcePanels: true });
       });
     }
@@ -1336,7 +1339,7 @@ class UI {
       btn.addEventListener("click", () => {
         const uid = btn.dataset.upgradeId;
         if (this.game.applyUpgrade(uid)) {
-          this.renderCampScreen();
+          this.renderCampScreen({ force: true });
           this.render({ forcePanels: true });
         }
       });
@@ -2660,6 +2663,9 @@ class UI {
     if (forcePanels || !this.isPanelHovered("character-panel")) {
       this.renderCharacterPanel();
     }
+    if (forcePanels || !this.isPanelHovered("day-cycle-panel")) {
+      this.renderDayCyclePanel();
+    }
     if (forcePanels || !this.isPanelHovered("camp-map-panel")) {
       this.renderCampMap();
     }
@@ -2681,8 +2687,12 @@ class UI {
     if (forcePanels || !this.isPanelHovered("automation-panel")) {
       this.renderAutomationPanel();
     }
-    this.renderResearchWidget();
-    this.renderKnowledgeWidget();
+    if (forcePanels || !this.isPanelHovered("research-widget")) {
+      this.renderResearchWidget();
+    }
+    if (forcePanels || !this.isPanelHovered("knowledge-widget")) {
+      this.renderKnowledgeWidget();
+    }
     const _rModal = document.getElementById("research-modal");
     if (
       _rModal &&
@@ -2698,6 +2708,15 @@ class UI {
       !this.isPanelHovered("knowledge-modal-body")
     ) {
       this.renderKnowledgeModalContent();
+    }
+    const _cModal = document.getElementById("character-modal");
+    if (
+      _cModal &&
+      _cModal.style.display !== "none" &&
+      !this._cmEditingTitle &&
+      typeof this.renderCharacterModalContent === "function"
+    ) {
+      this.renderCharacterModalContent();
     }
     this.renderLog();
     this.renderEraProgress();

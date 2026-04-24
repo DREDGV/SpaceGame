@@ -44,8 +44,21 @@ body {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 0.2rem;
+  gap: 0;
   flex-shrink: 0;
+}
+
+.game-logo-header {
+  display: block;
+  width: 150px;
+  height: 150px;
+  object-fit: contain;
+  opacity: 0.92;
+  mix-blend-mode: lighten;
+  filter: drop-shadow(0 0 8px rgba(196, 154, 74, 0.16));
+  -webkit-user-select: none;
+  user-select: none;
+  pointer-events: none;
 }
 
 .header-actions {
@@ -237,19 +250,37 @@ body {
 }
 
 #camp-map-panel {
+  --map-bg: #071016;
+  --map-panel: rgba(10, 17, 23, 0.9);
+  --map-panel-strong: rgba(13, 22, 29, 0.96);
+  --map-border: rgba(90, 111, 132, 0.36);
+  --map-green: #6fbf52;
+  --map-green-soft: rgba(111, 191, 82, 0.22);
+  --map-red: #e05f64;
+  --map-gold: #d8aa54;
+  --map-text: #d9e0dd;
+  --map-muted: #8e9aa3;
   overflow: hidden;
+  border-color: var(--map-border);
+  background:
+    radial-gradient(circle at 50% 30%, rgba(42, 76, 54, 0.24), transparent 42%),
+    radial-gradient(circle at 70% 68%, rgba(19, 65, 80, 0.16), transparent 34%),
+    linear-gradient(180deg, #111821, #071016 58%, #050a0e);
 }
 
 .camp-map-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 0.9rem;
-  margin-bottom: 0.85rem;
+  gap: 1.25rem;
+  margin-bottom: 1.05rem;
 }
 
 .camp-map-header h3 {
   margin: 0;
+  color: var(--map-text);
+  font-size: clamp(1.25rem, 2vw, 1.7rem);
+  letter-spacing: -0.02em;
 }
 
 .camp-map-pre-camp-hint {
@@ -265,11 +296,100 @@ body {
 }
 
 .camp-map-description {
-  margin-top: 0.3rem;
-  color: #9ca3af;
-  font-size: 0.82rem;
+  margin-top: 0.55rem;
+  color: #b5bdbd;
+  font-size: 0.9rem;
   line-height: 1.45;
   max-width: 70ch;
+}
+
+.camp-map-header-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.65rem;
+  min-width: min(100%, 530px);
+}
+
+.camp-map-top-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  max-width: 100%;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--map-border);
+  border-radius: 16px;
+  background: rgba(6, 13, 18, 0.72);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    0 14px 30px rgba(0, 0, 0, 0.18);
+}
+
+.camp-map-top-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 92px;
+  justify-content: center;
+  padding: 0.1rem 0.72rem;
+  color: #c9d0cf;
+  font-size: 0.82rem;
+  border-right: 1px solid rgba(142, 154, 163, 0.17);
+  white-space: nowrap;
+}
+
+.camp-map-top-legend-item:last-child {
+  border-right: 0;
+}
+
+.map-symbol {
+  position: relative;
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+
+.map-symbol-camp::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border: 3px solid var(--map-red);
+  border-radius: 999px;
+  box-shadow: 0 0 12px rgba(224, 95, 100, 0.4);
+}
+
+.map-symbol-here::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border: 3px solid #77c66a;
+  border-radius: 999px;
+  box-shadow: 0 0 10px rgba(119, 198, 106, 0.38);
+}
+
+.map-symbol-trail::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  top: 9px;
+  border-top: 4px dotted #d9d3c1;
+  transform: rotate(42deg);
+}
+
+.map-symbol-open {
+  clip-path: polygon(25% 5%, 75% 5%, 100% 50%, 75% 95%, 25% 95%, 0 50%);
+  background: rgba(93, 153, 49, 0.35);
+  border: 1px solid rgba(126, 211, 82, 0.75);
+  box-shadow: inset 0 0 0 1px rgba(126, 211, 82, 0.2);
+}
+
+.map-symbol-locked {
+  clip-path: polygon(25% 5%, 75% 5%, 100% 50%, 75% 95%, 25% 95%, 0 50%);
+  background: rgba(94, 99, 100, 0.24);
+  border: 1px solid rgba(147, 151, 151, 0.25);
+  filter: grayscale(0.5);
 }
 
 .camp-map-chips {
@@ -285,17 +405,17 @@ body {
   min-height: 24px;
   padding: 0.14rem 0.52rem;
   border-radius: 999px;
-  background: rgba(96, 165, 250, 0.08);
-  border: 1px solid rgba(96, 165, 250, 0.16);
-  color: #dbeafe;
+  background: rgba(111, 191, 82, 0.08);
+  border: 1px solid rgba(111, 191, 82, 0.2);
+  color: #d7f6ca;
   font-size: 0.7rem;
   font-weight: 700;
 }
 
 .camp-map-body {
   display: grid;
-  grid-template-columns: minmax(0, 1.7fr) 320px;
-  gap: 1rem;
+  grid-template-columns: 166px minmax(520px, 1fr) 286px;
+  gap: 1.05rem;
   align-items: start;
 }
 
@@ -305,17 +425,33 @@ body {
 
 .camp-map-scene {
   position: relative;
-  border-radius: 16px;
-  border: 1px solid #2f3546;
+  border-radius: 18px;
+  border: 1px solid var(--map-border);
   background:
-    radial-gradient(circle at 50% 50%, rgba(96, 165, 250, 0.05), transparent 55%),
-    linear-gradient(180deg, #0c0f16, #06080c);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+    radial-gradient(circle at 50% 42%, rgba(45, 82, 54, 0.28), transparent 42%),
+    radial-gradient(circle at 22% 20%, rgba(71, 113, 62, 0.2), transparent 26%),
+    radial-gradient(circle at 82% 74%, rgba(13, 70, 92, 0.18), transparent 28%),
+    linear-gradient(180deg, rgba(6, 14, 19, 0.7), rgba(3, 8, 12, 0.96));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    inset 0 -80px 110px rgba(0, 0, 0, 0.22),
+    0 22px 46px rgba(0, 0, 0, 0.28);
   overflow: hidden;
-  height: 460px;
+  height: clamp(560px, 62vh, 760px);
   cursor: default;
   -webkit-user-select: none;
   user-select: none;
+}
+
+.camp-map-scene::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 15% 80%, rgba(33, 79, 48, 0.16), transparent 24%),
+    linear-gradient(90deg, rgba(2, 7, 10, 0.2), transparent 18%, transparent 82%, rgba(2, 7, 10, 0.24));
+  mix-blend-mode: screen;
 }
 
 .camp-map-scene.is-dragging {
@@ -339,20 +475,83 @@ body {
   z-index: 50;
   max-width: 220px;
   padding: 0.45rem 0.55rem;
-  border: 1px solid #3a3d47;
-  border-radius: 6px;
-  background: rgba(15, 17, 23, 0.98);
-  color: #d1d5db;
+  border: 1px solid rgba(116, 132, 146, 0.42);
+  border-radius: 8px;
+  background: rgba(8, 13, 18, 0.97);
+  color: #d7dedc;
   font-size: 0.7rem;
   line-height: 1.35;
   white-space: pre-line;
   pointer-events: none;
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.46);
 }
 
 .camp-map-legend {
-  margin-top: 0.75rem;
-  color: #8b93a7;
-  font-size: 0.78rem;
-  line-height: 1.45;
+  margin-top: 0.65rem;
+  color: #9aa7ad;
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.camp-map-side-legend,
+.camp-map-details {
+  border: 1px solid var(--map-border);
+  background: rgba(7, 14, 19, 0.78);
+  border-radius: 16px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    0 18px 36px rgba(0, 0, 0, 0.2);
+}
+
+.camp-map-side-legend {
+  padding: 0.95rem 0.95rem 1rem;
+}
+
+.camp-map-side-title {
+  margin-bottom: 0.75rem;
+  color: #e5ebe8;
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+
+.camp-map-side-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.camp-map-side-list > span {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: #b7c0bf;
+  font-size: 0.82rem;
+}
+
+.legend-emoji {
+  width: 20px;
+  text-align: center;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45));
+}
+
+.legend-hex {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  clip-path: polygon(25% 5%, 75% 5%, 100% 50%, 75% 95%, 25% 95%, 0 50%);
+}
+
+.legend-forest {
+  background: linear-gradient(160deg, #214c23, #0f2d19);
+  border: 1px solid rgba(111, 191, 82, 0.72);
+}
+
+.camp-map-tip-card {
+  margin-top: 1.15rem;
+  padding: 0.75rem 0.8rem;
+  border-radius: 12px;
+  border: 1px solid rgba(142, 154, 163, 0.22);
+  background: rgba(255, 255, 255, 0.035);
+  color: #aab4b8;
+  font-size: 0.8rem;
+  line-height: 1.5;
 }

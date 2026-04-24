@@ -138,7 +138,10 @@ Object.assign(UI.prototype, {
 
       const costStr = this.formatResourcePairs(effectiveCost);
       const outStr = this.formatResourcePairs(recipe.output, { plus: true });
-      let queueStateText = `⏱ ${this.formatSeconds(recipe.craftTimeMs || 3000)}`;
+      const craftDuration = this.game.getCraftDuration
+        ? this.game.getCraftDuration(id)
+        : recipe.craftTimeMs || 3000;
+      let queueStateText = `⏱ ${this.formatSeconds(craftDuration)}`;
 
       if (this.game.craftQueue.length >= this.game.maxCraftQueueSize) {
         queueStateText = "Очередь заполнена";
@@ -151,7 +154,7 @@ Object.assign(UI.prototype, {
         <span class="btn-label">${copy.name}</span>
         <span class="btn-flow">${costStr} → ${outStr}</span>
         ${copy.description ? `<span class="btn-desc">${copy.description}</span>` : ""}
-        <span class="btn-efficiency">Время производства: ${this.formatSeconds(recipe.craftTimeMs || 3000)}</span>
+        <span class="btn-efficiency">Время производства: ${this.formatSeconds(craftDuration)}</span>
         <span class="btn-queue-status">${queueStateText}</span>
       `;
       this.setTooltip(btn, [

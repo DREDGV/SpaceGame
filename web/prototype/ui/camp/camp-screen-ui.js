@@ -2,6 +2,41 @@
 // Camp founding UI is in camp-founding-ui.js.
 
 Object.assign(UI.prototype, {
+  /** Shows a brief toast notification on the camp scene wrap. */
+  _showCampToast(text) {
+    const wrap = document.querySelector(".cs-scene-wrap");
+    if (!wrap) return;
+    // Remove any existing toast
+    wrap.querySelector(".cs-toast")?.remove();
+    const toast = document.createElement("div");
+    toast.className = "cs-toast";
+    toast.textContent = text;
+    wrap.appendChild(toast);
+    setTimeout(() => toast.remove(), 3300);
+  },
+
+  /** Plays a short woody-click tone via Web Audio API (no file needed). */
+  _playCampClickSound() {
+    try {
+      const ctx = this._audioCtx || (this._audioCtx = new (window.AudioContext || window.webkitAudioContext)());
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.18, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+      gain.connect(ctx.destination);
+
+      // Short thump: sine at 180Hz for wood-knock feel
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(200, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(90, ctx.currentTime + 0.1);
+      osc.connect(gain);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.13);
+    } catch (_) {
+      // Audio unavailable — silently ignore
+    }
+  },
+
   openCampScreen() {
     if (!this.game.isCampSetupDone()) return;
     this.game.refreshCampMap?.();
@@ -11,7 +46,10 @@ Object.assign(UI.prototype, {
     screen.style.display = "flex";
     document.body.style.overflow = "hidden";
     this._selectedCampSlot = null;
-    this.renderCampScreen();
+    // Track previously built set to detect completions while screen is open
+    this._prevBuiltKeys = new Set(Object.keys(this.game.buildings));
+    this.renderCampScreen({ force: true });
+    this._initCampSceneDrag();
     document.getElementById("cs-back-btn")?.focus();
   },
 
@@ -20,6 +58,37 @@ Object.assign(UI.prototype, {
     if (!screen) return;
     screen.style.display = "none";
     document.body.style.overflow = "";
+  },
+
+  /** Initialise drag-to-scroll (pan) on the scene wrap. Idempotent. */
+  _initCampSceneDrag() {
+    const wrap = document.querySelector(".cs-scene-wrap");
+    if (!wrap || wrap._dragBound) return;
+    wrap._dragBound = true;
+    let startX, startY, startScrollX, startScrollY, dragging = false;
+
+    const onDown = (e) => {
+      // Only drag on the wrap itself or the scene, not on slots
+      if (e.target.closest(".cs-slot")) return;
+      dragging = true;
+      startX = e.clientX; startY = e.clientY;
+      startScrollX = wrap.scrollLeft; startScrollY = wrap.scrollTop;
+      wrap.classList.add("is-dragging");
+    };
+    const onMove = (e) => {
+      if (!dragging) return;
+      wrap.scrollLeft = startScrollX - (e.clientX - startX);
+      wrap.scrollTop  = startScrollY - (e.clientY - startY);
+    };
+    const onUp = () => {
+      dragging = false;
+      wrap.classList.remove("is-dragging");
+    };
+
+    wrap.addEventListener("pointerdown", onDown);
+    window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
   },
 
   // ─── Camp management screen render ───────────────────────────────────────
@@ -179,16 +248,40 @@ Object.assign(UI.prototype, {
     };
   },
 
-  renderCampScreen() {
+  renderCampScreen({ force = false } = {}) {
     const screen = document.getElementById("camp-screen");
     if (!screen || screen.style.display === "none") return;
 
     this.game.refreshCampMap?.();
 
+    // Detect newly completed buildings while screen is open
+    const currentBuilt = new Set(Object.keys(this.game.buildings));
+    if (this._prevBuiltKeys) {
+      for (const key of currentBuilt) {
+        if (!this._prevBuiltKeys.has(key)) {
+          // A building just completed — trigger toast + dock animation
+          const bDef = this.data.buildings[key];
+          const name = bDef?.name || key;
+          this._showCampToast(`${bDef?.icon || "🏗️"} ${name} построено!`);
+          // Mark dock item for animation (will apply on next dock render)
+          this._justBuiltId = key;
+        }
+      }
+      this._prevBuiltKeys = currentBuilt;
+    }
+
+    // Topbar (resources, energy) updates every tick — always safe to rebuild.
     this._renderCampTopbar();
-    this._renderCampScene();
-    this._renderCampDock();
-    this._renderCampDetail();
+
+    // Skip heavy DOM rebuilds while the user hovers over interactive zones
+    // so that CSS :hover state is never lost, preventing flicker.
+    // User-triggered calls (force=true) always do a full rebuild.
+    const dockHovered   = !force && document.getElementById("cs-dock")?.matches(":hover");
+    const detailHovered = !force && document.getElementById("cs-detail")?.matches(":hover");
+
+    if (!dockHovered)   this._renderCampScene();
+    if (!dockHovered)   this._renderCampDock();
+    if (!detailHovered) this._renderCampDetail();
   },
 
   // ── A: Top status bar ────────────────────────────────────────────────────
@@ -210,6 +303,20 @@ Object.assign(UI.prototype, {
       }
 
       nameEl.innerHTML = `${stage.icon} ${name} <span class="cs-topbar-stage">${dots} ${stage.label}</span>`;
+
+      // Building count badge
+      const layout = this._getCampSlotLayout();
+      const totalSlots = layout.length;
+      const builtCount = layout.filter(s => !!this.game.buildings[s.buildingId]).length;
+      let countEl = document.getElementById("cs-topbar-build-count");
+      if (!countEl) {
+        countEl = document.createElement("span");
+        countEl.id = "cs-topbar-build-count";
+        countEl.className = "cs-topbar-build-count";
+        nameEl.appendChild(countEl);
+      }
+      countEl.textContent = `${builtCount}/${totalSlots}`;
+      countEl.className = `cs-topbar-build-count${builtCount === totalSlots ? " is-complete" : ""}`;
     }
 
     // Key resources
@@ -224,7 +331,14 @@ Object.assign(UI.prototype, {
         )
         .map((id) => {
           const val = this.game.resources[id] || 0;
-          return `<span class="cs-res-chip"><span class="cs-res-chip-icon">${this.getResourceDisplayIcon(id)}</span> <span class="cs-res-chip-val">${val}</span></span>`;
+          const def = this.data.resources[id];
+          const label = def?.name || id;
+          const cap = this.game.maxResourceCap || 15;
+          return `<span class="cs-res-chip" title="${label}">
+            <span class="cs-res-chip-icon">${this.getResourceDisplayIcon(id)}</span>
+            <span class="cs-res-chip-val">${val}</span>
+            <span class="cs-res-chip-tooltip">${label} ${val}/${cap}</span>
+          </span>`;
         })
         .join("");
     }
@@ -258,7 +372,12 @@ Object.assign(UI.prototype, {
   // ── B: Central visual scene ──────────────────────────────────────────────
 
   _getCampfireSceneVariant(slotView, isBuilt, isConstructing) {
-    if (isBuilt) return "live";
+    if (isBuilt) {
+      const hasHearth = this.game.localCampMap?.appliedUpgrades?.includes(
+        "campfire_stone_hearth",
+      );
+      return hasHearth ? "hearth" : "live";
+    }
     if (isConstructing) return "constructing";
     if (slotView.sceneMode === "campfire-ready") return "ready";
     if (slotView.sceneMode === "campfire") return "live";
@@ -269,7 +388,7 @@ Object.assign(UI.prototype, {
     if (!iconEl || !variant) return;
 
     const sparkMarkup =
-      variant === "live"
+      variant === "live" || variant === "hearth"
         ? `
           <span class="cs-campfire-spark cs-campfire-spark--1"></span>
           <span class="cs-campfire-spark cs-campfire-spark--2"></span>
@@ -277,11 +396,11 @@ Object.assign(UI.prototype, {
         `
         : "";
     const frontFlameMarkup =
-      variant === "live" || variant === "constructing"
+      variant === "live" || variant === "hearth" || variant === "constructing"
         ? '<span class="cs-campfire-flame cs-campfire-flame--front"></span>'
         : "";
     const backFlameMarkup =
-      variant === "live"
+      variant === "live" || variant === "hearth"
         ? '<span class="cs-campfire-flame cs-campfire-flame--back"></span>'
         : variant === "constructing"
           ? '<span class="cs-campfire-smoke"></span>'
@@ -382,6 +501,10 @@ Object.assign(UI.prototype, {
       );
       el.classList.toggle("cs-slot--campfire-live", campfireVariant === "live");
       el.classList.toggle(
+        "cs-slot--campfire-hearth",
+        campfireVariant === "hearth",
+      );
+      el.classList.toggle(
         "cs-slot--camp-center",
         isCampfire && slotView.sceneMode === "center",
       );
@@ -395,7 +518,7 @@ Object.assign(UI.prototype, {
       const statusEl = el.querySelector(".cs-slot-status");
 
       if (isBuilt) {
-        if (isCampfire) this._renderCampfireSceneArt(iconEl, "live");
+        if (isCampfire) this._renderCampfireSceneArt(iconEl, campfireVariant);
         else iconEl.textContent = building?.icon || "🏗️";
         iconEl.style.cssText = "";
         labelEl.textContent = building?.name || slot.label;
@@ -437,6 +560,8 @@ Object.assign(UI.prototype, {
     const construction = this.game.getConstructionState();
 
     dock.innerHTML = "";
+    const justBuiltId = this._justBuiltId;
+    this._justBuiltId = null;
     for (const slot of layout) {
       const building = this.data.buildings[slot.buildingId];
       const slotView = this._getCampSlotPresentation(slot);
@@ -452,11 +577,13 @@ Object.assign(UI.prototype, {
       if (!isBuilt && !isConstructing) item.classList.add("is-empty");
       if (isSelected) item.classList.add("is-selected");
 
-      let statusText = "";
+      let statusMark = "";
       if (isBuilt)
-        statusText = `<span class="cs-dock-status is-built">✓</span>`;
+        statusMark = `<span class="cs-dock-status is-built" title="Построено">✓</span>`;
       else if (isConstructing)
-        statusText = `<span class="cs-dock-status is-constructing">⏳ ${Math.round((construction.progress || 0) * 100)}%</span>`;
+        statusMark = `<span class="cs-dock-status is-constructing" title="Строится">⏳ ${Math.round((construction.progress || 0) * 100)}%</span>`;
+      else
+        statusMark = `<span class="cs-dock-status is-empty" title="Можно построить">＋</span>`;
 
       const icon =
         isBuilt || isConstructing
@@ -467,13 +594,23 @@ Object.assign(UI.prototype, {
           ? building?.name || slot.label
           : slotView.dockLabel || slot.label;
 
+      const meta = isBuilt
+        ? `<span class="cs-dock-meta">Построено</span>`
+        : isConstructing
+          ? `<span class="cs-dock-meta">Строится</span>`
+          : `<span class="cs-dock-meta cs-dock-meta--empty">Пустой слот</span>`;
+
       item.innerHTML = `
         <span class="cs-dock-icon">${icon}</span>
-        <span class="cs-dock-label">${label}</span>
-        ${statusText}
+        <span class="cs-dock-text">
+          <span class="cs-dock-label">${label}</span>
+          ${meta}
+        </span>
+        ${statusMark}
       `;
 
       item.addEventListener("click", () => {
+        this._playCampClickSound();
         this._selectedCampSlot = slot.id;
         this._renderCampScene();
         this._renderCampDock();
@@ -482,6 +619,14 @@ Object.assign(UI.prototype, {
       });
 
       dock.appendChild(item);
+
+      // Animate item if it just finished building
+      if (justBuiltId === slot.buildingId) {
+        requestAnimationFrame(() => {
+          item.classList.add("just-built");
+          item.addEventListener("animationend", () => item.classList.remove("just-built"), { once: true });
+        });
+      }
     }
   },
 
@@ -493,13 +638,40 @@ Object.assign(UI.prototype, {
 
     const slotId = this._selectedCampSlot;
     if (!slotId) {
+      // Живой intro: показываем состояние лагеря и подсказку что делать дальше
       const stage = this._getCampStage();
+      const layout = this._getCampSlotLayout();
+      const builtCount = layout.filter(s => !!this.game.buildings[s.buildingId]).length;
+      const nextEmpty = layout.find(s => !this.game.buildings[s.buildingId]);
+      const nextBuilding = nextEmpty ? this.data.buildings[nextEmpty.buildingId] : null;
+
+      const stageIntros = [
+        "Стоянка только что основана. Здесь ещё нет ни очага, ни укрытия — только земля и первые следы.",
+        "Жильё уже поставлено. Стоянка стала местом, где можно остаться на несколько дней подряд.",
+        "Очаг разгорелся. Лагерь приобрёл центр — теперь можно думать о ремесле и хранении.",
+        "Лагерь полностью развит. Каждое место занято, производство запущено.",
+      ];
+      const introText = stageIntros[Math.min(stage.id - 1, stageIntros.length - 1)];
+
+      let hint = "";
+      if (nextBuilding && builtCount < layout.length) {
+        const canBuild = this.game.canBuild(nextEmpty.buildingId);
+        hint = canBuild
+          ? `Нажмите на <strong>${nextBuilding.name}</strong> в левом списке, чтобы начать строительство.`
+          : `Следующая постройка: <strong>${nextBuilding.name}</strong>. Соберите нужные ресурсы.`;
+      } else if (builtCount === layout.length) {
+        hint = "Все постройки завершены. Исследуйте улучшения в каждом здании.";
+      }
+
       content.innerHTML = `
-        <div class="cs-detail-empty">
-          <div class="cs-detail-empty-icon">🏕️</div>
-          <div class="cs-detail-empty-text">Выберите место в лагере, чтобы узнать о нём</div>
-          <div class="cs-detail-empty-text" style="font-size: 0.72rem; margin-top: 0.25rem;">Стадия: ${stage.label}</div>
+        <div class="cs-detail-intro">
+          <div class="cs-detail-intro-stage">${stage.icon} ${stage.label}</div>
+          <h3 class="cs-detail-intro-title">Обустройство лагеря</h3>
+          <p class="cs-detail-intro-text">${introText}</p>
+          ${hint ? `<div class="cs-detail-intro-hint"><span class="cs-detail-intro-hint-icon">💡</span><span>${hint}</span></div>` : ""}
         </div>`;
+      content.classList.remove("cs-detail-content--visible");
+      requestAnimationFrame(() => content.classList.add("cs-detail-content--visible"));
       return;
     }
 
@@ -529,7 +701,7 @@ Object.assign(UI.prototype, {
     let badgeText = isBuilt
       ? "Построено"
       : isConstructing
-        ? "Строится"
+        ? `Строится ${Math.round((construction.progress || 0) * 100)}%`
         : canBuild
           ? "Доступно"
           : "Заблокировано";
@@ -561,8 +733,18 @@ Object.assign(UI.prototype, {
     `;
 
     if (isConstructing) {
-      // Construction progress
+      // Construction progress — if bar already exists, update it in-place for smooth animation
+      const existingBar = content.querySelector(".cs-det-progress-fill");
+      const existingText = content.querySelector(".cs-det-progress-text");
       const pct = Math.round((construction.progress || 0) * 100);
+      if (existingBar && existingText) {
+        existingBar.style.width = pct + "%";
+        existingText.textContent = `⏳ ${this.formatSeconds(construction.remainingMs)} осталось`;
+        // Only update the header badge text (progress %) in-place too
+        const badgeEl = content.querySelector(".cs-det-badge--constructing");
+        if (badgeEl) badgeEl.textContent = `Строится ${pct}%`;
+        return; // skip full innerHTML rebuild
+      }
       html += `
         <div class="cs-det-progress">
           <div class="cs-det-progress-bar">
@@ -595,6 +777,10 @@ Object.assign(UI.prototype, {
     }
 
     content.innerHTML = html;
+
+    // Fade-in new content
+    content.classList.remove("cs-detail-content--visible");
+    requestAnimationFrame(() => content.classList.add("cs-detail-content--visible"));
 
     // Bind action buttons
     this._bindCampDetailActions(content, slot);
@@ -819,7 +1005,7 @@ Object.assign(UI.prototype, {
     if (buildBtn) {
       buildBtn.addEventListener("click", () => {
         this.game.build(slot.buildingId);
-        this.renderCampScreen();
+        this.renderCampScreen({ force: true });
         this.render({ forcePanels: true });
       });
     }
@@ -850,7 +1036,7 @@ Object.assign(UI.prototype, {
       btn.addEventListener("click", () => {
         const uid = btn.dataset.upgradeId;
         if (this.game.applyUpgrade(uid)) {
-          this.renderCampScreen();
+          this.renderCampScreen({ force: true });
           this.render({ forcePanels: true });
         }
       });

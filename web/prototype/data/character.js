@@ -2,6 +2,14 @@
 
 Object.assign(GAME_DATA, {
   character: {
+    stats: {
+      endurance: { base: 1 },
+      fieldcraft: { base: 0 },
+      strength: { base: 1 },
+      mobility: { base: 1 },
+      ingenuity: { base: 1 },
+      recovery: { base: 0 },
+    },
     title: "Ведущий стоянки",
     role: "Один человек, через которого ранняя стоянка ощущает усталость, голод и тяжесть каждого выхода.",
     satiety: {

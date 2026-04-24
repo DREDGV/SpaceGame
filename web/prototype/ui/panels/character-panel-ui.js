@@ -1,6 +1,45 @@
 // Character panel rendering.
 
 Object.assign(UI.prototype, {
+  _cpComputeStateChips(state) {
+    // Возвращаем список причин текущего состояния — по 1-2 наиболее важных.
+    const chips = [];
+    const sat = state.satiety.pct;
+    const hyd = state.hydration.pct;
+    const energy = state.energy.pct;
+    if (hyd < 0.25) {
+      chips.push({ icon: "🩸", label: "Сильная жажда", tone: "bad" });
+    } else if (hyd < 0.5) {
+      chips.push({ icon: "💧", label: "Лёгкая жажда", tone: "warn" });
+    }
+    if (sat < 0.25) {
+      chips.push({ icon: "🍖", label: "Сильный голод", tone: "bad" });
+    } else if (sat < 0.5) {
+      chips.push({ icon: "🍖", label: "Голод", tone: "warn" });
+    }
+    if (energy < 0.2) {
+      chips.push({ icon: "😫", label: "Истощён", tone: "bad" });
+    } else if (energy < 0.4) {
+      chips.push({ icon: "😕", label: "Устал", tone: "warn" });
+    }
+    const carry = state.carry?.capacity || 0;
+    const carryLoad = !!this._campTravelAction ? state.tripProfile?.load : null;
+    if (Number.isFinite(carryLoad) && carry > 0 && carryLoad > carry * 0.85) {
+      chips.push({ icon: "🎒", label: "Перегружен", tone: "warn" });
+    }
+    if (chips.length === 0 && energy >= 0.9 && sat >= 0.6 && hyd >= 0.6) {
+      chips.push({ icon: "💤", label: "Выспался", tone: "ok" });
+    }
+    const auto = state.autoConsume;
+    if (auto && auto.food.enabled && auto.food.stock < 1) {
+      chips.push({ icon: "🍖", label: "Нет еды", tone: "warn" });
+    }
+    if (auto && auto.water.enabled && auto.water.stock < 1) {
+      chips.push({ icon: "💧", label: "Нет воды", tone: "warn" });
+    }
+    return chips.slice(0, 3);
+  },
+
   renderCharacterPanel() {
     const container = document.getElementById("character-panel");
     if (!container) return;
@@ -63,22 +102,82 @@ Object.assign(UI.prototype, {
       state.stats.fieldcraft > 0
         ? `снимает до ${state.stats.fieldcraft} штрафа пути`
         : "без облегчения пути";
+    const fieldcraftYieldBonus = state.stats.foragingYieldBonus || 0;
+    const surveyRevealBonus = state.stats.surveyRevealBonus || 0;
     const fieldcraftNote =
       state.stats.fieldcraft > 0
-        ? "хуже ощущаются тяжёлая местность и дальние выходы"
+        ? `хуже ощущаются тяжёлая местность и дальние выходы${fieldcraftYieldBonus > 0 ? `, а вода/еда/волокно дают +${fieldcraftYieldBonus}` : ""}${surveyRevealBonus > 0 ? ", при разведке может открыться соседняя клетка" : ""}`
         : "дистанция и тяжёлая почва бьют в полную силу";
-    const carryValue = `${this.formatNumber(state.carry.capacity)} ед.`;
+    const carryValue =
+      state.carry.carriedLoad > 0
+        ? `${this.formatNumber(state.carry.carriedLoad)} / ${this.formatNumber(state.carry.capacity)} ед.`
+        : `${this.formatNumber(state.carry.capacity)} ед.`;
     const carryNote =
-      state.carry.capacityBonus > 0
-        ? `лагерь и уклад дают +${this.formatNumber(state.carry.capacityBonus, 0)} к переноске`
-        : "весь груз уносится на себе";
+      state.carry.carriedLoad > 0
+        ? `свободно ещё ${this.formatNumber(state.carry.availableCapacity)} ед.`
+        : state.carry.capacityBonus > 0
+          ? `лагерь и уклад дают +${this.formatNumber(state.carry.capacityBonus, 0)} к переноске`
+          : "весь груз уносится на себе";
+    const strengthCapacityBonus = state.carry.strengthCapacityBonus || 0;
+    const heavyLoadPct = Math.round((state.carry.heavyThreshold || 0.85) * 100);
+    const extractionYieldBonus = state.stats.extractionYieldBonus || 0;
+    const strengthValue = `${this.formatNumber(state.stats.strength, 1)} ур.`;
+    const strengthNote =
+      strengthCapacityBonus > 0
+        ? `+${this.formatNumber(strengthCapacityBonus, 1)} к переноске, тяжёлый груз с ${heavyLoadPct}%${extractionYieldBonus > 0 ? `, тяжёлая добыча +${extractionYieldBonus}` : ""}`
+        : extractionYieldBonus > 0
+          ? `тяжёлая добыча даёт +${extractionYieldBonus}, тяжёлый груз с ${heavyLoadPct}% переносимости`
+          : `тяжёлый груз начинается с ${heavyLoadPct}% переносимости`;
+    const travelGainPct = Math.max(
+      0,
+      Math.round((1 - (state.stats.travelSpeedMultiplier || 1)) * 100),
+    );
+    const needsRelief = state.stats.needsRelief || 0;
+    const mobilityValue =
+      travelGainPct > 0 ? `-${travelGainPct}% времени пути` : "базовый ход";
+    const mobilityNote =
+      needsRelief > 0
+        ? `дальние выходы тратят на ${this.formatNumber(needsRelief, 2)} меньше еды/воды`
+        : "еда и вода тратятся без снижения от хода";
+    const ingenuityGainPct = Math.max(
+      0,
+      Math.round((1 - (state.stats.ingenuityTimeMultiplier || 1)) * 100),
+    );
+    const supplySalvageBonus = state.stats.supplySalvageBonus || 0;
+    const restEfficiency = state.stats.restEfficiency || {
+      food: 0,
+      water: 0,
+      energy: 0,
+    };
+    const ingenuityValue =
+      ingenuityGainPct > 0
+        ? `-${ingenuityGainPct}% к времени`
+        : "базовый разбор";
+    const ingenuityNote =
+      ingenuityGainPct > 0
+        ? `быстрее крафт, исследования и очередь знаний${supplySalvageBonus > 0 ? `, припасы дают +${supplySalvageBonus}` : ""}${surveyRevealBonus > 0 ? ", проще читать следы на карте" : ""}`
+        : supplySalvageBonus > 0 || surveyRevealBonus > 0
+          ? `припасы дают +${supplySalvageBonus}, а разведка лучше читает соседние следы`
+          : "крафт и исследования идут без ускорения";
+
+    const recoveryScore = state.stats.recoveryRating || 0;
+    const recoveryBonusPct = Math.round(recoveryScore * 15);
+    const recoveryValue =
+      recoveryBonusPct > 0
+        ? `+${recoveryBonusPct}% регенерации`
+        : "базовый темп";
+    const recoveryNote =
+      recoveryBonusPct > 0
+        ? `инфраструктура и отдых восполняют силы и сытость на ${recoveryBonusPct}% эффективнее, а кулдаун сокращён`
+        : "пассивное восстановление и отдых зависят только от базовых построек";
+
     const restValue =
       totalRestEnergy > 0 || totalRestSatiety > 0 || totalRestHydration > 0
         ? `+${totalRestEnergy} сил · +${this.formatNumber(totalRestSatiety, 1)} сытости · +${this.formatNumber(totalRestHydration, 1)} воды`
         : "передышка не нужна";
     const restNote = rest.blockedReason
-      ? `${rest.note} ${rest.blockedReason}`
-      : rest.note;
+      ? `${rest.note}${restEfficiency.food > 0 || restEfficiency.water > 0 || restEfficiency.energy > 0 ? ` Рацион даёт +${this.formatNumber(restEfficiency.food, 2)} сытости, +${this.formatNumber(restEfficiency.water, 2)} воды и до +${this.formatNumber(restEfficiency.energy, 2)} сил.` : ""} ${rest.blockedReason}`
+      : `${rest.note}${restEfficiency.food > 0 || restEfficiency.water > 0 || restEfficiency.energy > 0 ? ` Рацион даёт +${this.formatNumber(restEfficiency.food, 2)} сытости, +${this.formatNumber(restEfficiency.water, 2)} воды и до +${this.formatNumber(restEfficiency.energy, 2)} сил.` : ""}`;
     const restButtonLabel = rest.canRest
       ? rest.label
       : rest.remainingMs > 0
@@ -174,6 +273,26 @@ Object.assign(UI.prototype, {
           <div class="character-attribute-note">${fieldcraftNote}</div>
         </div>
         <div class="character-attribute">
+          <div class="character-attribute-label">Сила</div>
+          <div class="character-attribute-value">${strengthValue}</div>
+          <div class="character-attribute-note">${strengthNote}</div>
+        </div>
+        <div class="character-attribute">
+          <div class="character-attribute-label">Ход</div>
+          <div class="character-attribute-value">${mobilityValue}</div>
+          <div class="character-attribute-note">${mobilityNote}</div>
+        </div>
+        <div class="character-attribute">
+          <div class="character-attribute-label">Смекалка</div>
+          <div class="character-attribute-value">${ingenuityValue}</div>
+          <div class="character-attribute-note">${ingenuityNote}</div>
+        </div>
+        <div class="character-attribute">
+          <div class="character-attribute-label">Восстановление</div>
+          <div class="character-attribute-value">${recoveryValue}</div>
+          <div class="character-attribute-note">${recoveryNote}</div>
+        </div>
+        <div class="character-attribute">
           <div class="character-attribute-label">Переноска</div>
           <div class="character-attribute-value">${carryValue}</div>
           <div class="character-attribute-note">${carryNote}</div>
@@ -181,7 +300,7 @@ Object.assign(UI.prototype, {
         <div class="character-attribute">
           <div class="character-attribute-label">Передышка</div>
           <div class="character-attribute-value">${restValue}</div>
-          <div class="character-attribute-note">${rest.note}</div>
+          <div class="character-attribute-note">${restNote}</div>
         </div>
       </div>
     `;
@@ -224,6 +343,16 @@ Object.assign(UI.prototype, {
           </button>
         </div>
       </div>
+      ${(() => {
+        const chips = this._cpComputeStateChips(state);
+        if (!chips.length) return "";
+        return `<div class="character-state-chips">${chips
+          .map(
+            (c) =>
+              `<span class="character-state-chip is-${c.tone}">${c.icon} ${c.label}</span>`,
+          )
+          .join("")}</div>`;
+      })()}
       <div class="character-hud-grid">
         <div class="character-meter">
           <div class="character-meter-top">
@@ -274,6 +403,7 @@ Object.assign(UI.prototype, {
           </div>
         </div>
       </div>
+      <button id="character-open-modal-btn" class="character-panel-open-btn" type="button">👤 Открыть лист персонажа</button>
     `;
 
     const toggleBtn = container.querySelector("#character-toggle-btn");
@@ -281,6 +411,16 @@ Object.assign(UI.prototype, {
       toggleBtn.addEventListener("click", () => {
         this.characterPanelExpanded = !this.characterPanelExpanded;
         this.renderCharacterPanel();
+      });
+    }
+
+    // Делегация на стабильный контейнер — не теряет клик при перерисовке
+    if (!container._charModalBound) {
+      container._charModalBound = true;
+      container.addEventListener("click", (e) => {
+        if (e.target.closest("#character-open-modal-btn")) {
+          this.openCharacterModal?.();
+        }
       });
     }
 

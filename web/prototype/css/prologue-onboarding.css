@@ -104,8 +104,8 @@
   position: relative;
   z-index: 1;
   text-align: center;
-  padding: 2rem 3.0rem 2.2rem;
-  max-width: 800px;
+  padding: 1.6rem 2.4rem 1.9rem;
+  max-width: 720px;
   margin: auto;
   display: flex;
   flex-direction: column;
@@ -118,6 +118,20 @@
   ─────────────────────────────────────────────────────────────── */
   background: rgba(5, 4, 2, 0.58);
   border-radius: 30px;
+}
+
+.intro-logo {
+  display: block;
+  width: 88px;
+  height: 88px;
+  object-fit: contain;
+  margin-bottom: 0.45rem;
+  opacity: 0.9;
+  mix-blend-mode: lighten;
+  filter: drop-shadow(0 4px 18px rgba(196, 154, 74, 0.22));
+  -webkit-user-select: none;
+  user-select: none;
+  pointer-events: none;
 }
 
 /* Subtle era label above title */

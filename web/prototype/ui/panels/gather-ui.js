@@ -48,6 +48,8 @@ Object.assign(UI.prototype, {
       const disabled =
         cooldown > 0 || !this.game.hasEnergy(effectiveEnergyCost);
       const output = profile?.output || this.game.getGatherOutput(id);
+      const gatherDurationMs =
+        profile?.gatherDurationMs || this.game.getGatherDuration(id);
       const outputStr = this.formatResourcePairs(output, { plus: true });
       const loadText = profile
         ? `🎒 ${this.formatNumber(profile.load)} / ${this.formatNumber(profile.carryCapacity)}`
@@ -67,6 +69,7 @@ Object.assign(UI.prototype, {
         <div class="btn-meta-inline">
           <span class="btn-output">Находка: ${outputStr}</span>
           <span class="btn-cost">⚡ -${effectiveEnergyCost}</span>
+          <span class="btn-cost">⏱ ${this.formatSeconds(gatherDurationMs)}</span>
           ${Number.isFinite(profile?.satietyCost) ? `<span class="btn-cost">🍖 -${this.formatNumber(profile.satietyCost, 2)}</span>` : ""}
           ${Number.isFinite(profile?.hydrationCost) ? `<span class="btn-cost">💧 -${this.formatNumber(profile.hydrationCost, 2)}</span>` : ""}
           ${loadText ? `<span class="btn-cost">${loadText}</span>` : ""}
@@ -183,6 +186,9 @@ Object.assign(UI.prototype, {
       const effectiveEnergyCost = profile?.energyCost ?? action.energyCost;
       const canGather = this.game.canGather(action.id, { tileId: tile.id });
       const output = profile?.output || this.game.getGatherOutput(action.id);
+      const gatherDurationMs =
+        profile?.gatherDurationMs ||
+        this.game.getGatherDuration(action.id, { tileId: tile.id });
       const outputStr = this.formatResourcePairs(output, { plus: true });
       const isDepleted = !!tile.isDepleted;
       const stockStr =
@@ -215,7 +221,7 @@ Object.assign(UI.prototype, {
 
       row.innerHTML = `
         <div class="grr-left">
-          <span class="grr-icon">${tile.icon || actionCopy.icon}</span>
+          <span class="grr-icon">${tile.resourceType ? this.getResourceDisplayIcon(tile.resourceType) : tile.icon || actionCopy.icon}</span>
           <div class="grr-info">
             <span class="grr-name">${tile.name}</span>
             <span class="grr-meta">
@@ -229,6 +235,7 @@ Object.assign(UI.prototype, {
         <div class="grr-right">
           <span class="grr-output">${outputStr}</span>
           <span class="grr-energy">⚡ ${effectiveEnergyCost}</span>
+          <span class="grr-energy">⏱ ${this.formatSeconds(gatherDurationMs)}</span>
           ${Number.isFinite(profile?.satietyCost) ? `<span class="grr-energy">🍖 -${this.formatNumber(profile.satietyCost, 2)}</span>` : ""}
           ${Number.isFinite(profile?.hydrationCost) ? `<span class="grr-energy">💧 -${this.formatNumber(profile.hydrationCost, 2)}</span>` : ""}
           ${deliveryNote}

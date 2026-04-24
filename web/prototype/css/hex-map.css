@@ -527,16 +527,17 @@ body.is-prologue-active #camp-map-panel {
 }
 
 body.is-prologue-active .camp-map-scene {
-  border-color: rgba(145, 102, 48, 0.34);
+  border-color: rgba(90, 111, 132, 0.36);
   background:
-    radial-gradient(circle at 25% 22%, rgba(201, 138, 54, 0.12), transparent 28%),
-    radial-gradient(circle at 72% 72%, rgba(113, 91, 48, 0.12), transparent 32%),
-    linear-gradient(180deg, #171712, #11120f);
+    radial-gradient(circle at 50% 42%, rgba(45, 82, 54, 0.28), transparent 42%),
+    radial-gradient(circle at 22% 20%, rgba(71, 113, 62, 0.2), transparent 26%),
+    radial-gradient(circle at 82% 74%, rgba(13, 70, 92, 0.18), transparent 28%),
+    linear-gradient(180deg, rgba(6, 14, 19, 0.7), rgba(3, 8, 12, 0.96));
 }
 
 body.is-prologue-active .camp-map-details {
-  border-color: rgba(145, 102, 48, 0.28);
-  background: rgba(22, 19, 14, 0.92);
+  border-color: rgba(90, 111, 132, 0.36);
+  background: rgba(7, 14, 19, 0.78);
 }
 
 body.is-prologue-active #actions-row {
@@ -922,6 +923,32 @@ body.is-prologue-active #game-main {
   color: #8b93a7;
 }
 
+@media (max-width: 1180px) {
+  .camp-map-header {
+    flex-direction: column;
+  }
+
+  .camp-map-header-right {
+    align-items: flex-start;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .camp-map-top-legend {
+    width: 100%;
+    justify-content: flex-start;
+    overflow-x: auto;
+  }
+
+  .camp-map-body {
+    grid-template-columns: minmax(0, 1fr) 280px;
+  }
+
+  .camp-map-side-legend {
+    display: none;
+  }
+}
+
 @media (max-width: 900px) {
   .camp-map-body {
     grid-template-columns: 1fr;
@@ -956,6 +983,7 @@ body.is-prologue-active #game-main {
 
   .camp-map-scene {
     min-width: 100%;
+    height: 430px;
   }
 
   .story-event-layer {

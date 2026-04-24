@@ -1,0 +1,246 @@
+.panel-day-cycle {
+  border-color: rgba(247, 181, 94, 0.28);
+  background:
+    linear-gradient(145deg, rgba(22, 28, 32, 0.96), rgba(12, 18, 22, 0.96)),
+    rgba(12, 18, 22, 0.96);
+}
+
+.panel-day-cycle .panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.panel-day-cycle .panel-badge {
+  flex: 0 0 auto;
+  border: 1px solid rgba(247, 181, 94, 0.42);
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: #f7c46e;
+  background: rgba(247, 181, 94, 0.1);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.day-cycle-current {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.day-cycle-phase-main {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.day-cycle-phase-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(247, 181, 94, 0.12);
+  border: 1px solid rgba(247, 181, 94, 0.3);
+  font-size: 1.25rem;
+}
+
+.day-cycle-phase-name {
+  color: #f5e4c0;
+  font-weight: 900;
+}
+
+.day-cycle-phase-desc {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.day-cycle-progress {
+  overflow: hidden;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.day-cycle-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #7ac55a, #f7b55e);
+}
+
+.day-cycle-actions {
+  display: grid;
+  grid-template-columns: auto minmax(48px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.day-cycle-actions strong {
+  color: #f5e4c0;
+}
+
+.day-cycle-action-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.day-cycle-action-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.day-cycle-action-dot.is-available {
+  background: #74c365;
+  border-color: rgba(116, 195, 101, 0.7);
+  box-shadow: 0 0 8px rgba(116, 195, 101, 0.35);
+}
+
+.day-cycle-night-note {
+  color: #9fb3c5;
+  font-size: 0.78rem;
+}
+
+.day-cycle-steps {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.day-cycle-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  padding: 7px 8px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.78rem;
+}
+
+.day-cycle-step.is-active {
+  color: #f5e4c0;
+  border-color: rgba(247, 181, 94, 0.48);
+  background: rgba(247, 181, 94, 0.12);
+}
+
+.day-cycle-step.is-night.is-active {
+  border-color: rgba(106, 170, 228, 0.5);
+  background: rgba(67, 116, 170, 0.16);
+}
+
+.day-cycle-step-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.day-cycle-forecast,
+.day-cycle-last-night {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(3, 7, 10, 0.26);
+}
+
+.day-cycle-forecast.is-good {
+  border-color: rgba(116, 195, 101, 0.34);
+}
+
+.day-cycle-forecast.is-warn,
+.day-cycle-forecast.is-rough {
+  border-color: rgba(247, 181, 94, 0.42);
+}
+
+.day-cycle-forecast.is-bad {
+  border-color: rgba(226, 88, 88, 0.48);
+}
+
+.day-cycle-section-title,
+.day-cycle-last-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #f5e4c0;
+  font-size: 0.9rem;
+}
+
+.day-cycle-forecast-summary,
+.day-cycle-last-text,
+.day-cycle-empty-night {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.day-cycle-needs {
+  display: grid;
+  gap: 6px;
+}
+
+.day-cycle-need {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  color: #dbe7ef;
+  font-size: 0.8rem;
+}
+
+.day-cycle-need-icon {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+}
+
+.day-cycle-need-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.day-cycle-need-count {
+  color: #f5e4c0;
+  font-weight: 800;
+}
+
+.day-cycle-need.is-bad .day-cycle-need-count {
+  color: #ff8f8f;
+}
+
+.day-cycle-effects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.day-cycle-effects span {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  padding: 3px 7px;
+  color: #dbe7ef;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.78rem;
+}
+
+.day-cycle-no-needs {
+  color: var(--muted);
+  font-size: 0.8rem;
+}

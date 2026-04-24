@@ -125,7 +125,7 @@ Object.assign(GAME_DATA, {
     wood: {
       name: "Дерево",
       prologueName: "Ветки",
-      icon: "🪵",
+      icon: `<img src="prototype/assets/icons/wood.png" class="game-icon-img" alt="" draggable="false">`,
       prologueIcon: TWIG_ICON_SVG,
       color: "#8B5A2B",
       description: "Базовое сырье для досок, топлива и строительства.",
@@ -135,7 +135,7 @@ Object.assign(GAME_DATA, {
     },
     stone: {
       name: "Камень",
-      icon: "🪨",
+      icon: `<img src="prototype/assets/icons/stone.png" class="game-icon-img" alt="" draggable="false">`,
       color: "#808080",
       description: "Твердое сырье для инструментов и строительных деталей.",
       storageCategory: "raw",
@@ -144,7 +144,7 @@ Object.assign(GAME_DATA, {
     },
     clay: {
       name: "Глина",
-      icon: "🏺",
+      icon: `<img src="prototype/assets/icons/clay.png" class="game-icon-img" alt="" draggable="false">`,
       color: "#B22222",
       description: "Сырье для кирпича и ранней обжиговой цепочки.",
       storageCategory: "raw",
@@ -153,7 +153,7 @@ Object.assign(GAME_DATA, {
     },
     fiber: {
       name: "Волокно",
-      icon: "🌿",
+      icon: `<img src="prototype/assets/icons/fiber.png" class="game-icon-img" alt="" draggable="false">`,
       color: "#228B22",
       description: "Легкий материал для связок, веревок и улучшений.",
       storageCategory: "raw",
@@ -162,32 +162,7 @@ Object.assign(GAME_DATA, {
     },
     plank: {
       name: "Доски",
-      icon: `<svg class="plank-icon-svg" viewBox="0 0 64 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" preserveAspectRatio="xMidYMid meet">
-        <g transform="translate(1 4)">
-          <path d="M6 24 L28 12 L46 20 L24 32 Z" fill="#c98533" stroke="#7a4716" stroke-width="1.4" />
-          <path d="M6 24 L6 31 L24 40 L24 32 Z" fill="#8e4f1c" stroke="#7a4716" stroke-width="1.4" />
-          <path d="M9 23.8 L29 13.5 L44.5 20.2 L24.2 30.5 Z" fill="#ffe2a2" opacity="0.28" />
-          <path d="M12 23.5 L29 15" stroke="#fff0c7" stroke-width="1.2" stroke-linecap="round" opacity="0.95" />
-          <path d="M16 25.8 L33 17.5" stroke="#eab85f" stroke-width="1.05" stroke-linecap="round" opacity="0.9" />
-          <path d="M19 28 L36 20" stroke="#ffe6b0" stroke-width="0.95" stroke-linecap="round" opacity="0.85" />
-        </g>
-        <g transform="translate(8 10)">
-          <path d="M6 24 L28 12 L46 20 L24 32 Z" fill="#d89a44" stroke="#7a4716" stroke-width="1.4" />
-          <path d="M6 24 L6 31 L24 40 L24 32 Z" fill="#9b5a21" stroke="#7a4716" stroke-width="1.4" />
-          <path d="M9 23.8 L29 13.5 L44.5 20.2 L24.2 30.5 Z" fill="#fff0c8" opacity="0.22" />
-          <path d="M12 23.5 L29 15" stroke="#fff5d6" stroke-width="1.15" stroke-linecap="round" opacity="0.95" />
-          <path d="M16 25.8 L33 17.5" stroke="#efc46d" stroke-width="1.0" stroke-linecap="round" opacity="0.88" />
-          <path d="M19 28 L36 20" stroke="#ffe8b6" stroke-width="0.9" stroke-linecap="round" opacity="0.82" />
-        </g>
-        <g transform="translate(15 16)">
-          <path d="M6 24 L28 12 L46 20 L24 32 Z" fill="#b96f2c" stroke="#7a4716" stroke-width="1.4" />
-          <path d="M6 24 L6 31 L24 40 L24 32 Z" fill="#7b4317" stroke="#7a4716" stroke-width="1.4" />
-          <path d="M9 23.8 L29 13.5 L44.5 20.2 L24.2 30.5 Z" fill="#ffd98a" opacity="0.18" />
-          <path d="M12 23.5 L29 15" stroke="#ffdca4" stroke-width="1.1" stroke-linecap="round" opacity="0.9" />
-          <path d="M16 25.8 L33 17.5" stroke="#deaa53" stroke-width="0.95" stroke-linecap="round" opacity="0.87" />
-          <path d="M19 28 L36 20" stroke="#ffe2a0" stroke-width="0.85" stroke-linecap="round" opacity="0.78" />
-        </g>
-      </svg>`,
+      icon: `<img src="prototype/assets/icons/plank.png" class="game-icon-img" alt="" draggable="false">`,
       color: "#DEB887",
       description: "Обработанное дерево для зданий и более сложных рецептов.",
       storageCategory: "materials",
@@ -196,7 +171,7 @@ Object.assign(GAME_DATA, {
     },
     crude_tools: {
       name: "Простые инструменты",
-      icon: "🪓",
+      icon: `<img src="prototype/assets/icons/crude_tools.png" class="game-icon-img" alt="" draggable="false">`,
       color: "#696969",
       description:
         "Повышают ручной сбор и открывают первые производственные развилки.",
@@ -206,7 +181,7 @@ Object.assign(GAME_DATA, {
     },
     workshop_parts: {
       name: "Детали мастерской",
-      icon: "🔩",
+      icon: `<img src="prototype/assets/icons/workshop_parts.png" class="game-icon-img" alt="" draggable="false">`,
       color: "#778899",
       description: "Переходный компонент для зданий и улучшенных инструментов.",
       storageCategory: "components",
@@ -215,7 +190,7 @@ Object.assign(GAME_DATA, {
     },
     improved_tools: {
       name: "Улучшенные инструменты",
-      icon: "🛠️",
+      icon: `<img src="prototype/assets/icons/improved_tools.png" class="game-icon-img" alt="" draggable="false">`,
       color: "#2F4F4F",
       description: "Сильнее ускоряют ручной сбор, чем примитивные инструменты.",
       storageCategory: "tools",
@@ -224,7 +199,7 @@ Object.assign(GAME_DATA, {
     },
     brick: {
       name: "Кирпичи",
-      icon: "🧱",
+      icon: `<img src="prototype/assets/icons/brick.png" class="game-icon-img" alt="" draggable="false">`,
       color: "#CD5C5C",
       description:
         "Материал для прогрессивных построек и дальнейшего развития.",
@@ -234,7 +209,7 @@ Object.assign(GAME_DATA, {
     },
     food: {
       name: "Еда",
-      icon: "🫐",
+      icon: `<img src="prototype/assets/icons/food.png" class="game-icon-img" alt="" draggable="false">`,
       color: "#7B2E8D",
       description:
         "Ягоды, корни и дикие грибы. Утоляет голод и восстанавливает сытость при отдыхе.",
@@ -244,7 +219,7 @@ Object.assign(GAME_DATA, {
     },
     water: {
       name: "Вода",
-      icon: "💧",
+      icon: `<img src="prototype/assets/icons/water.png" class="game-icon-img" alt="" draggable="false">`,
       color: "#1E90FF",
       description:
         "Чистая вода из ручья. Восстанавливает водный запас и немного сил при отдыхе.",
@@ -359,5 +334,46 @@ Object.assign(GAME_DATA, {
     max: 12,
     regenPerTick: 1,
     regenIntervalMs: 3000,
+  },
+
+  dayCycle: {
+    startingDay: 1,
+    startingPhase: "morning",
+    phases: [
+      {
+        id: "morning",
+        label: "Утро",
+        icon: "🌤️",
+        actionBudget: 3,
+        description: "Лучшее время для выхода за ресурсами и разведки.",
+      },
+      {
+        id: "day",
+        label: "День",
+        icon: "☀️",
+        actionBudget: 4,
+        description: "Основная часть дня: строительство, сбор, ремесло.",
+      },
+      {
+        id: "evening",
+        label: "Вечер",
+        icon: "🌙",
+        actionBudget: 2,
+        description: "Последние действия перед ночёвкой.",
+      },
+      {
+        id: "night",
+        label: "Ночь",
+        icon: "🌑",
+        actionBudget: 0,
+        description: "Лагерь переживает ночь и тратит припасы.",
+      },
+    ],
+    nightNeeds: {
+      food: 1,
+      water: 1,
+      woodWithCampfire: 1,
+    },
+    historyLimit: 8,
   },
 });

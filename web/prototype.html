@@ -3,12 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SpaceGame — v0.1.16</title>
+    <title>SpaceGame — v0.1.17</title>
     <!-- CSS modules (split from style.css, Phase 2 refactor) -->
     <link rel="stylesheet" href="prototype/css/base.css" />
     <link rel="stylesheet" href="prototype/css/map-local.css" />
     <link rel="stylesheet" href="prototype/css/prologue-onboarding.css" />
     <link rel="stylesheet" href="prototype/css/resources.css" />
+    <link rel="stylesheet" href="prototype/css/day-cycle.css" />
     <link rel="stylesheet" href="prototype/css/character.css" />
     <link rel="stylesheet" href="prototype/css/actions.css" />
     <link rel="stylesheet" href="prototype/css/buildings.css" />
@@ -20,16 +21,18 @@
     <link rel="stylesheet" href="prototype/css/hex-map.css" />
     <link rel="stylesheet" href="prototype/css/camp-founding.css" />
     <link rel="stylesheet" href="prototype/css/camp-screen.css" />
+    <link rel="stylesheet" href="prototype/css/character-modal.css" />
   </head>
   <body>
     <div id="app">
       <header id="game-header">
         <div class="header-top">
           <div class="header-title-block">
-            <h1 id="game-title">🌌 SpaceGame</h1>
+            <img id="game-logo-header" class="game-logo-header" src="assets/logo.png" alt="Начало пути" onerror="this.style.display='none';document.getElementById('game-title-fallback').style.display='block'">
+            <h1 id="game-title-fallback" style="display:none">🌌 SpaceGame</h1>
           </div>
           <div class="header-actions">
-            <button id="changelog-btn" class="header-changelog-btn" type="button" title="История изменений">📋 v0.1.16</button>
+            <button id="changelog-btn" class="header-changelog-btn" type="button" title="История изменений">📋 v0.1.17</button>
             <div class="save-status-wrap">
               <button id="save-status" class="save-status" type="button" title="Нажмите для смены интервала автосохранения">Новая игра</button>
               <div id="save-interval-popup" class="save-interval-popup" hidden>
@@ -56,6 +59,7 @@
         <!-- Left sidebar: always-visible info -->
         <aside id="game-sidebar">
           <div id="era-progress-panel" class="panel panel-era-progress"></div>
+          <section id="day-cycle-panel" class="panel panel-day-cycle"></section>
           <section id="resources-panel" class="panel"></section>
         </aside>
 
@@ -133,15 +137,27 @@
       <header class="cs-topbar">
         <button id="cs-back-btn" class="cs-back-btn" type="button" aria-label="Вернуться на карту">← Карта</button>
         <div class="cs-topbar-title">
-          <span class="cs-topbar-icon">🏕️</span>
           <span id="cs-camp-name" class="cs-topbar-name">Лагерь</span>
         </div>
         <div id="cs-topbar-resources" class="cs-topbar-resources"></div>
         <div id="cs-topbar-character" class="cs-topbar-character"></div>
       </header>
 
-      <!-- Main area: scene + right panel -->
+      <!-- Main area: sidebar + scene + right panel -->
       <div class="cs-main">
+        <!-- D: Left sidebar — buildings list -->
+        <aside class="cs-sidebar">
+          <div class="cs-sidebar-header">
+            <span class="cs-sidebar-icon">🏕️</span>
+            <div class="cs-sidebar-header-text">
+              <div class="cs-sidebar-title">Лагерь</div>
+              <div class="cs-sidebar-subtitle">Сердце поселения. Отсюда начинается путь.</div>
+            </div>
+          </div>
+          <div class="cs-sidebar-section-title">Постройки</div>
+          <div id="cs-dock" class="cs-dock"></div>
+        </aside>
+
         <!-- B: Central visual camp scene -->
         <div class="cs-scene-wrap">
           <div id="cs-scene" class="cs-scene">
@@ -160,9 +176,6 @@
           </div>
         </aside>
       </div>
-
-      <!-- D: Bottom dock -->
-      <div id="cs-dock" class="cs-dock"></div>
     </div>
 
     <!-- Changelog modal -->
@@ -173,6 +186,17 @@
           <button id="changelog-close-btn" class="modal-close-btn" type="button" aria-label="Закрыть">✕</button>
         </div>
         <div id="changelog-content" class="modal-body"></div>
+      </div>
+    </div>
+
+    <!-- Character modal (full sheet) -->
+    <div id="character-modal" class="modal-overlay modal-overlay--character" style="display:none" role="dialog" aria-modal="true" aria-labelledby="character-modal-title">
+      <div class="modal-panel modal-panel--character">
+        <div class="modal-header character-modal-header">
+          <h2 id="character-modal-title">👤 Человек</h2>
+          <button id="character-modal-close-btn" class="modal-close-btn" type="button" aria-label="Закрыть">✕</button>
+        </div>
+        <div id="character-modal-body" class="modal-body character-modal-body"></div>
       </div>
     </div>
 
@@ -195,6 +219,8 @@
     <script src="prototype/ui/camp/camp-founding-ui.js"></script>
     <script src="prototype/ui/camp/camp-screen-ui.js"></script>
     <script src="prototype/ui/panels/character-panel-ui.js"></script>
+    <script src="prototype/ui/panels/character-modal-ui.js"></script>
+    <script src="prototype/ui/panels/day-cycle-ui.js"></script>
     <script src="prototype/ui/panels/resources-ui.js"></script>
     <script src="prototype/ui/panels/gather-ui.js"></script>
     <script src="prototype/ui/panels/crafting-ui.js"></script>

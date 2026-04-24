@@ -14,6 +14,7 @@ Object.assign(UI.prototype, {
       <img class="intro-hero-image" src="assets/intro-campfire.jpg" alt="" aria-hidden="true" onerror="this.src='assets/intro-campfire.svg'; this.onerror=null;">
       <div class="intro-hero-overlay"></div>
       <div class="onboarding-intro-content">
+        <img class="intro-logo" src="assets/logo.png" alt="Начало пути" onerror="this.style.display='none'">
         <p class="intro-era-label">${prologue.eraLabel || "— Пролог —"}</p>
         <h2 class="onboarding-intro-title">🌍 ${prologue.title || "На заре человечества"}</h2>
         ${prologue.subtitle ? `<p class="intro-subtitle">${prologue.subtitle}</p>` : ""}

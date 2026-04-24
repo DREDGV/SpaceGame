@@ -241,7 +241,7 @@ Object.assign(GAME_DATA, {
         "Община начинает сохранять полезные приёмы и передавать опыт, а знания перестают исчезать вместе с каждым днём.",
       cost: { wood: 4, fiber: 2 },
       researchTimeMs: 7000,
-      effect: {},
+      effect: { character: { ingenuityBonus: 1 } },
       outcomes: [
         "Открывает первые исследовательские ветви primitive-эпохи",
         "Становится опорой для прогресса текущей эпохи",
@@ -278,7 +278,7 @@ Object.assign(GAME_DATA, {
         "Мастерская становится местом не только сборки, но и экономии: заготовки расходуются точнее, а работа идёт увереннее.",
       cost: { plank: 5, crude_tools: 1 },
       researchTimeMs: 10000,
-      effect: { craftDiscount: 0.1 },
+      effect: { craftDiscount: 0.1, character: { ingenuityBonus: 1 } },
       requires: "workshop",
       requiresTech: ["basic_tools"],
       outcomes: [
@@ -296,7 +296,10 @@ Object.assign(GAME_DATA, {
         "Община закрепляет роли: кто-то заготавливает, кто-то собирает детали, кто-то ведёт постройку. Большие проекты перестают буксовать.",
       cost: { plank: 3, fiber: 3, crude_tools: 1 },
       researchTimeMs: 10000,
-      effect: { buildTimeMultiplier: 0.85 },
+      effect: {
+        buildTimeMultiplier: 0.85,
+        character: { ingenuityBonus: 1 },
+      },
       requires: null,
       requiresTech: ["communal_memory"],
       outcomes: ["Открывает мастерскую", "Строительство идёт быстрее"],
@@ -355,7 +358,7 @@ Object.assign(GAME_DATA, {
       researchTimeMs: 7000,
       effect: {
         energy: { maxBonus: 1 },
-        character: { maxSatietyBonus: 1 },
+        character: { maxSatietyBonus: 1, mobilityBonus: 1 },
       },
       requires: null,
       requiresTech: ["communal_memory"],
@@ -376,7 +379,12 @@ Object.assign(GAME_DATA, {
       cost: { fiber: 3, plank: 2, crude_tools: 1 },
       researchTimeMs: 10000,
       effect: {
-        character: { enduranceBonus: 2, carryCapacityBonus: 1 },
+        character: {
+          enduranceBonus: 2,
+          carryCapacityBonus: 1,
+          strengthBonus: 1,
+          mobilityBonus: 1,
+        },
       },
       requires: null,
       requiresTech: ["rest_discipline"],
@@ -417,7 +425,7 @@ Object.assign(GAME_DATA, {
         "Опытный мастер знает, где срезать лишнее, а где добавить. Сырьё расходуется точнее, и отходы производства сокращаются.",
       cost: { plank: 3, improved_tools: 1 },
       researchTimeMs: 12000,
-      effect: { craftDiscount: 0.1 },
+      effect: { craftDiscount: 0.1, character: { ingenuityBonus: 1 } },
       requires: "workshop",
       requiresTech: ["crafting"],
       outcomes: [
