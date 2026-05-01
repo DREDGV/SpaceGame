@@ -1,6 +1,67 @@
 // Knowledge book modal.
 
 Object.assign(UI.prototype, {
+  _getKnowledgeEntrySourceMeta(entry) {
+    if (entry?.sourceInsight) {
+      return {
+        label: `${entry.sourceInsight.icon} ${entry.sourceInsight.name}`,
+        className: "knowledge-tag--source",
+      };
+    }
+
+    if (entry?.id === this.data.prologue?.startKnowledgeEntryId) {
+      return {
+        label: "Начало пролога",
+        className: "knowledge-tag--milestone",
+      };
+    }
+
+    return {
+      label: "Веха уклада",
+      className: "knowledge-tag--milestone",
+    };
+  },
+
+  _renderKnowledgeEntryMarkup(entry, { compact = false } = {}) {
+    const source = this._getKnowledgeEntrySourceMeta(entry);
+    const lines = compact
+      ? entry.previewLine
+        ? [entry.previewLine]
+        : Array.isArray(entry.lines)
+          ? entry.lines.slice(0, 1)
+          : []
+      : Array.isArray(entry.lines)
+        ? entry.lines
+        : [];
+
+    const tags = [
+      `<span class="knowledge-tag ${source.className}">${source.label}</span>`,
+    ];
+    if (!compact && Array.isArray(entry.relatedOutcomes)) {
+      for (const outcome of entry.relatedOutcomes) {
+        tags.push(
+          `<span class="knowledge-tag knowledge-tag--outcome">${outcome}</span>`,
+        );
+      }
+    }
+
+    return `
+      <article class="knowledge-entry${compact ? " is-compact" : ""}">
+        <div class="knowledge-entry-header">
+          <div>
+            <div class="knowledge-entry-meta">Запись ${entry.unlockedIndex || 1}</div>
+            <h3 class="knowledge-entry-title">${entry.title}</h3>
+          </div>
+          ${compact ? "" : `<div class="knowledge-entry-counter">#${entry.unlockedIndex || 1}</div>`}
+        </div>
+        <div class="knowledge-entry-tags">${tags.join("")}</div>
+        <div class="knowledge-entry-body">
+          ${lines.map((line) => `<p>${line}</p>`).join("")}
+        </div>
+      </article>
+    `;
+  },
+
   bindKnowledgeModal() {
     const modal = document.getElementById("knowledge-modal");
     const closeBtn = document.getElementById("knowledge-modal-close-btn");
@@ -41,8 +102,12 @@ Object.assign(UI.prototype, {
     const count = entries.length;
     const hasEntries = count > 0;
     const latestEntry = hasEntries ? entries[entries.length - 1] : null;
+    const latestSource = latestEntry
+      ? this._getKnowledgeEntrySourceMeta(latestEntry)
+      : null;
     const insightsTotal = this.game.getPrologueInsights?.().length || 0;
     const insightsUnlocked = this.game.getUnlockedInsightsCount?.() || 0;
+    const researchedCount = Object.keys(this.game.researched || {}).length;
 
     container.innerHTML = `
       <div class="science-card science-card--knowledge${hasEntries ? " has-entries" : ""} js-knowledge-open" role="button" tabindex="0">
@@ -58,7 +123,13 @@ Object.assign(UI.prototype, {
           ${latestEntry ? `Последняя запись: ${latestEntry.title}` : "Пока нет записей"}
         </div>
         <div class="science-card-hint">
-          ${this.game.isPrologueActive() ? `Озарения: ${insightsUnlocked}/${insightsTotal}` : "Записи фиксируют важные открытия эпохи"}
+          ${
+            latestEntry
+              ? `${latestSource.label} · ${this.game.isPrologueActive() ? `Озарения: ${insightsUnlocked}/${insightsTotal}` : `Исследования: ${researchedCount}`}`
+              : this.game.isPrologueActive()
+                ? `Озарения: ${insightsUnlocked}/${insightsTotal}`
+                : "Записи фиксируют важные открытия эпохи"
+          }
         </div>
         <button class="science-open-btn" type="button">
           <span>Открыть</span><span class="science-open-arrow">↗</span>
@@ -91,6 +162,11 @@ Object.assign(UI.prototype, {
     if (!container) return;
 
     const entries = this.game.getKnowledgeEntries();
+    const insightsTotal = this.game.getPrologueInsights?.().length || 0;
+    const insightsUnlocked = this.game.getUnlockedInsightsCount?.() || 0;
+    const researchedCount = Object.keys(this.game.researched || {}).length;
+    const latestEntry = entries.length > 0 ? entries[entries.length - 1] : null;
+
     if (entries.length === 0) {
       container.innerHTML =
         '<p class="knowledge-empty">Пока в Книге знаний нет записей. Первые наблюдения появятся во время пролога.</p>';
@@ -101,20 +177,27 @@ Object.assign(UI.prototype, {
       ? `<div class="knowledge-intro">${this.data.prologue.knowledgeIntro}</div>`
       : "";
 
+    const overview = `
+      <section class="knowledge-overview">
+        <div class="knowledge-overview-head">
+          <div>
+            <div class="knowledge-overview-title">Следы понимания</div>
+            <div class="knowledge-overview-subtitle">Короткие записи связывают практические открытия пролога с будущим укладом и исследованиями эпохи.</div>
+          </div>
+          ${latestEntry ? `<div class="knowledge-entry-counter">#${latestEntry.unlockedIndex || entries.length}</div>` : ""}
+        </div>
+        <div class="knowledge-overview-stats">
+          <span class="knowledge-overview-stat">📚 ${entries.length} ${this._pluralEntries(entries.length)}</span>
+          <span class="knowledge-overview-stat">✨ ${insightsUnlocked}/${insightsTotal} озарений</span>
+          <span class="knowledge-overview-stat">🔬 ${researchedCount} исследований</span>
+        </div>
+        ${latestEntry ? `<div class="knowledge-overview-latest">Последний след: ${latestEntry.title}</div>` : ""}
+      </section>
+    `;
+
     container.innerHTML =
       intro +
-      entries
-        .map(
-          (entry, index) => `
-          <article class="knowledge-entry">
-            <div class="knowledge-entry-meta">Запись ${index + 1}</div>
-            <h3 class="knowledge-entry-title">${entry.title}</h3>
-            <div class="knowledge-entry-body">
-              ${entry.lines.map((line) => `<p>${line}</p>`).join("")}
-            </div>
-          </article>
-        `,
-        )
-        .join("");
+      overview +
+      entries.map((entry) => this._renderKnowledgeEntryMarkup(entry)).join("");
   },
 });

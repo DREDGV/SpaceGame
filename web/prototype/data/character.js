@@ -53,26 +53,29 @@ Object.assign(GAME_DATA, {
         regenPenaltyMs: 0,
         gatherOutputPenalty: 0,
         gatherCostPenalty: 0,
+        craftTimeMult: 1,
         maxSafeDistance: 99,
       },
       weakened: {
         id: "weakened",
         label: "Ослаблен",
         description:
-          "Низкие силы, голод или жажда делают выходы заметно тяжелее.",
+          "Низкие силы, голод или жажда делают выходы заметно тяжелее, а работа руками — медленнее.",
         regenPenaltyMs: 600,
         gatherOutputPenalty: 0,
         gatherCostPenalty: 1,
+        craftTimeMult: 1.25,
         maxSafeDistance: 2,
       },
       exhausted: {
         id: "exhausted",
         label: "Истощён",
         description:
-          "Персонаж тянет работу с трудом: без еды, воды и отдыха дальние выходы почти срываются.",
+          "Персонаж тянет работу с трудом: без еды, воды и отдыха дальние выходы почти срываются, и даже крафт в лагере идёт туго.",
         regenPenaltyMs: 1400,
         gatherOutputPenalty: 1,
         gatherCostPenalty: 1,
+        craftTimeMult: 1.6,
         maxSafeDistance: 1,
       },
     },
@@ -118,6 +121,10 @@ Object.assign(GAME_DATA, {
       unlockedBy: null,
       description: "Запускает ветку кирпича и обжига.",
       hiddenInPrologue: true,
+      presentationGate: {
+        buildings: ["campfire"],
+        hint: "Глину нельзя показывать как ресурс до первого устойчивого костра: раньше это просто сырой берег, а не ремесленный материал.",
+      },
     },
     gather_fiber: {
       id: "gather_fiber",
@@ -136,17 +143,18 @@ Object.assign(GAME_DATA, {
     },
     gather_supplies: {
       id: "gather_supplies",
-      name: "Взять припасы",
-      icon: "🧺",
+      name: "Осмотреть старый привал",
+      icon: "🔥",
       output: { wood: 2, stone: 2, fiber: 1 },
       energyCost: 0,
       cooldown: 2200,
       unlockedBy: null,
       mapOnly: true,
       deliveryMode: "multi-trip",
-      description: "Из тайника сразу выходит дерево, камень и немного волокна.",
+      description:
+        "След прежнего привала: здесь можно подобрать сухие ветви, удобные камни и спутанные волокна.",
       prologueDescription:
-        "Чьи-то брошенные припасы. В одной связке — ветки, камни и волокно. Этого хватит для первого костра.",
+        "Круг старого кострища и следы короткой стоянки. Здесь ещё осталось немного сухих ветвей, камней и волокон — этого хватит для первых шагов лагеря.",
     },
     gather_water: {
       id: "gather_water",
@@ -172,5 +180,5 @@ Object.assign(GAME_DATA, {
     },
   },
 
-  // ─── Recipes ───
+  // Recipes/buildings/buildingUpgrades/tech are owned by production.js.
 });

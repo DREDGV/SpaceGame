@@ -1,5 +1,9 @@
 # TASK 05 — PRODUCTION DEPTH
 
+**Status:** IMPLEMENTED  
+**Audit:** v0.1.18  
+**Note:** Основной результат уже реализован; документ полезен как историческая спецификация.
+
 ## Goal
 
 Transform simple crafting into a meaningful production system with chains, choices, and constraints.

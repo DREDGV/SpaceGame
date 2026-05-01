@@ -70,14 +70,21 @@ Object.assign(UI.prototype, {
 
   getCampFoundingProgressItems(cost = this.game.getCampFoundingCost()) {
     return Object.entries(cost || {}).map(([resId, needed]) => {
-      const resDef = this.data.resources?.[resId] || {};
-      const have = this.game.resources[resId] || 0;
+      const fallbackStock = Math.max(0, this.game.resources?.[resId] || 0);
+      const breakdown = this.game.getCampFoundingResourceBreakdown?.(resId) || {
+        stock: fallbackStock,
+        carried: 0,
+        total: fallbackStock,
+      };
+      const have = breakdown.total;
       const missing = Math.max(0, needed - have);
       return {
         resId,
         icon: this.getResourceDisplayIcon(resId),
         name: this.getResourceDisplayName(resId),
         have,
+        stock: breakdown.stock || 0,
+        carried: breakdown.carried || 0,
         needed,
         missing,
         done: missing === 0,
@@ -85,8 +92,17 @@ Object.assign(UI.prototype, {
     });
   },
 
+  formatCampFoundingResourceMeta(item) {
+    const places = [];
+    if (item.stock > 0) places.push(`у ночёвки: ${item.stock}`);
+    if (item.carried > 0) places.push(`в рюкзаке: ${item.carried}`);
+    const placeText = places.length > 0 ? places.join(" · ") : "пока нет";
+    return item.done
+      ? `Готово · ${placeText}`
+      : `Осталось собрать: ${item.missing} · ${placeText}`;
+  },
   getCampFoundingResourceGuidance(check = this.game.canFoundCamp()) {
-    const allMapTiles = this.game.getCampMapState().tiles;
+    const allMapTiles = this._getCampMapStateSnapshot().tiles;
     const missingResourceIds = Object.keys(check.missingResources || {});
     const resourceTiles = new Map();
 
@@ -101,10 +117,11 @@ Object.assign(UI.prototype, {
       }
     }
 
-    const cacheTile = allMapTiles.find(
+    const supportTiles = allMapTiles.filter(
       (tile) =>
-        tile.id === "starter_cache" &&
+        tile.actionId === "gather_supplies" &&
         tile.state !== "hidden" &&
+        tile.state !== "camp" &&
         !tile.isDepleted,
     );
 
@@ -119,9 +136,10 @@ Object.assign(UI.prototype, {
     return {
       missingResourceIds,
       tileHints,
-      cacheTile,
-      preferredTile: cacheTile || tileHints[0] || null,
-      preferredMode: cacheTile || tileHints.length > 0 ? "map" : "manual",
+      supportTiles,
+      preferredTile: tileHints[0] || supportTiles[0] || null,
+      preferredMode:
+        tileHints.length > 0 || supportTiles.length > 0 ? "map" : "manual",
     };
   },
 
@@ -163,8 +181,34 @@ Object.assign(UI.prototype, {
     const okBtn = document.getElementById("camp-found-confirm-ok-btn");
     if (!modal || !body || !gatherBtn || !okBtn) return;
 
-    const tile = this.game.getCampMapState().tiles.find((t) => t.id === tileId);
+    const tile = this._getCampMapStateSnapshot().tiles.find(
+      (item) => item.id === tileId,
+    );
     if (!tile) return;
+
+    const siteCheck = this.game.canUseTileAsCampSite?.(tileId) || {
+      ok: true,
+      reason: "",
+    };
+    if (!siteCheck.ok) {
+      body.innerHTML = `
+        <div class="camp-found-confirm-place">
+          <span class="camp-found-confirm-icon">${tile.icon || "•"}</span>
+          <span class="camp-found-confirm-name">${tile.name}</span>
+        </div>
+        <div class="camp-found-confirm-missing">
+          <div>${siteCheck.reason || "Здесь нельзя основать лагерь."}</div>
+        </div>
+      `;
+      gatherBtn.hidden = true;
+      okBtn.disabled = true;
+      okBtn.setAttribute("aria-disabled", "true");
+      this._pendingCampFoundTileId = null;
+      modal.style.display = "flex";
+      document.body.style.overflow = "hidden";
+      document.getElementById("camp-found-confirm-cancel-btn")?.focus();
+      return;
+    }
 
     const check = this.game.canFoundCamp();
     const intro = this.data.campFoundingIntro || {};
@@ -196,7 +240,7 @@ Object.assign(UI.prototype, {
                   <strong>${item.have}/${item.needed}</strong>
                 </div>
                 <div class="camp-found-confirm-progress-meta">
-                  ${item.done ? "Готово для лагеря" : `Осталось собрать: ${item.missing}`}
+                  ${this.formatCampFoundingResourceMeta(item)}
                 </div>
               </div>
             `,
@@ -207,12 +251,17 @@ Object.assign(UI.prototype, {
 
     const gatherHintHtml =
       missingParts.length > 0 &&
-      (guidance.tileHints.length > 0 || guidance.cacheTile)
+      (guidance.tileHints.length > 0 || guidance.supportTiles.length > 0)
         ? `<div class="cfc-gather-hint">
             <div class="cfc-hint-label">Где быстро добрать материалы:</div>
             <div class="cfc-hint-tiles">
               ${guidance.tileHints.map((h) => `<span>${h.icon} ${h.name}</span>`).join("")}
-              ${guidance.cacheTile ? `<span class="cfc-hint-cache">${guidance.cacheTile.icon} ${guidance.cacheTile.name}</span>` : ""}
+              ${guidance.supportTiles
+                .map(
+                  (tile) =>
+                    `<span class="cfc-hint-cache">${tile.icon} ${tile.name}</span>`,
+                )
+                .join("")}
             </div>
           </div>`
         : "";
@@ -222,10 +271,11 @@ Object.assign(UI.prototype, {
         <span class="camp-found-confirm-icon">${tile.icon || "🏕️"}</span>
         <span class="camp-found-confirm-name">${tile.name}</span>
       </div>
+      <p class="camp-found-confirm-story">${tile.campCandidateHint || "Открытый участок без запаса сырья. Здесь можно поставить первый лагерь, если выбор кажется разумным."}</p>
       ${tile.campChosenStory ? `<p class="camp-found-confirm-story">${tile.campChosenStory}</p>` : ""}
       <div class="camp-found-confirm-cost">
         <div class="camp-found-confirm-cost-label">Ритуал основания стоит:</div>
-        <div class="camp-found-confirm-cost-line">⛺ ${costStr} · ⚡ −${energyCost}</div>
+        <div class="camp-found-confirm-cost-line">⛺ ${costStr} · ⚡ −${this.formatNumber(energyCost, 2)}</div>
       </div>
       ${progressHtml}
       ${
@@ -295,7 +345,7 @@ Object.assign(UI.prototype, {
     const costStr = this.formatResourcePairs(cost);
     const summaryHtml = progress.allDone
       ? `<div class="camp-quest-ready">${intro.questReadyText || "Всё готово. Выберите место и основайте лагерь."}</div>`
-      : `<div class="camp-quest-summary">Ритуал основания: ⛺ ${costStr} · ⚡ −${energyCost}</div>`;
+      : `<div class="camp-quest-summary">Ритуал основания: ⛺ ${costStr} · ⚡ −${this.formatNumber(energyCost, 2)}</div>`;
 
     container.innerHTML = `
       <div class="camp-quest-header">

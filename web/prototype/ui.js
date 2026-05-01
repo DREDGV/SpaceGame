@@ -15,6 +15,8 @@ class UI {
     this._gatherCooldownTimer = null;
     this._campIntroTimer = null;
     this._justFoundedTimer = null;
+    this._campMapStateSnapshot = null;
+    this._campMapStateSnapshotKey = "";
     this.bindStaticControls();
   }
 
@@ -105,10 +107,9 @@ class UI {
     this.bindChangelogModal();
     this.bindResearchModal();
     this.bindKnowledgeModal();
+    this.bindDiscoveryModal?.();
     this.bindCampModals();
-    if (typeof this.bindCharacterModal === "function") {
-      this.bindCharacterModal();
-    }
+    this.bindCharacterModal?.();
   }
 
   bindChangelogModal() {
@@ -147,6 +148,7 @@ class UI {
     }
 
     const typeLabelMap = {
+      added: "Добавлено",
       new: "Новое",
       improved: "Улучшено",
       fixed: "Исправлено",
@@ -325,7 +327,7 @@ class UI {
   }
 
   getCampFoundingResourceGuidance(check = this.game.canFoundCamp()) {
-    const allMapTiles = this.game.getCampMapState().tiles;
+    const allMapTiles = this._getCampMapStateSnapshot().tiles;
     const missingResourceIds = Object.keys(check.missingResources || {});
     const resourceTiles = new Map();
 
@@ -402,7 +404,9 @@ class UI {
     const okBtn = document.getElementById("camp-found-confirm-ok-btn");
     if (!modal || !body || !gatherBtn || !okBtn) return;
 
-    const tile = this.game.getCampMapState().tiles.find((t) => t.id === tileId);
+    const tile = this._getCampMapStateSnapshot().tiles.find(
+      (t) => t.id === tileId,
+    );
     if (!tile) return;
 
     const check = this.game.canFoundCamp();
@@ -504,7 +508,7 @@ class UI {
     screen.style.display = "flex";
     document.body.style.overflow = "hidden";
     this._selectedCampSlot = null;
-    this.renderCampScreen({ force: true });
+    this.renderCampScreen();
     document.getElementById("cs-back-btn")?.focus();
   }
 
@@ -686,8 +690,15 @@ class UI {
     this._renderCampDetail();
   }
 
-  // ── A: Top status bar ────────────────────────────────────────────────────
+  // Legacy fallback kept for cases where modular UI files are not loaded.
+  // Live runtime ownership is in prototype/ui/camp/camp-screen-ui.js,
+  // which is loaded after ui.js and overrides these methods.
   _renderCampTopbar() {
+    return this._legacyRenderCampTopbar();
+  }
+
+  // ── A: Top status bar ────────────────────────────────────────────────────
+  _legacyRenderCampTopbar() {
     // Camp name + stage
     const nameEl = document.getElementById("cs-camp-name");
     if (nameEl) {
@@ -789,6 +800,10 @@ class UI {
   }
 
   _renderCampScene() {
+    return this._legacyRenderCampScene();
+  }
+
+  _legacyRenderCampScene() {
     const scene = document.getElementById("cs-scene");
     if (!scene) return;
 
@@ -933,6 +948,10 @@ class UI {
 
   // ── D: Bottom dock ───────────────────────────────────────────────────────
   _renderCampDock() {
+    return this._legacyRenderCampDock();
+  }
+
+  _legacyRenderCampDock() {
     const dock = document.getElementById("cs-dock");
     if (!dock) return;
 
@@ -1002,6 +1021,10 @@ class UI {
 
   // ── C: Right context panel ───────────────────────────────────────────────
   _renderCampDetail() {
+    return this._legacyRenderCampDetail();
+  }
+
+  _legacyRenderCampDetail() {
     const content = document.getElementById("cs-detail-content");
     if (!content) return;
 
@@ -1329,7 +1352,7 @@ class UI {
     if (buildBtn) {
       buildBtn.addEventListener("click", () => {
         this.game.build(slot.buildingId);
-        this.renderCampScreen({ force: true });
+        this.renderCampScreen();
         this.render({ forcePanels: true });
       });
     }
@@ -1339,7 +1362,7 @@ class UI {
       btn.addEventListener("click", () => {
         const uid = btn.dataset.upgradeId;
         if (this.game.applyUpgrade(uid)) {
-          this.renderCampScreen({ force: true });
+          this.renderCampScreen();
           this.render({ forcePanels: true });
         }
       });
@@ -1460,11 +1483,17 @@ class UI {
     }
   }
 
+  // Legacy fallback for the pre-module camp map renderer.
+  // Live runtime ownership is in prototype/ui/map/camp-map-ui.js.
   renderCampMap() {
+    return this._legacyRenderCampMap();
+  }
+
+  _legacyRenderCampMap() {
     const container = document.getElementById("camp-map-panel");
     if (!container) return;
 
-    const mapState = this.game.getCampMapState();
+    const mapState = this._getCampMapStateSnapshot();
 
     // ── Flicker guard: if the intro overlay is already showing the same step,
     //    skip full DOM rebuild so CSS animations don't restart every tick. ──
@@ -2638,14 +2667,32 @@ class UI {
     return !!panel && panel.matches(":hover");
   }
 
+  _getCampMapStateSnapshot() {
+    const nextKey =
+      typeof this.game._getCampMapViewKey === "function"
+        ? this.game._getCampMapViewKey()
+        : "";
+
+    if (
+      !this._campMapStateSnapshot ||
+      this._campMapStateSnapshotKey !== nextKey
+    ) {
+      this._campMapStateSnapshot = this.game.getCampMapState();
+      this._campMapStateSnapshotKey = nextKey;
+    }
+
+    return this._campMapStateSnapshot;
+  }
+
   render({ forcePanels = false } = {}) {
+    this._campMapStateSnapshot = null;
+    this._campMapStateSnapshotKey = "";
     this.renderHeaderModeState();
     this.renderPrologueLayoutState();
     this.renderStoryEvent();
 
     // Prevent click loss when DOM is rebuilt between pointer down/up.
     if (this.isPointerDown) {
-      this.renderCharacterPanel();
       this.renderSaveStatus();
       return;
     }
@@ -2662,9 +2709,6 @@ class UI {
 
     if (forcePanels || !this.isPanelHovered("character-panel")) {
       this.renderCharacterPanel();
-    }
-    if (forcePanels || !this.isPanelHovered("day-cycle-panel")) {
-      this.renderDayCyclePanel();
     }
     if (forcePanels || !this.isPanelHovered("camp-map-panel")) {
       this.renderCampMap();
@@ -2687,12 +2731,8 @@ class UI {
     if (forcePanels || !this.isPanelHovered("automation-panel")) {
       this.renderAutomationPanel();
     }
-    if (forcePanels || !this.isPanelHovered("research-widget")) {
-      this.renderResearchWidget();
-    }
-    if (forcePanels || !this.isPanelHovered("knowledge-widget")) {
-      this.renderKnowledgeWidget();
-    }
+    this.renderResearchWidget();
+    this.renderKnowledgeWidget();
     const _rModal = document.getElementById("research-modal");
     if (
       _rModal &&
@@ -2709,15 +2749,7 @@ class UI {
     ) {
       this.renderKnowledgeModalContent();
     }
-    const _cModal = document.getElementById("character-modal");
-    if (
-      _cModal &&
-      _cModal.style.display !== "none" &&
-      !this._cmEditingTitle &&
-      typeof this.renderCharacterModalContent === "function"
-    ) {
-      this.renderCharacterModalContent();
-    }
+    this.syncDiscoveryModal?.();
     this.renderLog();
     this.renderEraProgress();
     this.renderSaveStatus();
@@ -2880,7 +2912,13 @@ class UI {
     if (step) step.style.display = "none";
   }
 
+  // Legacy fallback for the pre-module character panel renderer.
+  // Live runtime ownership is in prototype/ui/panels/character-panel-ui.js.
   renderCharacterPanel() {
+    return this._legacyRenderCharacterPanel();
+  }
+
+  _legacyRenderCharacterPanel() {
     const container = document.getElementById("character-panel");
     if (!container) return;
 
@@ -3504,7 +3542,7 @@ class UI {
     }
 
     // ── POST-CAMP: navigation panel "Resources around camp" ─────────────────
-    const mapState = this.game.getCampMapState();
+    const mapState = this._getCampMapStateSnapshot();
     if (mapState.campSetupDone) {
       this._renderGatherPostCamp(container, mapState);
       return;

@@ -25,6 +25,10 @@ Object.assign(GAME_DATA, {
       unlockedBy: null,
       description: "Дерево + камень → Детали мастерской",
       hiddenInPrologue: true,
+      presentationGate: {
+        tech: ["labor_division"],
+        hint: "Детали мастерской появляются только после разделения труда и идеи постоянного рабочего места.",
+      },
     },
     craft_crude_tools: {
       id: "craft_crude_tools",
@@ -72,6 +76,10 @@ Object.assign(GAME_DATA, {
       unlockedBy: null,
       description: "Глина + Древесина → Кирпич (требует Костёр)",
       hiddenInPrologue: true,
+      presentationGate: {
+        buildings: ["campfire"],
+        hint: "Кирпич и обжиг не должны появляться до удержанного костра.",
+      },
     },
   },
 
@@ -79,6 +87,7 @@ Object.assign(GAME_DATA, {
   buildings: {
     storage: {
       id: "storage",
+      spaceCost: 5,
       name: "Хранилище",
       icon: "🏚️",
       description:
@@ -91,9 +100,15 @@ Object.assign(GAME_DATA, {
       },
       unlockedBy: null,
       hiddenInPrologue: true,
+      presentationGate: {
+        tooling: true,
+        buildings: ["campfire"],
+        hint: "Постоянное хранилище появляется после первых орудий и устойчивого костра, когда стоянка уже не случайный привал.",
+      },
     },
     campfire: {
       id: "campfire",
+      spaceCost: 2,
       name: "Костёр",
       prologueName: "Первый костёр",
       icon: "🔥",
@@ -129,6 +144,7 @@ Object.assign(GAME_DATA, {
     },
     workshop: {
       id: "workshop",
+      spaceCost: 6,
       name: "Мастерская",
       icon: "🔧",
       description: "Открывает улучшенные инструменты и сложные цепочки",
@@ -140,6 +156,7 @@ Object.assign(GAME_DATA, {
     },
     rest_tent: {
       id: "rest_tent",
+      spaceCost: 4,
       name: "Палатка отдыха",
       prologueName: "Первое жильё",
       icon: "⛺",
@@ -163,6 +180,7 @@ Object.assign(GAME_DATA, {
     },
     kiln: {
       id: "kiln",
+      spaceCost: 6,
       name: "Печь для обжига",
       icon: "🏺",
       description: "Требуется для поздних производственных шагов",
@@ -189,6 +207,7 @@ Object.assign(GAME_DATA, {
         "Обложить кострище камнями и обмазать глиной. Жар держится дольше — обжиг кирпича идёт на 30% быстрее.",
       cost: { stone: 8, clay: 4 },
       energyCost: 2,
+      buildTimeMs: 9000,
       effect: {
         automation: {
           targetId: "campfire_brick",
@@ -206,6 +225,7 @@ Object.assign(GAME_DATA, {
         "Дополнительные полки и крепкие стены. Хранилище вмещает вдвое больше — лимит ресурсов вырастает до 250.",
       cost: { plank: 4, stone: 6, workshop_parts: 1 },
       energyCost: 2,
+      buildTimeMs: 11000,
       effect: {
         maxResourceCap: 250,
         character: { carryCapacityBonus: 1 },
@@ -221,6 +241,7 @@ Object.assign(GAME_DATA, {
         "Камень вместо кольев, глиняная обмазка от ветра. Запас энергии увеличивается ещё на 2, восстановление становится немного быстрее.",
       cost: { stone: 5, clay: 3, plank: 2 },
       energyCost: 2,
+      buildTimeMs: 10000,
       effect: {
         energy: { maxBonus: 2, regenIntervalBonusMs: 1000 },
         character: { enduranceBonus: 1, recoveryRatingBonus: 1 },
@@ -514,3 +535,216 @@ Object.assign(GAME_DATA, {
     },
   },
 });
+
+(() => {
+  const makeLevelChain = (
+    buildingId,
+    icon,
+    names,
+    costs,
+    effects,
+    techByLevel = {},
+    descriptions = {},
+    buildTimes = {},
+  ) => {
+    const result = {};
+    for (let level = 2; level <= 5; level += 1) {
+      const id = `${buildingId}_lvl${level}`;
+      result[id] = {
+        id,
+        level,
+        name: names[level],
+        icon,
+        targetBuilding: buildingId,
+        description:
+          descriptions[level] ||
+          `Поднять постройку до уровня ${level}. Стоимость растёт ступенчато: ранние уровни требуют базовые материалы, поздние - обработанные ресурсы и инструменты.`,
+        cost: costs[level],
+        energyCost: level,
+        // Время улучшения растёт ступенчато: ранние ступени быстрые,
+        // финальные требуют долгой работы общины.
+        buildTimeMs: buildTimes[level] || 4000 + level * 4000,
+        effect: effects[level] || {},
+        unlockedBy: techByLevel[level] || null,
+        prerequisiteUpgrade: level > 2 ? `${buildingId}_lvl${level - 1}` : null,
+      };
+    }
+    return result;
+  };
+
+  Object.assign(
+    GAME_DATA.buildingUpgrades,
+    makeLevelChain(
+      "campfire",
+      "🔥",
+      {
+        2: "Очаг с каменной выкладкой",
+        3: "Глинобитный очаг",
+        4: "Закрытый жарник",
+        5: "Постоянный центр огня",
+      },
+      {
+        2: { wood: 4, stone: 5 },
+        3: { stone: 8, clay: 5, brick: 2 },
+        4: { stone: 10, clay: 8, brick: 6, crude_tools: 1 },
+        5: { stone: 14, brick: 10, workshop_parts: 2, improved_tools: 1 },
+      },
+      {
+        2: {
+          automation: { targetId: "campfire_brick", intervalMultiplier: 0.92 },
+        },
+        3: {
+          automation: { targetId: "campfire_brick", intervalMultiplier: 0.85 },
+        },
+        4: {
+          automation: { targetId: "campfire_brick", intervalMultiplier: 0.78 },
+        },
+        5: {
+          automation: { targetId: "campfire_brick", intervalMultiplier: 0.7 },
+        },
+      },
+      { 3: "mining", 4: "mining", 5: "labor_division" },
+      {
+        2: "Камни вокруг кострища держат жар. Обжиг кирпича становится немного быстрее.",
+        3: "Глиняная обмазка удерживает тепло, огонь больше не теряется в ветреную ночь.",
+        4: "Жарник прикрыт сверху — ровный жар стабилизирует обжиг даже при дожде.",
+        5: "Постоянное горнило общины. Огонь не гаснет, а служит сердцем лагеря.",
+      },
+      // campfire: средняя сложность (1.0×)
+      { 2: 8000, 3: 14000, 4: 22000, 5: 34000 },
+    ),
+    makeLevelChain(
+      "rest_tent",
+      "⛺",
+      {
+        2: "Укреплённое укрытие",
+        3: "Сухой настил",
+        4: "Жилой навес",
+        5: "Постоянное жилище",
+      },
+      {
+        2: { wood: 3, fiber: 3 },
+        3: { wood: 4, fiber: 5, plank: 2 },
+        4: { plank: 5, fiber: 6, hide: 2, crude_tools: 1 },
+        5: { plank: 8, fiber: 8, hide: 4, improved_tools: 1 },
+      },
+      {
+        2: { energy: { maxBonus: 1 }, character: { recoveryRatingBonus: 1 } },
+        3: {
+          energy: { maxBonus: 1, regenIntervalBonusMs: 500 },
+          character: { maxSatietyBonus: 1 },
+        },
+        4: {
+          energy: { maxBonus: 2, regenIntervalBonusMs: 700 },
+          character: { enduranceBonus: 1 },
+        },
+        5: {
+          energy: { maxBonus: 2, regenIntervalBonusMs: 900 },
+          character: { maxHydrationBonus: 1, recoveryRatingBonus: 1 },
+        },
+      },
+      { 3: "rest_discipline", 4: "rest_discipline", 5: "body_conditioning" },
+      {
+        2: "Каркас укреплён, ткани плотнее. Сон чуть глубже, восстановление чуть быстрее.",
+        3: "Сухой настил отделяет от земли. Ночлег теплее, голод копится медленнее.",
+        4: "Шкуры на каркасе и навес от дождя превращают палатку в жильё.",
+        5: "Полноценное жилище общины: тёплое, сухое, защищённое от непогоды.",
+      },
+      // rest_tent: средняя сложность (1.0×)
+      { 2: 8000, 3: 14000, 4: 22000, 5: 34000 },
+    ),
+    makeLevelChain(
+      "storage",
+      "🏚️",
+      {
+        2: "Поднятый помост",
+        3: "Укреплённое хранилище",
+        4: "Сухой склад",
+        5: "Большой запасник",
+      },
+      {
+        2: { wood: 5, fiber: 3 },
+        3: { plank: 4, stone: 4, fiber: 5 },
+        4: { plank: 7, stone: 6, brick: 3, workshop_parts: 1 },
+        5: { plank: 10, brick: 6, workshop_parts: 2, improved_tools: 1 },
+      },
+      {
+        2: { maxResourceCap: 190, character: { carryCapacityBonus: 1 } },
+        3: { maxResourceCap: 250 },
+        4: { maxResourceCap: 340, character: { carryCapacityBonus: 1 } },
+        5: { maxResourceCap: 450 },
+      },
+      { 3: "labor_division", 4: "crafting", 5: "material_sense" },
+      {
+        2: "Помост над землёй защищает запасы от сырости. Лимит ресурсов растёт до 190.",
+        3: "Прочные стены и плотные стеллажи удерживают вдвое больше — до 250.",
+        4: "Сухой склад с глиняным полом и навесом — запасы дольше остаются годными (до 340).",
+        5: "Большой общинный запасник: до 450 единиц ресурсов под одной крышей.",
+      },
+      // storage: проще каркаса (0.85×) — основная работа это материалы
+      { 2: 7000, 3: 12000, 4: 19000, 5: 29000 },
+    ),
+    makeLevelChain(
+      "workshop",
+      "🔧",
+      {
+        2: "Рабочая колода",
+        3: "Верстак",
+        4: "Навес ремесленников",
+        5: "Мастерская общины",
+      },
+      {
+        2: { wood: 5, stone: 4, fiber: 3 },
+        3: { plank: 5, stone: 5, workshop_parts: 1, crude_tools: 1 },
+        4: { plank: 8, brick: 3, workshop_parts: 3, crude_tools: 2 },
+        5: { plank: 12, brick: 6, workshop_parts: 4, improved_tools: 2 },
+      },
+      {
+        2: { craftDiscount: 0.03 },
+        3: { craftDiscount: 0.04, buildTimeMultiplier: 0.96 },
+        4: { craftDiscount: 0.05, buildTimeMultiplier: 0.94 },
+        5: { craftDiscount: 0.06, buildTimeMultiplier: 0.92 },
+      },
+      { 3: "crafting", 4: "work_rhythm", 5: "material_sense" },
+      {
+        2: "Удобная колода и сортированные заготовки. Расход материалов падает на 3%.",
+        3: "Стационарный верстак позволяет точную работу. Крафт ещё дешевле, постройки быстрее.",
+        4: "Навес и каменный пол — мастера работают в любую погоду.",
+        5: "Полноценная мастерская общины: каждый ремесленник на своём месте.",
+      },
+      // workshop: точная работа (1.15×) — много мелких подгонок
+      { 2: 9000, 3: 16000, 4: 25000, 5: 39000 },
+    ),
+    makeLevelChain(
+      "kiln",
+      "🏺",
+      {
+        2: "Стабильная печь",
+        3: "Тяговый канал",
+        4: "Двойная камера",
+        5: "Печь мастеров",
+      },
+      {
+        2: { clay: 5, stone: 5, brick: 2 },
+        3: { clay: 8, brick: 5, workshop_parts: 1 },
+        4: { clay: 10, brick: 8, workshop_parts: 2, crude_tools: 1 },
+        5: { brick: 12, workshop_parts: 3, improved_tools: 2, coal: 4 },
+      },
+      {
+        2: { automationIntervalMultiplier: 0.92 },
+        3: { automationIntervalMultiplier: 0.86 },
+        4: { automationIntervalMultiplier: 0.8 },
+        5: { automationIntervalMultiplier: 0.74 },
+      },
+      { 3: "mining", 4: "kiln_practice", 5: "kiln_practice" },
+      {
+        2: "Прочные стенки и ровный под — обжиг идёт без сбоев.",
+        3: "Тяговый канал увеличивает приток воздуха. Жар выше, обжиг быстрее.",
+        4: "Двойная камера: можно обжигать сразу два изделия. Темп заметно вырастает.",
+        5: "Печь мастеров — гордость лагеря. Ремесленные циклы заметно ускоряются.",
+      },
+      // kiln: самая сложная конструкция (1.3×) — глина, тяга, кладка
+      { 2: 10000, 3: 18000, 4: 29000, 5: 44000 },
+    ),
+  );
+})();

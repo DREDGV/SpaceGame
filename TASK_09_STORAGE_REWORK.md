@@ -1,5 +1,9 @@
 # TASK 09 — STORAGE SYSTEM REWORK (CATEGORIES FOUNDATION)
 
+**Status:** IMPLEMENTED  
+**Audit:** v0.1.18  
+**Note:** Основной результат уже реализован; документ полезен как историческая спецификация.
+
 ## 🎯 Цель
 
 Переосмыслить систему хранения ресурсов:

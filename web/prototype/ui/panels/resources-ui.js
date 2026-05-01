@@ -4,6 +4,8 @@ Object.assign(UI.prototype, {
   renderResources() {
     const container = document.getElementById("resources-panel");
     if (!container) return;
+    const isEarlyProgression =
+      this.game.isEarlyProgressionMode?.() ?? this.game.isPrologueActive();
 
     if (
       this.game.isPrologueActive() &&
@@ -14,10 +16,10 @@ Object.assign(UI.prototype, {
       return;
     }
 
-    if (this.game.isPrologueActive()) {
+    if (isEarlyProgression) {
       const visibleIds = this.game.getVisibleResourceIds();
       const renderKey = JSON.stringify({
-        mode: "prologue",
+        mode: "early-progression",
         resources: Object.fromEntries(
           visibleIds.map((id) => [id, this.game.resources[id] || 0]),
         ),
@@ -30,20 +32,21 @@ Object.assign(UI.prototype, {
       container.innerHTML = "";
       const title = document.createElement("h3");
       title.textContent =
-        this.data.prologue?.resourcesTitle || "🌿 Найденные материалы";
+        this.data.prologue?.resourcesTitle || "🧺 Ранний запас у ночёвки";
       container.appendChild(title);
 
       const hint = document.createElement("div");
       hint.className = "storage-summary";
       hint.textContent =
         this.data.prologue?.resourcesHint ||
-        "Пока это не склад и не производство — только то, что удалось найти руками.";
+        "До основания лагеря найденное сначала несётся в походном рюкзаке, а в ранний запас попадает после возвращения к ночёвке.";
       container.appendChild(hint);
 
       const categoryMeta = {
         raw: {
           label: "Ресурсы",
-          description: "Сырьё, которое удалось найти и унести при себе.",
+          description:
+            "Сырьё, которое уже сгружено у ночёвки и готово для первых шагов.",
         },
         tools: {
           label: "Инструменты",
@@ -51,7 +54,8 @@ Object.assign(UI.prototype, {
         },
         supplies: {
           label: "Пища и вода",
-          description: "Съедобные находки и вода, которые поддерживают человека.",
+          description:
+            "Запас пищи и воды у ночёвки, который помогает пережить первые дни.",
         },
         materials: {
           label: "Материалы",
@@ -139,7 +143,7 @@ Object.assign(UI.prototype, {
           this.setTooltip(item, [
             resourceName,
             resourceDesc || "Материал раннего пролога",
-            `Сейчас при себе: ${amount}`,
+            `Сейчас в раннем запасе: ${amount}`,
             `Всего найдено: ${total}`,
             `Категория: ${meta.label}`,
           ]);

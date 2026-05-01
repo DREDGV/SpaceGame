@@ -273,6 +273,130 @@
   margin-bottom: 10px;
 }
 
+.cm-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.cm-overview-card {
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,190,120,0.14);
+  background: linear-gradient(180deg, rgba(44,34,28,0.82) 0%, rgba(24,19,16,0.84) 100%);
+}
+
+.cm-overview-card--ok {
+  border-color: rgba(122,196,122,0.24);
+  background: linear-gradient(180deg, rgba(24,44,30,0.8) 0%, rgba(16,27,20,0.86) 100%);
+}
+
+.cm-overview-card--warn,
+.cm-overview-card--bad {
+  border-color: rgba(230,160,102,0.26);
+  background: linear-gradient(180deg, rgba(58,38,22,0.82) 0%, rgba(28,20,14,0.88) 100%);
+}
+
+.cm-overview-label {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #b49676;
+  margin-bottom: 6px;
+}
+
+.cm-overview-value {
+  font-size: 1.08rem;
+  font-weight: 800;
+  line-height: 1.24;
+  color: #fbe6c2;
+}
+
+.cm-overview-note {
+  margin-top: 6px;
+  font-size: 0.79rem;
+  line-height: 1.42;
+  color: #d5c0a2;
+}
+
+.cm-note-box {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,190,120,0.12);
+  background: rgba(40,31,25,0.68);
+  margin-bottom: 12px;
+}
+
+.cm-note-box--ok {
+  border-color: rgba(122,196,122,0.2);
+  background: rgba(26,45,31,0.62);
+}
+
+.cm-note-box--warn,
+.cm-note-box--bad {
+  border-color: rgba(230,160,102,0.24);
+  background: rgba(52,35,23,0.68);
+}
+
+.cm-note-title {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fbe6c2;
+  margin-bottom: 4px;
+}
+
+.cm-note-copy {
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: #d5c0a2;
+}
+
+.cm-practical-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cm-practical-card {
+  min-width: 0;
+  padding: 12px 13px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,190,120,0.12);
+  background: rgba(42,32,26,0.68);
+}
+
+.cm-practical-label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #b49676;
+  margin-bottom: 4px;
+}
+
+.cm-practical-value {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: #fbe6c2;
+  line-height: 1.28;
+}
+
+.cm-practical-note {
+  margin-top: 6px;
+  font-size: 0.77rem;
+  color: #c9b69a;
+  line-height: 1.42;
+}
+
+.cm-section-divider {
+  height: 1px;
+  margin: 12px 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,190,120,0.16) 20%, rgba(255,190,120,0.16) 80%, transparent 100%);
+}
+
 /* ── Stat bars (energy, satiety, hydration, carry) ───────────────── */
 
 .cm-stat {
@@ -440,6 +564,10 @@
   gap: 6px;
   font-size: 0.85rem;
 }
+
+.cm-kv-list--spaced {
+  margin-top: 10px;
+}
 .cm-kv {
   display: flex;
   justify-content: space-between;
@@ -514,6 +642,17 @@
   color: #5a4a3a;
 }
 
+.cm-inv-empty-note {
+  margin-top: 10px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  background: rgba(42,32,26,0.56);
+  border: 1px solid rgba(255,190,120,0.08);
+  color: #c9b69a;
+  font-size: 0.76rem;
+  line-height: 1.38;
+}
+
 /* ── Auto-consume toggles ────────────────────────────────────────── */
 
 .cm-toggle-row {
@@ -567,6 +706,12 @@
   line-height: 1.35;
 }
 
+@media (max-width: 720px) {
+  .cm-practical-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ── Footer tip ──────────────────────────────────────────────────── */
 
 .cm-footer-tip {
@@ -591,14 +736,17 @@
   width: 100%;
   padding: 6px 10px;
   border-radius: 8px;
-  border: 1px solid rgba(255,190,120,0.22);
-  background: linear-gradient(180deg, rgba(50,38,30,0.9) 0%, rgba(32,24,20,0.9) 100%);
-  color: #fbe6c2;
+  border: 1px solid rgba(255,190,120,0.48);
+  background: linear-gradient(180deg, rgba(62,46,34,0.94) 0%, rgba(38,28,20,0.94) 100%);
+  color: #fbd89a;
   font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
   cursor: pointer;
-  transition: background 0.18s ease, border-color 0.18s ease;
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
 }
 .character-panel-open-btn:hover {
-  background: linear-gradient(180deg, rgba(70,54,40,0.95) 0%, rgba(40,30,22,0.95) 100%);
-  border-color: rgba(255,190,120,0.45);
+  background: linear-gradient(180deg, rgba(82,62,46,0.97) 0%, rgba(50,36,26,0.97) 100%);
+  border-color: rgba(255,190,120,0.72);
+  box-shadow: 0 0 0 1px rgba(255,190,120,0.18);
 }

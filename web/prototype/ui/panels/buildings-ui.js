@@ -4,6 +4,8 @@ Object.assign(UI.prototype, {
   renderBuildingsPanel() {
     const container = document.getElementById("buildings-panel");
     if (!container) return;
+    const isEarlyProgression =
+      this.game.isEarlyProgressionMode?.() ?? this.game.isPrologueActive();
 
     if (
       this.game.isPrologueActive() &&
@@ -15,7 +17,7 @@ Object.assign(UI.prototype, {
 
     container.innerHTML = "";
     const title = document.createElement("h3");
-    title.textContent = this.game.isPrologueActive()
+    title.textContent = isEarlyProgression
       ? "🏕️ Ранние постройки"
       : "🏗️ Здания";
     container.appendChild(title);
@@ -55,7 +57,7 @@ Object.assign(UI.prototype, {
         (insightId) => !this.game.insights[insightId],
       );
       const missingPrologueTool =
-        this.game.isPrologueActive() &&
+        isEarlyProgression &&
         building.requiresPrologueTool &&
         (this.game.resources.crude_tools || 0) < 1;
       const isConstructingThis = construction?.buildingId === id;
@@ -78,7 +80,7 @@ Object.assign(UI.prototype, {
         el.classList.add("built");
         let extraInfo = `<span class="building-status">✅ Построено</span>`;
 
-        if (this.game.isPrologueActive() && id === "campfire") {
+        if (isEarlyProgression && id === "campfire") {
           extraInfo += `<span class="btn-desc">Огонь стал первой точкой, вокруг которой начинает складываться более устойчивый уклад.</span>`;
         }
 
@@ -203,13 +205,9 @@ Object.assign(UI.prototype, {
         let buildStatus = `Строительство: ${buildTime}`;
         if (construction) {
           buildStatus = `Занято: ${construction.icon} ${construction.name}`;
-        } else if (
-          this.game.isPrologueActive() &&
-          id === "rest_tent" &&
-          canDo
-        ) {
+        } else if (isEarlyProgression && id === "rest_tent" && canDo) {
           buildStatus = "Можно поставить первое жильё";
-        } else if (this.game.isPrologueActive() && id === "campfire" && canDo) {
+        } else if (isEarlyProgression && id === "campfire" && canDo) {
           buildStatus = "Можно сложить первый очаг";
         } else if (!this.game.hasResources(this.game.getBuildingCost(id))) {
           buildStatus = "Не хватает ресурсов";
@@ -260,7 +258,7 @@ Object.assign(UI.prototype, {
   },
 
   renderAutomationPanel() {
-    if (this.game.isPrologueActive()) {
+    if (this.game.isEarlyProgressionMode?.() ?? this.game.isPrologueActive()) {
       const container = document.getElementById("automation-panel");
       if (!container) return;
 

@@ -42,7 +42,6 @@
       game.tickCraftQueue();
       game.tickConstruction();
       game.tickResearch();
-      game.syncCampMap();
       lastWorkTick = timestamp;
     }
 

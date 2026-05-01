@@ -150,6 +150,11 @@ Object.assign(GAME_DATA, {
       storageCategory: "raw",
       storageSize: 1,
       carryWeight: 2.2,
+      futureStage: "post_fire_craft",
+      presentationGate: {
+        buildings: ["campfire"],
+        hint: "Глина станет осмысленным ресурсом после первого устойчивого костра: когда жар начнёт быть не только теплом, но и ремесленным инструментом.",
+      },
     },
     fiber: {
       name: "Волокно",
@@ -168,6 +173,11 @@ Object.assign(GAME_DATA, {
       storageCategory: "materials",
       storageSize: 1,
       carryWeight: 1.3,
+      futureStage: "tooling_craft",
+      presentationGate: {
+        tooling: true,
+        hint: "Доски появляются в языке игры только после первых орудий: до этого на карте и в запасах это ветки, жерди и хворост.",
+      },
     },
     crude_tools: {
       name: "Простые инструменты",
@@ -187,6 +197,11 @@ Object.assign(GAME_DATA, {
       storageCategory: "components",
       storageSize: 1,
       carryWeight: 1.8,
+      futureStage: "labor_division",
+      presentationGate: {
+        tech: ["labor_division"],
+        hint: "Детали мастерской становятся понятны только после разделения труда и идеи постоянного рабочего места.",
+      },
     },
     improved_tools: {
       name: "Улучшенные инструменты",
@@ -196,6 +211,11 @@ Object.assign(GAME_DATA, {
       storageCategory: "tools",
       storageSize: 1,
       carryWeight: 1.8,
+      futureStage: "crafting",
+      presentationGate: {
+        tech: ["crafting"],
+        hint: "Улучшенные инструменты не появляются до ремесленной практики и мастерской.",
+      },
     },
     brick: {
       name: "Кирпичи",
@@ -206,6 +226,11 @@ Object.assign(GAME_DATA, {
       storageCategory: "materials",
       storageSize: 1,
       carryWeight: 2.4,
+      futureStage: "post_fire_craft",
+      presentationGate: {
+        buildings: ["campfire"],
+        hint: "Кирпичи появляются только после удержанного костра и первого понимания обжига.",
+      },
     },
     food: {
       name: "Еда",
@@ -284,6 +309,8 @@ Object.assign(GAME_DATA, {
       description: "Ручной труд и первые открытия",
       researchFoundation: ["communal_memory"],
       researchBranches: ["survival", "craft", "production", "community"],
+      prologueResearchTransitionText:
+        "Чтобы выйти из первых стоянок, община должна закрепить общее знание, разделить труд и научиться держать жар дольше одной ночи.",
       researchTransitionText:
         "Чтобы выйти к раннему производству, община должна закрепить общее знание, распределить труд и освоить контролируемый обжиг.",
       milestones: [
@@ -310,11 +337,13 @@ Object.assign(GAME_DATA, {
         },
         {
           id: "build_workshop",
+          prologueText: "Организовать первое рабочее место",
           text: "Построить мастерскую",
           check: (game) => !!game.buildings.workshop,
         },
         {
           id: "master_controlled_firing",
+          prologueText: "Освоить устойчивый жар",
           text: "Освоить контролируемый обжиг",
           check: (game) => !!game.researched.mining && !!game.buildings.kiln,
         },

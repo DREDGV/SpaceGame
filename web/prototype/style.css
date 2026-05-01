@@ -1,3 +1,9 @@
+/*
+ * LEGACY / NON-LOADED: web/prototype.html now loads modular CSS from
+ * web/prototype/css/*.css instead of this file. Keep this as historical
+ * reference only; live style fixes should go into the modular CSS files.
+ */
+
 /* Primitive Prototype — minimal clean UI */
 
 * {

@@ -50,20 +50,18 @@ body.is-prologue-active .panel:hover {
 
 /* ── Silhouette state: between hidden and discovered, no interaction ── */
 .camp-tile.is-silhouette polygon {
-  fill: #1c2336 !important;
-  stroke: rgba(120, 140, 180, 0.25) !important;
-  stroke-width: 0.5 !important;
-  pointer-events: all; /* allow hover for tooltip */
-  cursor: default;
+  fill: #2b3034 !important;
+  stroke: rgba(152, 160, 164, 0.34) !important;
+  stroke-width: 1 !important;
+  pointer-events: auto;
+  cursor: pointer;
 }
 .camp-tile.is-silhouette .tile-icon {
-  opacity: 0.22;
-  fill: #9aa4b8;
-  visibility: visible;
+  display: none !important;
 }
 .camp-tile.is-silhouette:hover polygon {
-  fill: #222c44 !important;
-  stroke: rgba(150, 170, 210, 0.45) !important;
+  fill: #34393d !important;
+  stroke: rgba(182, 188, 190, 0.48) !important;
 }
 
 /* ── Terrain-based candidate palette — three moods ── */
@@ -408,6 +406,10 @@ body.is-prologue-active .panel:hover {
   font-size: 0.7rem;
   color: #9ca3af;
 }
+.grr-role {
+  font-size: 0.69rem;
+  color: #d6c7a1;
+}
 .grr-warn {
   font-size: 0.68rem;
   color: #f59e0b;
@@ -434,6 +436,19 @@ body.is-prologue-active .panel:hover {
   padding: 0.15rem 0.4rem;
   border-radius: 5px;
 }
+.grr-energy--ok {
+  color: #86efac;
+  background: rgba(34, 197, 94, 0.12);
+}
+.grr-energy--info {
+  color: #bfdbfe;
+  background: rgba(96, 165, 250, 0.12);
+}
+.grr-energy--warn,
+.grr-energy--bad {
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.14);
+}
 .grr-cooldown {
   font-size: 0.68rem;
   color: #60a5fa;
@@ -444,7 +459,8 @@ body.is-prologue-active .panel:hover {
   color: #86efac;
 }
 /* Pre-camp tile rows: wrap so the gather button goes full-width below */
-.gather-resource-row--precamp {
+.gather-resource-row--precamp,
+.gather-resource-row--actionable {
   flex-wrap: wrap;
 }
 .gather-resource-row.is-needed {

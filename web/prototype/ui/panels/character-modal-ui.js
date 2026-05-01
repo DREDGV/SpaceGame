@@ -16,6 +16,11 @@ Object.assign(UI.prototype, {
       document.body.style.overflow = "";
     };
 
+    closeBtn.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      close();
+    });
     closeBtn.addEventListener("click", close);
     modal.addEventListener("click", (e) => {
       if (e.target === modal) close();
@@ -84,6 +89,7 @@ Object.assign(UI.prototype, {
     this._cmEditingTitle = false;
     this._cmEditingTitleDraft = "";
     this.renderCharacterModalContent();
+    this._cmSyncModalTitle(this.game.getCharacterState()?.title);
     modal.style.display = "flex";
     document.body.style.overflow = "hidden";
     closeBtn.focus();
@@ -94,7 +100,7 @@ Object.assign(UI.prototype, {
   _cmStartTitleEdit() {
     const state = this.game.getCharacterState();
     this._cmEditingTitle = true;
-    this._cmEditingTitleDraft = state.title || "Человек";
+    this._cmEditingTitleDraft = state.title || this._cmGetDefaultTitle();
     this.renderCharacterModalContent();
     // Используем queueMicrotask, чтобы гарантировать, что DOM обновлён
     queueMicrotask(() => {
@@ -149,6 +155,61 @@ Object.assign(UI.prototype, {
     return this.formatNumber(n, digits);
   },
 
+  _cmGetDefaultTitle() {
+    return this.data.character?.title || "Ведущий стоянки";
+  },
+
+  _cmSyncModalTitle(title) {
+    const modalTitle = document.getElementById("character-modal-title");
+    if (!modalTitle) return;
+    modalTitle.textContent = `👤 ${title || this._cmGetDefaultTitle()}`;
+  },
+
+  _cmDescribeNeedRate(value, subject) {
+    if (!Number.isFinite(value) || value <= 0.005) {
+      return `${subject} почти не тратится`;
+    }
+    if (value <= 0.2) {
+      return `${subject} уходит медленно`;
+    }
+    if (value <= 0.6) {
+      return `${subject} уходит заметно`;
+    }
+    return `${subject} уходит быстро`;
+  },
+
+  _cmDescribeTripPressure(trip) {
+    if (!trip) return "";
+    const parts = [];
+    if (trip.pathLabel) {
+      parts.push(trip.pathLabel);
+    }
+    if (trip.effortLabel) {
+      parts.push(trip.effortLabel);
+    }
+    if (Number.isFinite(trip.tripsRequired) && trip.tripsRequired > 1) {
+      parts.push(`${trip.tripsRequired} ходки`);
+    }
+    if (Number.isFinite(trip.load) && Number.isFinite(trip.carryCapacity)) {
+      const loadPct =
+        trip.carryCapacity > 0 ? trip.load / trip.carryCapacity : 0;
+      if (loadPct >= 0.85) {
+        parts.push("почти предельный груз");
+      } else if (loadPct >= 0.55) {
+        parts.push("заметный груз");
+      } else {
+        parts.push("лёгкий груз");
+      }
+    }
+    return parts.join(", ");
+  },
+
+  _cmSentenceCase(text) {
+    const value = String(text || "").trim();
+    if (!value) return "";
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  },
+
   /**
    * Maps current game state to a sprite cell in the 4×3 character-sheet.
    *
@@ -197,6 +258,11 @@ Object.assign(UI.prototype, {
     const sat = state.satiety.pct;
     const energy = state.energy.pct;
     const cond = state.condition;
+    const atCamp =
+      state.location?.atCamp ??
+      state.location?.isAtCamp ??
+      this.game.isCharacterAtCamp?.() ??
+      true;
 
     // Base wellbeing (first row)
     if (cond.id === "stable") {
@@ -271,6 +337,13 @@ Object.assign(UI.prototype, {
         name: "В пути",
         desc: state.tripProfile?.zoneLabel || "Выход из лагеря",
       });
+    } else if (!atCamp) {
+      items.push({
+        icon: "🧭",
+        tone: "neutral",
+        name: "Вне лагеря",
+        desc: state.location?.tileName || "Участок карты",
+      });
     } else {
       items.push({
         icon: "🏕",
@@ -323,8 +396,12 @@ Object.assign(UI.prototype, {
     `;
   },
 
-  _cmRenderInventory() {
-    const resources = this.game.resources || {};
+  _cmRenderInventory(state = null) {
+    const carriedResources = state?.carry?.carriedResources || {};
+    const hasCarried = Object.values(carriedResources).some(
+      (qty) => (Number(qty) || 0) > 0,
+    );
+    const resources = hasCarried ? carriedResources : this.game.resources || {};
     const data = this.data.resources || {};
     // Order by highest stock, then drop zeros.
     const entries = Object.entries(resources)
@@ -351,7 +428,13 @@ Object.assign(UI.prototype, {
         </div>
       `);
     }
-    return `<div class="cm-inv-grid">${slots.join("")}</div>`;
+    const emptyNote =
+      entries.length === 0
+        ? `<div class="cm-inv-empty-note">Сейчас персонаж ничего не несёт. До основания лагеря первые находки считаются ранним запасом у ночёвки, а после лагеря основная масса лежит на складе.</div>`
+        : hasCarried
+          ? `<div class="cm-inv-empty-note">Это то, что персонаж несёт прямо сейчас. Остальные ресурсы лежат в лагере.</div>`
+          : `<div class="cm-inv-empty-note">Показаны запасы лагеря. Если персонаж выйдет за ресурсом, груз появится здесь до возвращения.</div>`;
+    return `<div class="cm-inv-grid">${slots.join("")}</div>${emptyNote}`;
   },
 
   _cmRenderActionBlock(state) {
@@ -370,28 +453,44 @@ Object.assign(UI.prototype, {
             ? "🛤"
             : "🌿";
       const energy = Number.isFinite(trip.energyCost) ? trip.energyCost : null;
-      const sat = Number.isFinite(trip.satietyCost) ? trip.satietyCost : null;
-      const hyd = Number.isFinite(trip.hydrationCost)
-        ? trip.hydrationCost
-        : null;
       const zone = trip.zoneLabel || "";
-      const blocked = trip.blockedReason
-        ? `<div class="cm-kv" style="color:#d07050"><span>⚠</span><span>${trip.blockedReason}</span></div>`
-        : "";
+      const tripSummary = this._cmDescribeTripPressure(trip);
+      const needsImpact = trip.needsImpact || null;
+      const carryState = trip.carryState || null;
+      const tripSummaryNote = needsImpact?.note
+        ? `${needsImpact.note}${tripSummary ? ` Маршрут: ${tripSummary}.` : ""}`
+        : tripSummary
+          ? `Маршрут сейчас выглядит так: ${tripSummary}.`
+          : "Здесь собрана короткая оценка пути и нагрузки перед выходом.";
+      const tripTone = trip.blockedReason
+        ? "warn"
+        : needsImpact?.tone ||
+          (energy !== null && energy >= (state.energy?.max || 0) * 0.35
+            ? "warn"
+            : "ok");
+      const tripTitle = trip.blockedReason
+        ? "Что мешает выйти"
+        : needsImpact?.label || "Что это значит";
+      const actionSub = tripSummary
+        ? tripSummary
+        : needsImpact?.label || "Цель выхода уже выбрана";
       return `
         <div class="cm-action">
           <div class="cm-action-icon">${icon}</div>
           <div class="cm-action-body">
-            <div class="cm-action-title">${kind}</div>
-            <div class="cm-action-sub">${zone}</div>
+            <div class="cm-action-title">${kind}${zone ? ` · ${zone}` : ""}</div>
+            <div class="cm-action-sub">${actionSub}</div>
           </div>
         </div>
-        <div class="cm-kv-list" style="margin-top:10px">
-          ${energy !== null ? `<div class="cm-kv"><span class="cm-kv-label">⚡ Расход энергии</span><span class="cm-kv-value cm-kv-value--bad">−${this._cmFmt(energy, 1)}</span></div>` : ""}
-          ${hyd !== null ? `<div class="cm-kv"><span class="cm-kv-label">💧 Расход воды</span><span class="cm-kv-value cm-kv-value--bad">−${this._cmFmt(hyd, 2)}</span></div>` : ""}
-          ${sat !== null ? `<div class="cm-kv"><span class="cm-kv-label">🍖 Расход сытости</span><span class="cm-kv-value cm-kv-value--bad">−${this._cmFmt(sat, 2)}</span></div>` : ""}
+        <div class="cm-note-box cm-note-box--${tripTone}" style="margin-top:10px; margin-bottom:0;">
+          <div class="cm-note-title">${tripTitle}</div>
+          <div class="cm-note-copy">${trip.blockedReason || tripSummaryNote}</div>
+        </div>
+        <div class="cm-kv-list cm-kv-list--spaced">
+          ${carryState ? `<div class="cm-kv"><span class="cm-kv-label">🎒 Ощущение груза</span><span class="cm-kv-value cm-kv-value--${carryState.tone === "ok" ? "good" : "bad"}">${carryState.label}</span></div>` : ""}
           ${Number.isFinite(trip.load) ? `<div class="cm-kv"><span class="cm-kv-label">🎒 Нагрузка</span><span class="cm-kv-value">${this._cmFmt(trip.load, 1)} / ${this._cmFmt(trip.carryCapacity, 1)}</span></div>` : ""}
-          ${blocked}
+          ${Number.isFinite(trip.tripsRequired) ? `<div class="cm-kv"><span class="cm-kv-label">📦 Ходки</span><span class="cm-kv-value">${Math.max(1, Math.round(trip.tripsRequired))}</span></div>` : ""}
+          ${Number.isFinite(trip.totalLoad) ? `<div class="cm-kv"><span class="cm-kv-label">Σ Общий объём</span><span class="cm-kv-value">${this._cmFmt(trip.totalLoad, 1)}</span></div>` : ""}
         </div>
       `;
     }
@@ -446,6 +545,19 @@ Object.assign(UI.prototype, {
       ? trip.estimatedTime
       : null;
     const pathLabel = trip.pathLabel || (trip.pathIcon ? trip.pathIcon : "—");
+    const costBits = [
+      Number.isFinite(trip.energyCost)
+        ? `⚡ −${this._cmFmt(trip.energyCost, 1)}`
+        : "",
+      Number.isFinite(trip.satietyCost)
+        ? `🍖 −${this._cmFmt(trip.satietyCost, 2)}`
+        : "",
+      Number.isFinite(trip.hydrationCost)
+        ? `💧 −${this._cmFmt(trip.hydrationCost, 2)}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
     return `
       <div class="cm-action" style="margin-bottom:10px">
         <div class="cm-action-icon">🎯</div>
@@ -457,9 +569,7 @@ Object.assign(UI.prototype, {
       <div class="cm-kv-list">
         ${dist !== null ? `<div class="cm-kv"><span class="cm-kv-label">Дистанция (туда и обратно)</span><span class="cm-kv-value">${dist} переходов</span></div>` : ""}
         ${timeSec !== null ? `<div class="cm-kv"><span class="cm-kv-label">Ожидаемое время</span><span class="cm-kv-value">${this._cmFmt(timeSec, 1)} с</span></div>` : ""}
-        ${Number.isFinite(trip.energyCost) ? `<div class="cm-kv"><span class="cm-kv-label">⚡ Расход на путь</span><span class="cm-kv-value cm-kv-value--bad">−${this._cmFmt(trip.energyCost, 1)}</span></div>` : ""}
-        ${Number.isFinite(trip.hydrationCost) ? `<div class="cm-kv"><span class="cm-kv-label">💧 Расход воды</span><span class="cm-kv-value cm-kv-value--bad">−${this._cmFmt(trip.hydrationCost, 2)}</span></div>` : ""}
-        ${Number.isFinite(trip.satietyCost) ? `<div class="cm-kv"><span class="cm-kv-label">🍖 Расход сытости</span><span class="cm-kv-value cm-kv-value--bad">−${this._cmFmt(trip.satietyCost, 2)}</span></div>` : ""}
+        ${costBits ? `<div class="cm-kv"><span class="cm-kv-label">Цена выхода</span><span class="cm-kv-value cm-kv-value--bad">${costBits}</span></div>` : ""}
         ${trip.blockedReason ? `<div class="cm-kv" style="color:#d07050"><span>⚠</span><span>${trip.blockedReason}</span></div>` : `<div class="cm-kv"><span class="cm-kv-label">Статус</span><span class="cm-kv-value cm-kv-value--good">Путь доступен</span></div>`}
       </div>
     `;
@@ -479,28 +589,33 @@ Object.assign(UI.prototype, {
     const xpIntoLevel = insights % 5;
     const xpPct = (xpIntoLevel / 5) * 100;
     const isEditingTitle = !!this._cmEditingTitle;
-    const currentTitle = state.title || "Человек";
+    const currentTitle = state.title || this._cmGetDefaultTitle();
     // Для input: используем сырой текст (браузер экранирует в атрибуте)
     // Для display: используем экранированный текст
     const titleDraftRaw = isEditingTitle
       ? this._cmEditingTitleDraft || currentTitle
       : currentTitle;
     const titleDraft = this._cmEscapeHtml(titleDraftRaw);
+    this._cmSyncModalTitle(currentTitle);
 
-    // Camp / trip badge — «B пути» только при реальном движении
-    const inCamp = !this._campTravelAction;
+    // Camp / trip badge follows the actual tile, not only active animation.
+    const inCamp =
+      state.location?.atCamp ??
+      state.location?.isAtCamp ??
+      this.game.isCharacterAtCamp?.() ??
+      true;
     const campBadge = inCamp
       ? `<div class="cm-hero-chip cm-hero-chip--camp">
            <span class="cm-hero-chip-icon">🔥</span>
            <span class="cm-hero-chip-text"><b>В лагере</b></span>
          </div>`
       : `<div class="cm-hero-chip">
-           <span class="cm-hero-chip-icon">🚶</span>
-           <span class="cm-hero-chip-text"><b>В пути</b>${state.tripProfile.zoneLabel ? `<span>${state.tripProfile.zoneLabel}</span>` : ""}</span>
+           <span class="cm-hero-chip-icon">${this._campTravelAction ? "🚶" : "🧭"}</span>
+           <span class="cm-hero-chip-text"><b>${this._campTravelAction ? "В пути" : "Вне лагеря"}</b><span>${state.location?.tileName || state.tripProfile?.zoneLabel || "Участок карты"}</span></span>
          </div>`;
 
-    // Carry badge: current load from trip profile (if any), else capacity only.
-    const carryLoad = state.tripProfile?.load;
+    // Carry badge: actual backpack load, not only selected trip estimate.
+    const carryLoad = state.carry?.carriedLoad;
     const carryMax = state.carry.capacity;
     const carryBadgeValue = Number.isFinite(carryLoad)
       ? `${this._cmFmt(carryLoad, 1)} / ${this._cmFmt(carryMax, 1)}`
@@ -526,10 +641,7 @@ Object.assign(UI.prototype, {
       max: state.satiety.max,
       pct: state.satiety.pct,
       kind: "satiety",
-      note:
-        (state.autoConsume?.food.ok
-          ? "Автопотребление: вкл"
-          : "Автопотребление: нет еды") + " (из лагеря)",
+      note: `${state.condition?.needs?.satiety?.label || "Сытость"}: ${state.condition?.needs?.satiety?.note || "Показывает, насколько персонаж готов восстанавливаться и работать."}`,
       currentDigits: 1,
     });
     const hydrationBar = this._cmRenderStatBar({
@@ -539,10 +651,7 @@ Object.assign(UI.prototype, {
       max: state.hydration.max,
       pct: state.hydration.pct,
       kind: "hydration",
-      note:
-        (state.autoConsume?.water.ok
-          ? "Автопотребление: вкл"
-          : "Автопотребление: нет воды") + " (из лагеря)",
+      note: `${state.condition?.needs?.hydration?.label || "Вода"}: ${state.condition?.needs?.hydration?.note || "Показывает, насколько персонаж выдержит путь и работу."}`,
       currentDigits: 1,
     });
     const carryCap = state.carry.capacity;
@@ -554,10 +663,7 @@ Object.assign(UI.prototype, {
       max: carryCap,
       pct: carryCap > 0 ? carryCur / carryCap : 0,
       kind: "carry",
-      note:
-        carryCur > carryCap * 0.85
-          ? "Скорость перемещения снижена"
-          : "Скорость перемещения без штрафов",
+      note: `${state.carry?.carriedLoadState?.label || "Нагрузка"}: ${state.carry?.carriedLoadState?.note || "Показывает, сколько персонаж реально несёт сейчас."}`,
       currentDigits: 1,
     });
 
@@ -637,25 +743,186 @@ Object.assign(UI.prototype, {
       : autoC.water.stock >= 1
         ? ""
         : "cm-toggle-state--paused";
-    const autoFoodThresholdPct = Math.round(autoC.food.threshold * 100);
-    const autoWaterThresholdPct = Math.round(autoC.water.threshold * 100);
     const noteParts = [];
-    noteParts.push(`Кликните «Вкл./Откл.», чтобы переключить автопотребление.`);
-    if (autoC.food.enabled && autoC.water.enabled) {
-      noteParts.push(
-        `Сытость < ${autoFoodThresholdPct}% → еда из склада (+${autoC.food.recovery.toFixed(1)}). Вода < ${autoWaterThresholdPct}% → +${autoC.water.recovery.toFixed(1)}.`,
-      );
-    }
+    noteParts.push(
+      "Тумблеры решают, будет ли лагерь автоматически давать еду и воду, когда персонаж просел после выхода.",
+    );
     if (!autoC.food.enabled || !autoC.water.enabled) {
-      noteParts.push(`Отключённые потребности не будут восполняться.`);
+      noteParts.push("Отключённая потребность не будет восполняться сама.");
     }
     if (autoC.food.enabled && autoC.food.stock < 1) {
-      noteParts.push(`🍖 Запасы еды кончились.`);
+      noteParts.push("🍖 Еды в лагере нет: нужен выход за пищей.");
     }
     if (autoC.water.enabled && autoC.water.stock < 1) {
-      noteParts.push(`💧 Запасы воды кончились.`);
+      noteParts.push("💧 Воды в лагере нет: нужен выход к источнику.");
     }
     const autoNote = noteParts.join(" ");
+    const status = this._cpComputePanelStatus
+      ? this._cpComputePanelStatus(state)
+      : {
+          label: state.condition?.label || "Состояние",
+          note: state.condition?.description || "",
+          tone: "info",
+        };
+    const trip = state.tripProfile || null;
+    const rest = state.restProfile || {};
+    const tripKind =
+      state.tripType === "build"
+        ? "Стройка"
+        : state.tripType === "trail"
+          ? "Тропа"
+          : state.tripType === "gather"
+            ? "Сбор"
+            : "Выход";
+    const rangeSummaryValue =
+      state.condition.maxSafeDistance >= 99
+        ? "Вся открытая карта"
+        : state.condition.maxSafeDistance <= 1
+          ? "Только рядом с лагерем"
+          : `До ${state.condition.maxSafeDistance} переходов`;
+    const enduranceNote =
+      state.stats.enduranceBonus > 0
+        ? `+${state.stats.enduranceBonus} к безопасной дальности`
+        : "дальность пока держится только на текущих силах";
+    const fieldcraftValue =
+      state.stats.fieldcraft > 0
+        ? `снимает до ${state.stats.fieldcraft} штрафа пути`
+        : "без облегчения пути";
+    const fieldcraftYieldBonus = state.stats.foragingYieldBonus || 0;
+    const surveyRevealBonus = state.stats.surveyRevealBonus || 0;
+    const fieldcraftNote =
+      state.stats.fieldcraft > 0
+        ? `хуже ощущаются тяжёлая местность и дальние выходы${fieldcraftYieldBonus > 0 ? `, а вода, еда и волокно дают +${fieldcraftYieldBonus}` : ""}${surveyRevealBonus > 0 ? ", при разведке может открыться соседняя клетка" : ""}`
+        : "дистанция и тяжёлая почва бьют в полную силу";
+    const useEarlySharedStock =
+      this.game._shouldUseEarlySharedStock?.() || false;
+    const carryValue =
+      state.carry.carriedLoad > 0
+        ? `${this.formatNumber(state.carry.carriedLoad)} / ${this.formatNumber(state.carry.capacity)} ед.`
+        : `${this.formatNumber(state.carry.capacity)} ед.`;
+    const carryNote =
+      state.carry.carriedLoad > 0
+        ? `свободно ещё ${this.formatNumber(state.carry.availableCapacity)} ед.`
+        : useEarlySharedStock
+          ? "до основания лагеря найденное сразу считается ранним запасом у ночёвки"
+          : state.carry.capacityBonus > 0
+            ? `лагерь и уклад дают +${this.formatNumber(state.carry.capacityBonus, 0)} к переноске`
+            : "весь груз уносится на себе";
+    const strengthCapacityBonus = state.carry.strengthCapacityBonus || 0;
+    const heavyLoadPct = Math.round((state.carry.heavyThreshold || 0.85) * 100);
+    const extractionYieldBonus = state.stats.extractionYieldBonus || 0;
+    const strengthNote =
+      strengthCapacityBonus > 0
+        ? `+${this.formatNumber(strengthCapacityBonus, 1)} к переноске, тяжёлый груз с ${heavyLoadPct}%${extractionYieldBonus > 0 ? `, тяжёлая добыча +${extractionYieldBonus}` : ""}`
+        : extractionYieldBonus > 0
+          ? `тяжёлая добыча даёт +${extractionYieldBonus}, тяжёлый груз с ${heavyLoadPct}% переносимости`
+          : `тяжёлый груз начинается с ${heavyLoadPct}% переносимости`;
+    const travelGainPct = Math.max(
+      0,
+      Math.round((1 - (state.stats.travelSpeedMultiplier || 1)) * 100),
+    );
+    const needsRelief = state.stats.needsRelief || 0;
+    const mobilityNote =
+      needsRelief > 0
+        ? `дальние выходы тратят на ${this.formatNumber(needsRelief, 2)} меньше еды и воды`
+        : "еда и вода тратятся без снижения от хода";
+    const ingenuityGainPct = Math.max(
+      0,
+      Math.round((1 - (state.stats.ingenuityTimeMultiplier || 1)) * 100),
+    );
+    const supplySalvageBonus = state.stats.supplySalvageBonus || 0;
+    const ingenuityValue =
+      ingenuityGainPct > 0
+        ? `-${ingenuityGainPct}% к времени`
+        : "базовый разбор";
+    const ingenuityNote =
+      ingenuityGainPct > 0
+        ? `быстрее крафт, исследования и очередь знаний${supplySalvageBonus > 0 ? `, припасы дают +${supplySalvageBonus}` : ""}${surveyRevealBonus > 0 ? ", проще читать следы на карте" : ""}`
+        : supplySalvageBonus > 0 || surveyRevealBonus > 0
+          ? `припасы дают +${supplySalvageBonus}, а разведка лучше читает соседние следы`
+          : "крафт и исследования идут без ускорения";
+    const recoverySummary = state.recovery?.summary || "нет опоры отдыха";
+    const overviewCards = this._cpBuildOverviewCards
+      ? this._cpBuildOverviewCards({
+          state,
+          status,
+          trip,
+          tripKind,
+          rest,
+          recoverySummary,
+          rangeValue: rangeSummaryValue,
+          enduranceNote,
+          mobilityNote,
+        })
+      : [];
+    const cargoNote = [carryNote, strengthNote].filter(Boolean).join(". ");
+    const capabilityCards = [
+      {
+        icon: "🗺",
+        title: "Дальние выходы",
+        value: rangeSummaryValue,
+        note: `${enduranceNote}. ${mobilityNote}`,
+      },
+      {
+        icon: "🥾",
+        title: "Путь и сбор",
+        value: fieldcraftValue,
+        note: fieldcraftNote,
+      },
+      {
+        icon: "🎒",
+        title: "Груз",
+        value: carryValue,
+        note: cargoNote,
+      },
+      {
+        icon: "🛠",
+        title: "Ремесло и смекалка",
+        value: ingenuityValue,
+        note: ingenuityNote,
+      },
+    ];
+    const supportStateLabel =
+      autoC.food.ok && autoC.water.ok
+        ? "Лагерь держит базовые нужды"
+        : autoC.food.ok || autoC.water.ok
+          ? "Лагерь помогает лишь частично"
+          : "Лагерь не подстрахует";
+    const normalizedRecoverySummary = this._cmSentenceCase(recoverySummary);
+    const supportStateNote =
+      autoC.food.ok && autoC.water.ok
+        ? `Запасов хватит примерно на ${this._cmFmt(hoursFood, 1)} ч. еды и ${this._cmFmt(hoursWater, 1)} ч. воды. ${normalizedRecoverySummary}.`
+        : autoC.food.ok || autoC.water.ok
+          ? `Одна из базовых нужд ещё закрыта, но устойчивости уже не хватает. ${normalizedRecoverySummary}.`
+          : `Еда или вода закончились, поэтому следующий цикл будет опираться только на текущие запасы тела. ${normalizedRecoverySummary}.`;
+    const supportToneClass =
+      autoC.food.ok && autoC.water.ok
+        ? "ok"
+        : autoC.food.ok || autoC.water.ok
+          ? "warn"
+          : "bad";
+    const satietyRateNote = this._cmDescribeNeedRate(
+      passiveDrainSat,
+      "Сытость",
+    );
+    const hydrationRateNote = this._cmDescribeNeedRate(passiveDrainHyd, "Вода");
+    const foodAutoLabel = !autoC.food.enabled
+      ? "отключено вручную"
+      : autoC.food.stock < 1
+        ? "еды в лагере нет"
+        : "включится при голоде";
+    const waterAutoLabel = !autoC.water.enabled
+      ? "отключено вручную"
+      : autoC.water.stock < 1
+        ? "воды в лагере нет"
+        : "включится при жажде";
+    const statusToneClass =
+      status.tone === "bad" ? "bad" : status.tone === "warn" ? "warn" : "ok";
+    const actionSectionTitle = trip
+      ? "Если идти сейчас"
+      : inCamp
+        ? "Сейчас в лагере"
+        : "Положение персонажа";
 
     container.innerHTML = `
       <!-- Hero -->
@@ -695,58 +962,81 @@ Object.assign(UI.prototype, {
         </div>
       </div>
 
-      <!-- 3-column grid -->
+      <div class="cm-overview-grid">
+        ${overviewCards
+          .map(
+            (card) => `
+          <div class="cm-overview-card cm-overview-card--${card.tone || "info"}">
+            <div class="cm-overview-label">${card.title}</div>
+            <div class="cm-overview-value">${card.value}</div>
+            <div class="cm-overview-note">${card.note}</div>
+          </div>`,
+          )
+          .join("")}
+      </div>
+
       <div class="cm-grid">
-        <!-- LEFT -->
         <div class="cm-col">
           <div class="cm-card">
+            <div class="cm-card-title">Жизненные показатели</div>
             ${energyBar}
             ${satietyBar}
             ${hydrationBar}
             ${carryBar}
           </div>
           <div class="cm-card">
-            <div class="cm-card-title">Состояние</div>
+            <div class="cm-card-title">Состояние сейчас</div>
+            <div class="cm-note-box cm-note-box--${statusToneClass}">
+              <div class="cm-note-title">${status.label}</div>
+              <div class="cm-note-copy">${status.note}</div>
+            </div>
             <div class="cm-state-list">${statesHtml}</div>
           </div>
         </div>
 
-        <!-- MIDDLE -->
         <div class="cm-col">
           <div class="cm-card">
-            <div class="cm-card-title">Текущее действие</div>
+            <div class="cm-card-title">${actionSectionTitle}</div>
             ${this._cmRenderActionBlock(state)}
+            <div class="cm-section-divider"></div>
+            ${this._cmRenderTripTarget(state)}
           </div>
           <div class="cm-card">
-            <div class="cm-card-title">Режим в лагере</div>
-            <div class="cm-kv-list">
-              <div class="cm-kv"><span class="cm-kv-label">🍖 Сытость</span><span class="cm-kv-value cm-kv-value--bad">−${this._cmFmt(passiveDrainSat, 2)} / мин</span></div>
-              <div class="cm-kv"><span class="cm-kv-label">💧 Вода</span><span class="cm-kv-value cm-kv-value--bad">−${this._cmFmt(passiveDrainHyd, 2)} / мин</span></div>
-              <div class="cm-kv"><span class="cm-kv-label">🔄 Автопотребление</span><span class="cm-kv-value ${autoC.food.ok && autoC.water.ok ? "cm-kv-value--good" : "cm-kv-value--bad"}">${autoC.food.ok && autoC.water.ok ? "включено" : autoC.food.ok || autoC.water.ok ? "частично" : "нет запасов"}</span></div>
-              ${
-                autoC.shelter?.hasShelter || autoC.shelter?.hasCampfire
-                  ? `<div class="cm-kv"><span class="cm-kv-label">🏕 Эффект построек</span><span class="cm-kv-value cm-kv-value--good">расход ×${this._cmFmt(autoC.drain?.satietyMult ?? 1, 2)}</span></div>`
-                  : `<div class="cm-kv"><span class="cm-kv-label">🏕 Без построек</span><span class="cm-kv-value">костёр и укрытие снизят расход</span></div>`
-              }
-            </div>
-          </div>
-          <div class="cm-card">
-            <div class="cm-card-title">Лагерь обеспечивает</div>
-            ${this._cmRenderCampSupply()}
-            <div class="cm-auto-note">
-              Запасов хватит на ~${this._cmFmt(hoursFood, 1)} ч. еды и ~${this._cmFmt(hoursWater, 1)} ч. воды.
+            <div class="cm-card-title">Походные возможности</div>
+            <div class="cm-practical-grid">
+              ${capabilityCards
+                .map(
+                  (card) => `
+                <div class="cm-practical-card">
+                  <div class="cm-practical-label">${card.icon} ${card.title}</div>
+                  <div class="cm-practical-value">${card.value}</div>
+                  <div class="cm-practical-note">${card.note}</div>
+                </div>`,
+                )
+                .join("")}
             </div>
           </div>
         </div>
 
-        <!-- RIGHT -->
         <div class="cm-col">
           <div class="cm-card">
-            <div class="cm-card-title">Инвентарь</div>
-            ${this._cmRenderInventory()}
-          </div>
-          <div class="cm-card">
-            <div class="cm-card-title">Автопотребление в лагере</div>
+            <div class="cm-card-title">Поддержка лагеря</div>
+            <div class="cm-note-box cm-note-box--${supportToneClass}">
+              <div class="cm-note-title">${supportStateLabel}</div>
+              <div class="cm-note-copy">${supportStateNote}</div>
+            </div>
+            ${this._cmRenderCampSupply()}
+            <div class="cm-kv-list cm-kv-list--spaced">
+              <div class="cm-kv"><span class="cm-kv-label">🍖 Ритм сытости</span><span class="cm-kv-value">${satietyRateNote}</span></div>
+              <div class="cm-kv"><span class="cm-kv-label">💧 Ритм воды</span><span class="cm-kv-value">${hydrationRateNote}</span></div>
+              <div class="cm-kv"><span class="cm-kv-label">🍖 Еда из лагеря</span><span class="cm-kv-value ${autoC.food.enabled && autoC.food.stock >= 1 ? "cm-kv-value--good" : "cm-kv-value--bad"}">${foodAutoLabel}</span></div>
+              <div class="cm-kv"><span class="cm-kv-label">💧 Вода из лагеря</span><span class="cm-kv-value ${autoC.water.enabled && autoC.water.stock >= 1 ? "cm-kv-value--good" : "cm-kv-value--bad"}">${waterAutoLabel}</span></div>
+              ${
+                autoC.shelter?.hasShelter || autoC.shelter?.hasCampfire
+                  ? `<div class="cm-kv"><span class="cm-kv-label">🏕 Эффект построек</span><span class="cm-kv-value cm-kv-value--good">расход ×${this._cmFmt(autoC.drain?.satietyMult ?? 1, 2)}</span></div>`
+                  : `<div class="cm-kv"><span class="cm-kv-label">🏕 Без построек</span><span class="cm-kv-value">костёр и укрытие ещё только предстоят</span></div>`
+              }
+            </div>
             <div class="cm-toggle-row">
               <span class="cm-toggle-label">🍖 Еда</span>
               <button type="button" data-cm-toggle="food" aria-pressed="${autoC.food.enabled ? "true" : "false"}" class="cm-toggle-state ${foodToggleCls}">${foodToggleState}</button>
@@ -760,8 +1050,9 @@ Object.assign(UI.prototype, {
             </div>
           </div>
           <div class="cm-card">
-            <div class="cm-card-title">Выход: ближайшая цель</div>
-            ${this._cmRenderTripTarget(state)}
+            <div class="cm-card-title">Инвентарь и груз</div>
+            ${this._cmRenderInventory(state)}
+            <div class="cm-auto-note">${cargoNote}</div>
           </div>
         </div>
       </div>
@@ -772,5 +1063,7 @@ Object.assign(UI.prototype, {
         <span>Совет: улучшайте лагерь, чтобы снижать расход и быстрее восстанавливаться.</span>
       </div>
     `;
+
+    this._cmSyncModalTitle(currentTitle);
   },
 });

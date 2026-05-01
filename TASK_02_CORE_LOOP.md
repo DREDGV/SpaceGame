@@ -1,6 +1,11 @@
 # TASK 02 — CORE GAME LOOP UPGRADE
 
+**Status:** IMPLEMENTED  
+**Audit:** v0.1.18  
+**Note:** Основной результат уже реализован; документ полезен как историческая спецификация.
+
 ## Goal
+
 Transform the prototype from a basic click-based system into an early-stage economic system with constraints, automation, and meaningful decisions.
 
 ---
@@ -8,11 +13,13 @@ Transform the prototype from a basic click-based system into an early-stage econ
 ## 1. Player Energy System (REQUIRED)
 
 ### Mechanics
+
 - Player has energy (e.g. 10 max)
 - Gathering actions consume energy
 - Energy regenerates over time
 
 ### Purpose
+
 - Prevent infinite clicking
 - Force prioritization
 - Introduce decision-making
@@ -22,19 +29,23 @@ Transform the prototype from a basic click-based system into an early-stage econ
 ## 2. First Automation Layer (REQUIRED)
 
 ### Implement:
+
 At least 1 building that performs automatic actions over time.
 
 Example:
+
 - Campfire:
   - converts clay → brick every X seconds
 
 ### Requirements:
+
 - runs automatically
 - consumes input resources
 - produces output resources
 - visible in UI
 
 ### Purpose:
+
 - shift from manual play to system thinking
 
 ---
@@ -42,13 +53,16 @@ Example:
 ## 3. Tool Impact System (REQUIRED)
 
 ### Mechanics:
+
 Tools affect gathering efficiency.
 
 Example:
+
 - no tools → +1 wood
 - crude_tools → +2 wood
 
 ### Purpose:
+
 - reward crafting
 - create progression feel
 
@@ -57,12 +71,14 @@ Example:
 ## 4. Resource Flow Clarity (REQUIRED)
 
 ### Add:
+
 - visual or textual indication of:
   - input → output
   - what produces what
   - what consumes what
 
 ### Purpose:
+
 - help player understand system
 
 ---
@@ -70,11 +86,13 @@ Example:
 ## 5. Basic Bottleneck System (IMPORTANT)
 
 At least one limitation must exist:
+
 - storage limit OR
 - energy limit OR
 - production speed limit
 
 ### Purpose:
+
 - force decisions
 - prevent mindless accumulation
 
@@ -113,6 +131,7 @@ The upgrade is complete when:
 ## 9. Restrictions
 
 DO NOT add:
+
 - multiplayer
 - backend
 - space systems

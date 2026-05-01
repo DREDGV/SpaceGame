@@ -1,5 +1,9 @@
 # TASK 04 — ONBOARDING SYSTEM
 
+**Status:** SUPERSEDED  
+**Audit:** v0.1.18  
+**Note:** Документ заменён более новым прологовым стартом и сохранён только для истории.
+
 ## Goal
 
 Implement a simple onboarding system that:

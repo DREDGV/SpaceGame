@@ -1,7 +1,6 @@
 // UI utility helpers — formatting, tooltips-text, DOM helpers.
 
 Object.assign(UI.prototype, {
-
   formatResourcePairs(resourceMap, { plus = false, decimals = 0 } = {}) {
     return Object.entries(resourceMap)
       .map(([id, amount]) => {
@@ -72,16 +71,34 @@ Object.assign(UI.prototype, {
     return icon.includes("<") ? fallback : icon;
   },
 
+  hasToolingPresentationUnlock() {
+    return (
+      (this.game.resources?.crude_tools || 0) >= 1 ||
+      (this.game.resourceTotals?.crude_tools || 0) >= 1 ||
+      (this.game.resources?.improved_tools || 0) >= 1 ||
+      (this.game.resourceTotals?.improved_tools || 0) >= 1 ||
+      !!this.game.researched?.basic_tools
+    );
+  },
+
+  shouldUseEarlyProgressionCopy() {
+    if (typeof this.game.isEarlyProgressionMode === "function") {
+      return this.game.isEarlyProgressionMode();
+    }
+    return this.game.isPrologueActive() || !this.hasToolingPresentationUnlock();
+  },
+
   getGatherActionCopy(action) {
     if (!action) {
       return {
         name: "Неизвестное действие",
-        description: "Данные действия не найдены. Это нужно проверить в настройках карты.",
+        description:
+          "Данные действия не найдены. Это нужно проверить в настройках карты.",
         icon: "?",
       };
     }
 
-    if (this.game.isPrologueActive()) {
+    if (this.shouldUseEarlyProgressionCopy()) {
       return {
         name: action.prologueName || action.name,
         description: action.prologueDescription || action.description,
@@ -97,7 +114,7 @@ Object.assign(UI.prototype, {
   },
 
   getRecipeCopy(recipe) {
-    if (this.game.isPrologueActive()) {
+    if (this.shouldUseEarlyProgressionCopy()) {
       return {
         name: recipe.prologueName || recipe.name,
         description: recipe.prologueDescription || recipe.description,
@@ -113,7 +130,7 @@ Object.assign(UI.prototype, {
   },
 
   getBuildingCopy(building) {
-    if (this.game.isPrologueActive()) {
+    if (this.shouldUseEarlyProgressionCopy()) {
       return {
         name: building.prologueName || building.name,
         description: building.prologueDescription || building.description,
@@ -131,7 +148,7 @@ Object.assign(UI.prototype, {
   getResourceDisplayName(resourceId) {
     const resource = this.data.resources?.[resourceId];
     if (!resource) return resourceId;
-    if (this.game.isPrologueActive() && resource.prologueName) {
+    if (this.shouldUseEarlyProgressionCopy() && resource.prologueName) {
       return resource.prologueName;
     }
     return resource.name || resourceId;
@@ -140,7 +157,7 @@ Object.assign(UI.prototype, {
   getResourceDisplayIcon(resourceId) {
     const resource = this.data.resources?.[resourceId];
     if (!resource) return "";
-    if (this.game.isPrologueActive() && resource.prologueIcon) {
+    if (this.shouldUseEarlyProgressionCopy() && resource.prologueIcon) {
       return resource.prologueIcon;
     }
     return resource.icon || "";
@@ -177,4 +194,124 @@ Object.assign(UI.prototype, {
     return card;
   },
 
+  _getInsightImageCandidates({ imagePath = "", insightId = "" } = {}) {
+    const EXTENSIONS = [".webp", ".png", ".jpg", ".jpeg"];
+    const candidates = [];
+    const seen = new Set();
+
+    const addCandidate = (candidate) => {
+      if (typeof candidate !== "string") return;
+      const normalized = candidate.trim().replace(/\\/g, "/");
+      if (!normalized || seen.has(normalized)) return;
+      seen.add(normalized);
+      candidates.push(normalized);
+    };
+
+    const addPathVariants = (path) => {
+      const normalized = typeof path === "string"
+        ? path.trim().replace(/\\/g, "/")
+        : "";
+      if (!normalized) return;
+
+      const match = normalized.match(/^(.*?)(\.[a-zA-Z0-9]+)$/);
+      if (match) {
+        const [, basePath, extension] = match;
+        addCandidate(normalized);
+        for (const ext of EXTENSIONS) {
+          if (ext === extension.toLowerCase()) continue;
+          addCandidate(`${basePath}${ext}`);
+        }
+      } else {
+        for (const ext of EXTENSIONS) {
+          addCandidate(`${normalized}${ext}`);
+        }
+      }
+    };
+
+    const addLegacyMirrorVariants = (path) => {
+      const normalized = typeof path === "string"
+        ? path.trim().replace(/\\/g, "/")
+        : "";
+      if (!normalized) return;
+
+      if (normalized.startsWith("assets/insights/")) {
+        addPathVariants(
+          `assets/${normalized.slice("assets/insights/".length)}`,
+        );
+        addPathVariants(
+          `prototype/assets/insights/${normalized.slice("assets/insights/".length)}`,
+        );
+        addPathVariants(
+          `prototype/assets/${normalized.slice("assets/insights/".length)}`,
+        );
+      }
+
+      if (normalized.startsWith("prototype/assets/insights/")) {
+        addPathVariants(
+          `assets/insights/${normalized.slice("prototype/assets/insights/".length)}`,
+        );
+        addPathVariants(
+          `assets/${normalized.slice("prototype/assets/insights/".length)}`,
+        );
+        addPathVariants(
+          `prototype/assets/${normalized.slice("prototype/assets/insights/".length)}`,
+        );
+      }
+
+      if (normalized.startsWith("assets/")) {
+        addPathVariants(
+          `prototype/${normalized}`,
+        );
+      }
+
+      if (normalized.startsWith("prototype/assets/")) {
+        addPathVariants(
+          normalized.slice("prototype/".length),
+        );
+      }
+    };
+
+    addPathVariants(imagePath);
+    addLegacyMirrorVariants(imagePath);
+
+    if (insightId) {
+      addPathVariants(`assets/insights/${insightId}`);
+      addPathVariants(`assets/${insightId}`);
+      addPathVariants(`prototype/assets/insights/${insightId}`);
+      addPathVariants(`prototype/assets/${insightId}`);
+    }
+
+    return candidates;
+  },
+
+  _renderAutoResolvedImageMarkup({
+    className,
+    alt,
+    candidates,
+  }) {
+    if (!Array.isArray(candidates) || candidates.length === 0) return "";
+
+    const [primarySource, ...fallbackSources] = candidates;
+    const fallbackAttr = fallbackSources.length
+      ? ` data-image-candidates="${fallbackSources.join("||")}"`
+      : "";
+
+    return `<img class="${className}" src="${primarySource}" alt="${alt}"${fallbackAttr} />`;
+  },
+
+  _tryAdvanceAutoImageSource(image) {
+    if (!image) return false;
+    const rawCandidates = image.dataset.imageCandidates || "";
+    if (!rawCandidates) return false;
+
+    const remaining = rawCandidates.split("||").filter(Boolean);
+    if (!remaining.length) return false;
+
+    const [nextSource, ...nextRemaining] = remaining;
+    image.dataset.imageCandidates = nextRemaining.join("||");
+    image.hidden = false;
+    image.removeAttribute("aria-hidden");
+    image.src = nextSource;
+    return true;
+  },
 });

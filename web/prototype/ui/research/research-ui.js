@@ -40,7 +40,7 @@ Object.assign(UI.prototype, {
       const unlockedCount = insights.filter((i) => i.unlocked).length;
       const total = insights.length;
       const pct = total > 0 ? Math.round((unlockedCount / total) * 100) : 0;
-      const latestUnlocked = [...insights].reverse().find((i) => i.unlocked);
+      const latestUnlocked = this._getLatestUnlockedPrologueInsight(insights);
       const nextInsight = insights.find((i) => !i.unlocked);
       const hasNew = unlockedCount < total;
 
@@ -64,7 +64,7 @@ Object.assign(UI.prototype, {
           <div class="science-card-hint">
             ${
               nextInsight
-                ? `Следующее: ${nextInsight.conditionText || "продолжайте действовать"}`
+                ? `Один из возможных следов: ${nextInsight.conditionText || "продолжайте действовать"}`
                 : "Все ранние озарения открыты"
             }
           </div>
@@ -174,67 +174,517 @@ Object.assign(UI.prototype, {
   },
 
   _renderPrologueInsightsBody(container) {
+    container.classList.add("is-prologue-insights");
     container.innerHTML = "";
 
     const insights = this.game.getPrologueInsightsState();
+    if (!insights.length) {
+      container.innerHTML =
+        '<div class="insight-sidebar-card">Озарения пока не появились.</div>';
+      return;
+    }
+
+    const knowledgeEntries = this.game.getKnowledgeEntries?.() ?? [];
+    const knowledgeById = new Map(
+      knowledgeEntries.map((entry) => [entry.id, entry]),
+    );
+    const insightsById = new Map(
+      insights.map((insight) => [insight.id, insight]),
+    );
+    const incomingLinks = new Map(insights.map((insight) => [insight.id, []]));
+    for (const insight of insights) {
+      for (const targetId of insight.leadsTo || []) {
+        if (!incomingLinks.has(targetId)) continue;
+        incomingLinks.get(targetId).push(insight);
+      }
+    }
+
+    const PHASE_COLORS = {
+      Наблюдения: "#d97706",
+      Сборка: "#0891b2",
+      Огонь: "#dc2626",
+    };
     const unlockedCount = insights.filter((i) => i.unlocked).length;
     const total = insights.length;
     const pct = total > 0 ? Math.round((unlockedCount / total) * 100) : 0;
+    const selectedInsight = this._getSelectedPrologueInsight(insights);
+    const selectedKnowledgeEntry = selectedInsight?.knowledgeEntry
+      ? knowledgeById.get(selectedInsight.knowledgeEntry) || null
+      : null;
+    const selectedOutgoing = selectedInsight
+      ? (selectedInsight.leadsTo || [])
+          .map((id) => insightsById.get(id))
+          .filter(Boolean)
+      : [];
+    const selectedIncoming = selectedInsight
+      ? incomingLinks.get(selectedInsight.id) || []
+      : [];
+    const relatedIds = new Set([
+      ...selectedOutgoing.map((insight) => insight.id),
+      ...selectedIncoming.map((insight) => insight.id),
+    ]);
+
+    const phaseSummary = Array.from(
+      insights
+        .reduce((map, insight) => {
+          const phase = insight.phase || "Озарение";
+          const current = map.get(phase) || {
+            phase,
+            total: 0,
+            unlocked: 0,
+            color: PHASE_COLORS[phase] || "#a78bfa",
+          };
+          current.total += 1;
+          if (insight.unlocked) current.unlocked += 1;
+          map.set(phase, current);
+          return map;
+        }, new Map())
+        .values(),
+    );
+
+    const NODE_W = 236;
+    const NODE_H = 160;
+    const COL_W = 268;
+    const ROW_H = 194;
+    const PAD_X = 30;
+    const PAD_Y = 30;
+    const maxCol = Math.max(
+      ...insights.map((insight) => insight.map?.col || 1),
+      1,
+    );
+    const maxRow = Math.max(
+      ...insights.map((insight) => insight.map?.row || 1),
+      1,
+    );
+    const leftForCol = (col) => PAD_X + (col - 1) * COL_W;
+    const topForRow = (row) => PAD_Y + (row - 1) * ROW_H;
+    const centerX = (col) => leftForCol(col) + NODE_W / 2;
+    const centerY = (row) => topForRow(row) + NODE_H / 2;
+    const canvasW = PAD_X * 2 + maxCol * COL_W - (COL_W - NODE_W);
+    const canvasH = PAD_Y * 2 + maxRow * ROW_H - (ROW_H - NODE_H);
 
     const header = document.createElement("div");
     header.className = "insight-map-header";
     header.innerHTML = `
-      <div class="insight-map-title">Карта мыслей</div>
-      <div class="insight-map-subtitle">${this.data.prologue?.insightsHint || "Озарения приходят из практики, а не из меню."}</div>
+      <div class="insight-map-title-row">
+        <div>
+          <div class="insight-map-title">Карта мыслей</div>
+          <div class="insight-map-subtitle">${this.data.prologue?.insightsHint || "Озарения приходят из практики, а не из меню."}</div>
+          <div class="insight-map-context">
+            <span class="insight-map-context-chip is-primary">Открываются по ходу действий</span>
+            <span class="insight-map-context-chip">Порядок не фиксирован</span>
+          </div>
+        </div>
+      </div>
       <div class="insight-map-progress">
         <div class="insight-map-bar"><div class="insight-map-bar-fill" style="width:${pct}%"></div></div>
         <span class="insight-map-count">${unlockedCount} / ${total}</span>
       </div>
+      <div class="insight-map-phase-chips">
+        ${phaseSummary
+          .map(
+            (phase) => `
+              <div class="insight-phase-chip" style="--insight-phase:${phase.color}">
+                <span>${phase.phase}</span>
+                <strong>${phase.unlocked}/${phase.total}</strong>
+              </div>`,
+          )
+          .join("")}
+      </div>
     `;
     container.appendChild(header);
 
+    const workspace = document.createElement("div");
+    workspace.className = "insight-workspace";
+
+    const mapColumn = document.createElement("div");
+    mapColumn.className = "insight-column";
+
+    const mapShell = document.createElement("section");
+    mapShell.className = "insight-map-shell";
+    mapShell.innerHTML = `
+      <div class="insight-map-legend">
+        <span class="insight-map-legend-item is-active">Связь уже прожита</span>
+        <span class="insight-map-legend-item is-ready">Связь уже намечена</span>
+        <span class="insight-map-legend-item is-dormant">Дальняя ветка</span>
+      </div>
+      <div class="insight-map-shell-note">Карта показывает возможные связи между находками. Ранние наблюдения могут открываться в разной последовательности.</div>
+    `;
+
+    const mapScroll = document.createElement("div");
+    mapScroll.className = "insight-map-scroll";
+
     const map = document.createElement("div");
-    map.className = "insight-map";
+    map.className = "insight-map-canvas";
+    map.style.width = `${canvasW}px`;
+    map.style.height = `${canvasH}px`;
+
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("width", canvasW);
+    svg.setAttribute("height", canvasH);
+    svg.classList.add("insight-map-svg");
 
     for (const insight of insights) {
-      const node = document.createElement("div");
-      node.className = `insight-node${insight.unlocked ? " is-unlocked" : " is-hidden"}`;
+      const sourcePos = insight.map || { col: 1, row: 1 };
+      const sourceAccent = PHASE_COLORS[insight.phase] || "#a78bfa";
+      for (const targetId of insight.leadsTo || []) {
+        const targetInsight = insightsById.get(targetId);
+        if (!targetInsight) continue;
+        const targetPos = targetInsight.map || { col: 1, row: 1 };
+        const x1 = leftForCol(sourcePos.col) + NODE_W;
+        const y1 = centerY(sourcePos.row);
+        const x2 = leftForCol(targetPos.col);
+        const y2 = centerY(targetPos.row);
+        const dx = Math.max(44, Math.abs(x2 - x1) * 0.46);
+        const path = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "path",
+        );
+        path.setAttribute(
+          "d",
+          `M${x1} ${y1} C${x1 + dx} ${y1},${x2 - dx} ${y2},${x2} ${y2}`,
+        );
+        path.style.setProperty("--insight-link-color", sourceAccent);
+        path.classList.add("insight-link");
+        if (insight.unlocked && targetInsight.unlocked) {
+          path.classList.add("is-active");
+        } else if (insight.unlocked && !targetInsight.unlocked) {
+          path.classList.add("is-ready");
+        } else {
+          path.classList.add("is-dormant");
+        }
+        if (
+          selectedInsight &&
+          (insight.id === selectedInsight.id ||
+            targetInsight.id === selectedInsight.id)
+        ) {
+          path.classList.add("is-related");
+        }
+        svg.appendChild(path);
+      }
+    }
+
+    map.appendChild(svg);
+
+    for (const insight of insights) {
+      const node = document.createElement("button");
+      node.type = "button";
+      node.className = `insight-node${insight.unlocked ? " is-unlocked" : " is-hidden"}${selectedInsight?.id === insight.id ? " is-selected" : ""}${relatedIds.has(insight.id) ? " is-related" : ""}`;
+      const pos = insight.map || { col: 1, row: 1 };
+      const accent = PHASE_COLORS[insight.phase] || "#a78bfa";
+      node.style.left = `${leftForCol(pos.col)}px`;
+      node.style.top = `${topForRow(pos.row)}px`;
+      node.style.width = `${NODE_W}px`;
+      node.style.height = `${NODE_H}px`;
+      node.style.setProperty("--insight-accent", accent);
+      const knowledgeEntry = insight.knowledgeEntry
+        ? knowledgeById.get(insight.knowledgeEntry)
+        : null;
+      const mediaMarkup = this._renderPrologueInsightMediaMarkup(insight, {
+        variant: "node",
+        revealImage: insight.unlocked,
+      });
+      const nodeTitle = insight.unlocked ? insight.name : "???";
+      const nodeText = insight.unlocked
+        ? insight.description
+        : insight.conditionText || "Открывается из действий";
+      const metaText = insight.unlocked
+        ? knowledgeEntry
+          ? `📚 ${knowledgeEntry.title}`
+          : "Открыто"
+        : "Следите за действиями и находками";
+
+      node.innerHTML = `
+        <div class="insight-node-badge">${insight.phase || "Озарение"}</div>
+        ${mediaMarkup}
+        <div class="insight-node-body">
+          <div class="insight-node-name">${nodeTitle}</div>
+          <div class="insight-node-desc">${nodeText}</div>
+          <div class="insight-node-meta">${metaText}</div>
+          ${insight.unlocked ? '<div class="insight-node-open">Открыть сцену</div>' : ""}
+        </div>
+      `;
 
       if (insight.unlocked) {
-        const outcomesHtml =
-          Array.isArray(insight.outcomes) && insight.outcomes.length > 0
-            ? `<div class="insight-node-outcomes">${insight.outcomes.map((o) => `<span>${o}</span>`).join("")}</div>`
-            : "";
-        node.innerHTML = `
-          <div class="insight-node-icon">${insight.icon}</div>
-          <div class="insight-node-name">${insight.name}</div>
-          <div class="insight-node-desc">${insight.description}</div>
-          ${insight.unlockText ? `<div class="insight-node-note">${insight.unlockText}</div>` : ""}
-          ${outcomesHtml}
-        `;
         this.setTooltip(node, [
           insight.name,
           insight.description,
+          ...(knowledgeEntry ? [`Запись: ${knowledgeEntry.title}`] : []),
           ...(insight.outcomes || []),
         ]);
       } else {
+        const hiddenMedia = this._renderPrologueInsightMediaMarkup(insight, {
+          variant: "node",
+          revealImage: false,
+        });
         node.innerHTML = `
-          <div class="insight-node-icon">🔍</div>
-          <div class="insight-node-name">???</div>
-          <div class="insight-node-cond">${insight.conditionText || "Открывается из действий"}</div>
+          <div class="insight-node-badge is-hidden">Скрытый след</div>
+          ${hiddenMedia}
+          <div class="insight-node-body is-hidden">
+            <div class="insight-node-name">???</div>
+            <div class="insight-node-cond">${insight.conditionText || "Открывается из действий"}</div>
+            <div class="insight-node-meta">Появляется через сбор, наблюдение и практику.</div>
+          </div>
         `;
         this.setTooltip(node, [
           insight.conditionText || "Продолжайте действовать",
         ]);
       }
 
+      node.addEventListener("click", () => {
+        this._selectedPrologueInsightId = insight.id;
+        this._renderPrologueInsightsBody(container);
+        if (insight.unlocked) {
+          this.openInsightDiscoveryPreview?.(insight.id);
+        }
+      });
+
       map.appendChild(node);
     }
 
-    container.appendChild(map);
+    mapScroll.appendChild(map);
+    mapShell.appendChild(mapScroll);
+    mapColumn.appendChild(mapShell);
+    workspace.appendChild(mapColumn);
+
+    const knowledgeSidebar = document.createElement("aside");
+    knowledgeSidebar.className = "insight-sidebar";
+
+    const latestEntry =
+      knowledgeEntries.length > 0
+        ? knowledgeEntries[knowledgeEntries.length - 1]
+        : null;
+    const pluralEntries =
+      typeof this._pluralEntries === "function"
+        ? this._pluralEntries(knowledgeEntries.length)
+        : "записей";
+    const previewMarkup = knowledgeEntries.length
+      ? knowledgeEntries
+          .slice(-3)
+          .reverse()
+          .map((entry) =>
+            typeof this._renderKnowledgeEntryMarkup === "function"
+              ? this._renderKnowledgeEntryMarkup(entry, { compact: true })
+              : `<article class="knowledge-entry is-compact"><h3 class="knowledge-entry-title">${entry.title}</h3></article>`,
+          )
+          .join("")
+      : '<div class="insight-sidebar-empty">Первые записи появятся, когда наблюдения закрепятся в практике.</div>';
+
+    const renderRelationChips = (items, label) =>
+      items.length
+        ? `
+          <div class="insight-focus-links-group">
+            <div class="insight-focus-links-title">${label}</div>
+            <div class="insight-focus-links-list">
+              ${items
+                .map(
+                  (insight) => `
+                    <button type="button" class="insight-link-chip${insight.unlocked ? " is-unlocked" : ""}" data-focus-insight="${insight.id}">
+                      <span>${insight.unlocked ? insight.icon : "🔍"}</span>
+                      <span>${insight.unlocked ? insight.name : "???"}</span>
+                    </button>`,
+                )
+                .join("")}
+            </div>
+          </div>`
+        : "";
+
+    const focusText = selectedInsight.unlocked
+      ? selectedInsight.description
+      : selectedInsight.conditionText ||
+        "Озарение пока не оформилось в ясную мысль.";
+    const focusNote = selectedInsight.unlocked
+      ? selectedInsight.unlockText || selectedInsight.momentText || ""
+      : selectedInsight.momentText || "Продолжайте действовать и наблюдать.";
+    const focusMedia = this._renderPrologueInsightMediaMarkup(selectedInsight, {
+      large: true,
+      variant: "focus",
+      revealImage: selectedInsight.unlocked,
+    });
+    const focusOutcomes =
+      selectedInsight.unlocked &&
+      Array.isArray(selectedInsight.outcomes) &&
+      selectedInsight.outcomes.length > 0
+        ? `
+          <div class="insight-focus-outcomes">
+            ${selectedInsight.outcomes.map((outcome) => `<span>${outcome}</span>`).join("")}
+          </div>`
+        : "";
+    const focusActions = selectedInsight.unlocked
+      ? `
+        <div class="insight-focus-actions">
+          ${selectedInsight.discoveryScene ? '<button type="button" class="insight-focus-detail-btn" data-open-selected-insight>Открыть сцену озарения</button>' : ""}
+          ${selectedKnowledgeEntry ? `<button type="button" class="insight-focus-knowledge-btn" data-open-selected-knowledge>📚 ${selectedKnowledgeEntry.title}</button>` : ""}
+        </div>`
+      : "";
+
+    knowledgeSidebar.innerHTML = `
+      <section class="insight-sidebar-card insight-focus-card">
+        <div class="insight-sidebar-eyebrow">${selectedInsight.phase || "Озарение"}</div>
+        <div class="insight-focus-head">
+          ${focusMedia}
+          <div class="insight-focus-head-copy">
+            <div class="insight-focus-title-row">
+              <div class="insight-focus-title">${selectedInsight.unlocked ? `${selectedInsight.icon} ${selectedInsight.name}` : "🔍 Следующее озарение"}</div>
+              <div class="insight-focus-status${selectedInsight.unlocked ? " is-unlocked" : ""}">${selectedInsight.unlocked ? "Открыто" : "Скрыто"}</div>
+            </div>
+            <div class="insight-focus-text">${focusText}</div>
+            ${focusNote ? `<div class="insight-focus-note">${focusNote}</div>` : ""}
+          </div>
+        </div>
+        <div class="insight-focus-links">
+          ${renderRelationChips(selectedIncoming, "Опирается на")}
+          ${renderRelationChips(selectedOutgoing, "Ведёт к")}
+        </div>
+        ${focusActions}
+        ${focusOutcomes}
+      </section>
+      <section class="insight-sidebar-card">
+        <div class="insight-sidebar-eyebrow">📚 Книга знаний</div>
+        <div class="insight-sidebar-title">${knowledgeEntries.length} ${pluralEntries}</div>
+        <div class="insight-sidebar-text">${latestEntry ? `Последняя запись: ${latestEntry.title}` : "Пока это ещё не книга, а несколько будущих следов понимания."}</div>
+        <div class="insight-sidebar-stats">
+          <span>✨ ${unlockedCount}/${total}</span>
+          <span>📚 ${knowledgeEntries.length}</span>
+          <span>🔬 ${Object.keys(this.game.researched || {}).length}</span>
+        </div>
+      </section>
+      <section class="insight-sidebar-section">
+        <div class="insight-sidebar-section-title">Свежие записи</div>
+        <div class="knowledge-preview-list">${previewMarkup}</div>
+      </section>
+    `;
+
+    knowledgeSidebar
+      .querySelectorAll("[data-focus-insight]")
+      .forEach((button) => {
+        button.addEventListener("click", () => {
+          const targetInsight = insightsById.get(
+            button.dataset.focusInsight || "",
+          );
+          this._selectedPrologueInsightId = targetInsight?.id || null;
+          this._renderPrologueInsightsBody(container);
+          if (targetInsight?.unlocked) {
+            this.openInsightDiscoveryPreview?.(targetInsight.id);
+          }
+        });
+      });
+    knowledgeSidebar
+      .querySelector("[data-open-selected-insight]")
+      ?.addEventListener("click", () => {
+        this.openInsightDiscoveryPreview?.(selectedInsight.id);
+      });
+    knowledgeSidebar
+      .querySelector("[data-open-selected-knowledge]")
+      ?.addEventListener("click", () => {
+        this.openKnowledgeModal?.();
+      });
+
+    workspace.appendChild(knowledgeSidebar);
+    container.appendChild(workspace);
+    this._bindPrologueInsightImageFallbacks(container);
+  },
+
+  _getSelectedPrologueInsight(insights) {
+    const selectedInsight = insights.find(
+      (insight) => insight.id === this._selectedPrologueInsightId,
+    );
+    if (selectedInsight) return selectedInsight;
+
+    const fallbackInsight =
+      this._getLatestUnlockedPrologueInsight(insights) ||
+      insights.find((insight) => !insight.unlocked) ||
+      insights[0] ||
+      null;
+    this._selectedPrologueInsightId = fallbackInsight?.id || null;
+    return fallbackInsight;
+  },
+
+  _getLatestUnlockedPrologueInsight(insights) {
+    return (
+      insights
+        .filter((insight) => insight.unlocked)
+        .sort((left, right) => {
+          const unlockDiff = (right.unlockedAt || 0) - (left.unlockedAt || 0);
+          if (unlockDiff !== 0) return unlockDiff;
+          return (right.order || 0) - (left.order || 0);
+        })[0] || null
+    );
+  },
+
+  _renderPrologueInsightMediaMarkup(
+    insight,
+    {
+      large = false,
+      revealImage = false,
+      variant = large ? "focus" : "node",
+    } = {},
+  ) {
+    const imageCandidates = revealImage
+      ? this._getInsightImageCandidates({
+          imagePath: insight.image || insight.discoveryScene?.image || "",
+          insightId: insight.id,
+        })
+      : [];
+    const hasImage = imageCandidates.length > 0;
+    const alt =
+      insight.imageAlt ||
+      insight.discoveryScene?.alt ||
+      insight.name ||
+      "Озарение";
+    const fallbackIcon = revealImage ? insight.icon : "🔍";
+    const imagePosition =
+      (variant === "node"
+        ? insight.imageNodePosition
+        : variant === "focus"
+          ? insight.imageFocusPosition
+          : "") ||
+      insight.imagePosition ||
+      "center";
+    const imageFit =
+      (variant === "node"
+        ? insight.imageNodeFit
+        : variant === "focus"
+          ? insight.imageFocusFit
+          : "") ||
+      insight.imageFit ||
+      "cover";
+    const mediaStyle = hasImage
+      ? ` style="--insight-image-position:${imagePosition};--insight-image-fit:${imageFit};"`
+      : "";
+
+    return `
+      <div class="insight-media insight-media--${variant}${large ? " is-large" : ""}${hasImage ? "" : " is-fallback"}"${mediaStyle}>
+        ${hasImage ? this._renderAutoResolvedImageMarkup({ className: "insight-media-image", alt, candidates: imageCandidates }) : ""}
+        <div class="insight-media-fallback"${hasImage ? " hidden" : ""}>
+          <div class="insight-media-icon">${fallbackIcon}</div>
+        </div>
+      </div>
+    `;
+  },
+
+  _bindPrologueInsightImageFallbacks(container) {
+    container.querySelectorAll(".insight-media-image").forEach((image) => {
+      if (image.dataset.fallbackBound === "true") return;
+      image.dataset.fallbackBound = "true";
+      const applyFallback = () => {
+        if (this._tryAdvanceAutoImageSource(image)) return;
+        const media = image.closest(".insight-media");
+        const fallback = media?.querySelector(".insight-media-fallback");
+        if (!media || !fallback) return;
+        image.hidden = true;
+        media.classList.add("is-fallback");
+        fallback.hidden = false;
+      };
+      image.addEventListener("error", applyFallback);
+      if (image.complete && image.naturalWidth === 0) {
+        applyFallback();
+      }
+    });
   },
 
   _renderResearchBody(container) {
+    container.classList.remove("is-prologue-insights");
     container.innerHTML = "";
 
     const researchState = this.game.getResearchState();

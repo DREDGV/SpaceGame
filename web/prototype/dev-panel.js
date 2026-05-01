@@ -50,7 +50,6 @@
     "camp_quest_wood",
     "camp_quest_stone",
     "camp_quest_fiber",
-    "camp_quest_survey",
   ];
 
   // ── Хелперы ──────────────────────────────────────────────────────────────────

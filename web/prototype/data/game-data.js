@@ -12,6 +12,9 @@ const TWIG_ICON_SVG = `<svg class="branch-icon-svg" viewBox="0 0 64 64" xmlns="h
 </svg>`;
 
 const GAME_DATA = {
+  // Later split files loaded in prototype.html override duplicated domains here.
+  // Live owners: narrative.js, terrain.js, world.js, character.js, production.js.
+
   // ─── Camp founding intro (shown over the map before chooseCamp) ───
   campFoundingIntro: {
     skipLabel: "Пропустить вступление",
@@ -1148,6 +1151,8 @@ const GAME_DATA = {
       description: "Ручной труд и первые открытия",
       researchFoundation: ["communal_memory"],
       researchBranches: ["survival", "craft", "production", "community"],
+      prologueResearchTransitionText:
+        "Чтобы выйти из первых стоянок, община должна закрепить общее знание, разделить труд и научиться держать жар дольше одной ночи.",
       researchTransitionText:
         "Чтобы выйти к раннему производству, община должна закрепить общее знание, распределить труд и освоить контролируемый обжиг.",
       milestones: [
@@ -1174,11 +1179,13 @@ const GAME_DATA = {
         },
         {
           id: "build_workshop",
+          prologueText: "Организовать первое рабочее место",
           text: "Построить мастерскую",
           check: (game) => !!game.buildings.workshop,
         },
         {
           id: "master_controlled_firing",
+          prologueText: "Освоить устойчивый жар",
           text: "Освоить контролируемый обжиг",
           check: (game) => !!game.researched.mining && !!game.buildings.kiln,
         },
@@ -1258,25 +1265,29 @@ const GAME_DATA = {
         regenPenaltyMs: 0,
         gatherOutputPenalty: 0,
         gatherCostPenalty: 0,
+        craftTimeMult: 1,
         maxSafeDistance: 99,
       },
       weakened: {
         id: "weakened",
         label: "Ослаблен",
-        description: "Низкие силы или голод делают выходы заметно тяжелее.",
+        description:
+          "Низкие силы или голод делают выходы заметно тяжелее, а работа руками — медленнее.",
         regenPenaltyMs: 600,
         gatherOutputPenalty: 0,
         gatherCostPenalty: 1,
+        craftTimeMult: 1.25,
         maxSafeDistance: 2,
       },
       exhausted: {
         id: "exhausted",
         label: "Истощён",
         description:
-          "Персонаж тянет работу с трудом, медленнее восстанавливается и уносит меньше.",
+          "Персонаж тянет работу с трудом, медленнее восстанавливается и уносит меньше, даже крафт в лагере идёт туго.",
         regenPenaltyMs: 1400,
         gatherOutputPenalty: 1,
         gatherCostPenalty: 1,
+        craftTimeMult: 1.6,
         maxSafeDistance: 1,
       },
     },
@@ -1374,506 +1385,44 @@ const GAME_DATA = {
     },
   },
 
-  // ─── Recipes ───
-  recipes: {
-    craft_plank: {
-      id: "craft_plank",
-      name: "Сделать доски",
-      icon: `<img src="prototype/assets/icons/plank.png" class="game-icon-img" alt="" draggable="false">`,
-      output: { plank: 1 },
-      ingredients: { wood: 2 },
-      craftTimeMs: 2500,
-      requires: null,
-      unlockedBy: null,
-      description: "Дерево → Доски",
-      hiddenInPrologue: true,
-    },
-    craft_workshop_parts: {
-      id: "craft_workshop_parts",
-      name: "Детали мастерской",
-      icon: `<img src="prototype/assets/icons/workshop_parts.png" class="game-icon-img" alt="" draggable="false">`,
-      output: { workshop_parts: 1 },
-      ingredients: { wood: 2, stone: 2 },
-      craftTimeMs: 3500,
-      requires: null,
-      unlockedBy: null,
-      description: "Дерево + камень → Детали мастерской",
-      hiddenInPrologue: true,
-    },
-    craft_crude_tools: {
-      id: "craft_crude_tools",
-      name: "Простые инструменты",
-      prologueName: "Связать грубое орудие",
-      prologueIcon: "🪢",
-      icon: `<img src="prototype/assets/icons/crude_tools.png" class="game-icon-img" alt="" draggable="false">`,
-      output: { crude_tools: 1 },
-      ingredients: { wood: 1, stone: 2 },
-      prologueIngredients: { wood: 2, stone: 3, fiber: 1 },
-      craftTimeMs: 4500,
-      requires: null,
-      unlockedBy: null,
-      description: "Дерево + Камень → Инструменты",
-      prologueDescription:
-        "Ветки, камень и волокно соединяются в первое грубое орудие, сделанное ещё не ремеслом, а прямым опытом.",
-      requiresInsights: [
-        "sharp_edge",
-        "sturdy_branch",
-        "fiber_bindings",
-        "materials_work_together",
-      ],
-    },
-    craft_improved_tools: {
-      id: "craft_improved_tools",
-      name: "Улучшенные инструменты",
-      icon: `<img src="prototype/assets/icons/improved_tools.png" class="game-icon-img" alt="" draggable="false">`,
-      output: { improved_tools: 1 },
-      ingredients: { plank: 2, fiber: 2, crude_tools: 1 },
-      craftTimeMs: 5500,
-      requires: "workshop",
-      unlockedBy: "crafting",
-      description:
-        "Доски + Волокно + Простой инструмент → Улучшенные инструменты",
-      hiddenInPrologue: true,
-    },
-    craft_brick: {
-      id: "craft_brick",
-      name: "Обжечь кирпич",
-      icon: `<img src="prototype/assets/icons/brick.png" class="game-icon-img" alt="" draggable="false">`,
-      output: { brick: 1 },
-      ingredients: { clay: 2, wood: 1 },
-      craftTimeMs: 4500,
-      requires: "campfire",
-      unlockedBy: null,
-      description: "Глина + Древесина → Кирпич (требует Костёр)",
-      hiddenInPrologue: true,
-    },
-  },
-
-  // ─── Buildings ───
-  buildings: {
-    storage: {
-      id: "storage",
-      name: "Хранилище",
-      icon: `<img src="prototype/assets/icons/storage.png" class="game-icon-img" alt="" draggable="false">`,
-      description:
-        "Увеличивает лимит ресурсов до 150 и делает быт стоянки устойчивее.",
-      cost: { wood: 8, fiber: 5, plank: 2 },
-      buildTimeMs: 6000,
-      effect: {
-        maxResourceCap: 150,
-        character: { recoveryBonusPerTick: 0.03, carryCapacityBonus: 1 },
-      },
-      unlockedBy: null,
-      hiddenInPrologue: true,
-    },
-    campfire: {
-      id: "campfire",
-      name: "Костёр",
-      prologueName: "Первый костёр",
-      icon: `<img src="prototype/assets/icons/campfire.png" class="game-icon-img" alt="" draggable="false">`,
-      description:
-        "Автоматически обжигает кирпичи из глины и древесного топлива (1 кирпич / 7 сек). Открывает ручной крафт кирпича.",
-      cost: { wood: 4, stone: 3 },
-      prologueCost: { wood: 6, stone: 4, fiber: 3 },
-      buildTimeMs: 6500,
-      effect: {
-        unlocks: ["craft_brick"],
-        automation: {
-          id: "campfire_brick",
-          name: "Обжиг кирпича",
-          input: { clay: 1, wood: 1 },
-          output: { brick: 1 },
-          intervalMs: 7000,
-          description: "Глина + Древесина → Кирпич",
-        },
-      },
-      unlockedBy: null,
-      prologueDescription:
-        "Тепло, свет и защита. Первый удержанный костёр превращает короткую стоянку в место, куда можно возвращаться не наугад.",
-      requires: "rest_tent",
-      requiresInsights: [
-        "sharp_edge",
-        "sturdy_branch",
-        "fiber_bindings",
-        "dry_tinder",
-        "hearth_circle",
-        "hearth_needs_reserve",
-      ],
-      requiresPrologueTool: true,
-    },
-    workshop: {
-      id: "workshop",
-      name: "Мастерская",
-      icon: `<img src="prototype/assets/icons/workshop.png" class="game-icon-img" alt="" draggable="false">`,
-      description: "Открывает улучшенные инструменты и сложные цепочки",
-      cost: { wood: 6, plank: 3, workshop_parts: 2 },
-      buildTimeMs: 8000,
-      effect: { unlocks: ["craft_improved_tools"] },
-      unlockedBy: "labor_division",
-      hiddenInPrologue: true,
-    },
-    rest_tent: {
-      id: "rest_tent",
-      name: "Палатка отдыха",
-      prologueName: "Первое жильё",
-      icon: `<img src="prototype/assets/icons/rest_tent.png" class="game-icon-img" alt="" draggable="false">`,
-      description:
-        "Повышает запас энергии, запас сытости и ускоряет восстановление.",
-      prologueDescription:
-        "Первая палатка делает стоянку жилой: в ней можно укрыться от ветра, переждать сырость и впервые отдыхать не прямо на голой земле.",
-      cost: { wood: 4, plank: 2, fiber: 4 },
-      prologueCost: { wood: 5, fiber: 4 },
-      buildTimeMs: 7000,
-      effect: {
-        energy: { maxBonus: 3, regenIntervalBonusMs: 1500 },
-        character: {
-          maxSatietyBonus: 2,
-          maxHydrationBonus: 1,
-          enduranceBonus: 1,
-          recoveryRatingBonus: 1,
-        },
-      },
-      unlockedBy: null,
-    },
-    kiln: {
-      id: "kiln",
-      name: "Печь для обжига",
-      icon: `<img src="prototype/assets/icons/kiln.png" class="game-icon-img" alt="" draggable="false">`,
-      description: "Требуется для поздних производственных шагов",
-      cost: { clay: 6, stone: 4, brick: 3, workshop_parts: 1 },
-      buildTimeMs: 10000,
-      effect: {},
-      unlockedBy: "mining",
-      requires: "workshop",
-      hiddenInPrologue: true,
-    },
-  },
-
-  // ─── Building upgrades ───────────────────────────────────────────────────
-  // Each upgrade is tied to a specific already-built building and improves it.
-  // Fields: id, name, icon, targetBuilding, description, cost, energyCost,
-  //         effect (same shape as building.effect), unlockedBy (tech id or null)
-  buildingUpgrades: {
-    campfire_stone_hearth: {
-      id: "campfire_stone_hearth",
-      name: "Каменный очаг",
-      icon: "🪨🔥",
-      targetBuilding: "campfire",
-      description:
-        "Обложить кострище камнями и обмазать глиной. Жар держится дольше — обжиг кирпича идёт на 30% быстрее.",
-      cost: { stone: 8, clay: 4 },
-      energyCost: 2,
-      effect: {
-        automation: {
-          targetId: "campfire_brick",
-          intervalMultiplier: 0.7,
-        },
-      },
-      unlockedBy: "mining",
-    },
-    storage_reinforced: {
-      id: "storage_reinforced",
-      name: "Укреплённое хранилище",
-      icon: "🏚️⬆️",
-      targetBuilding: "storage",
-      description:
-        "Дополнительные полки и крепкие стены. Хранилище вмещает вдвое больше — лимит ресурсов вырастает до 250.",
-      cost: { plank: 4, stone: 6, workshop_parts: 1 },
-      energyCost: 2,
-      effect: {
-        maxResourceCap: 250,
-        character: { carryCapacityBonus: 1 },
-      },
-      unlockedBy: "labor_division",
-    },
-    rest_tent_shelter: {
-      id: "rest_tent_shelter",
-      name: "Укреплённая палатка",
-      icon: "⛺⬆️",
-      targetBuilding: "rest_tent",
-      description:
-        "Камень вместо кольев, глиняная обмазка от ветра. Запас энергии увеличивается ещё на 2, восстановление становится немного быстрее.",
-      cost: { stone: 5, clay: 3, plank: 2 },
-      energyCost: 2,
-      effect: {
-        energy: { maxBonus: 2, regenIntervalBonusMs: 1000 },
-        character: { enduranceBonus: 1, recoveryRatingBonus: 1 },
-      },
-      unlockedBy: "rest_discipline",
-    },
-  },
-
-  // ─── Tech ───
-  tech: {
-    communal_memory: {
-      id: "communal_memory",
-      branch: "foundation",
-      order: 0,
-      name: "Память общины",
-      icon: "🪶",
-      description:
-        "Община начинает сохранять полезные приёмы и передавать опыт, а знания перестают исчезать вместе с каждым днём.",
-      cost: { wood: 4, fiber: 2 },
-      researchTimeMs: 7000,
-      effect: {},
-      outcomes: [
-        "Открывает первые исследовательские ветви primitive-эпохи",
-        "Становится опорой для прогресса текущей эпохи",
-      ],
-      requires: null,
-      requiresTech: [],
-    },
-    basic_tools: {
-      id: "basic_tools",
-      branch: "craft",
-      order: 1,
-      name: "Орудия труда",
-      icon: "🛠️",
-      description:
-        "Община осваивает простые, но надёжные орудия. Каждый ручной выход начинает приносить больше пользы.",
-      cost: { crude_tools: 2 },
-      researchTimeMs: 8000,
-      effect: { gatherBonus: 1, character: { fieldcraftBonus: 1 } },
-      requires: null,
-      requiresTech: ["communal_memory"],
-      outcomes: [
-        "Ручной сбор: +1 к каждому действию",
-        "Первые вылазки чуть легче переносят путь и тяжёлую почву",
-        "Открывает путь к ремесленной практике",
-      ],
-    },
-    crafting: {
-      id: "crafting",
-      branch: "craft",
-      order: 2,
-      name: "Ремесленная практика",
-      icon: "⚒️",
-      description:
-        "Мастерская становится местом не только сборки, но и экономии: заготовки расходуются точнее, а работа идёт увереннее.",
-      cost: { plank: 5, crude_tools: 1 },
-      researchTimeMs: 10000,
-      effect: { craftDiscount: 0.1 },
-      requires: "workshop",
-      requiresTech: ["basic_tools"],
-      outcomes: [
-        "Снижает стоимость крафта на 10%",
-        "Открывает улучшенные инструменты в мастерской",
-      ],
-    },
-    labor_division: {
-      id: "labor_division",
-      branch: "community",
-      order: 1,
-      name: "Разделение труда",
-      icon: "👥",
-      description:
-        "Община закрепляет роли: кто-то заготавливает, кто-то собирает детали, кто-то ведёт постройку. Большие проекты перестают буксовать.",
-      cost: { plank: 3, fiber: 3, crude_tools: 1 },
-      researchTimeMs: 10000,
-      effect: { buildTimeMultiplier: 0.85 },
-      requires: null,
-      requiresTech: ["communal_memory"],
-      outcomes: ["Открывает мастерскую", "Строительство идёт быстрее"],
-    },
-    rest_discipline: {
-      id: "rest_discipline",
-      branch: "survival",
-      order: 1,
-      name: "Уклад отдыха",
-      icon: "🛏️",
-      description:
-        "Отдых у огня становится частью распорядка. Люди меньше выгорают на раннем ручном труде и быстрее возвращаются к работе.",
-      cost: { fiber: 4, crude_tools: 1 },
-      researchTimeMs: 9000,
-      effect: {
-        energy: { maxBonus: 1, regenIntervalBonusMs: 500 },
-        character: { recoveryBonusPerTick: 0.03, recoveryRatingBonus: 1 },
-      },
-      requires: "campfire",
-      requiresTech: ["communal_memory"],
-      outcomes: [
-        "Запас энергии +1",
-        "Восстановление энергии ускоряется",
-        "Короткая передышка у лагеря становится заметно полезнее",
-        "Бытовой распорядок чуть улучшает восстановление сытости",
-        "Открывает укрепление палатки",
-      ],
-    },
-    mining: {
-      id: "mining",
-      branch: "production",
-      order: 1,
-      name: "Контролируемый обжиг",
-      icon: "🔥",
-      description:
-        "Жар перестаёт быть случайностью. Община учится держать обжиг ровным и превращает костёр в предсказуемый производственный узел.",
-      cost: { clay: 4, brick: 2, crude_tools: 1 },
-      researchTimeMs: 12000,
-      effect: { automationIntervalMultiplier: 0.8 },
-      requires: "campfire",
-      requiresTech: ["communal_memory"],
-      outcomes: ["Ускоряет автоматический обжиг", "Открывает печь для обжига"],
-    },
-
-    // ── Ветвь «Выживание» — промежуточные узлы ───────────────────────────
-    foraging: {
-      id: "foraging",
-      branch: "survival",
-      order: 0,
-      name: "Следы и сезоны",
-      icon: "🌿",
-      description:
-        "Ягоды, коренья и волокна не случайны — у них есть места и время. Охотники замечают повторяющиеся следы и начинают искать намеренно, а не блуждать.",
-      cost: { wood: 3, fiber: 2 },
-      researchTimeMs: 7000,
-      effect: { gatherBonus: 1 },
-      requires: null,
-      requiresTech: ["communal_memory"],
-      outcomes: [
-        "Ручной сбор: +1 к каждому действию",
-        "Общий опыт передвижения по местности улучшается",
-      ],
-    },
-    body_conditioning: {
-      id: "body_conditioning",
-      branch: "survival",
-      order: 2,
-      name: "Закалка тела",
-      icon: "💪",
-      description:
-        "Регулярные вылазки и отдых у огня постепенно закаляют тело. Усталость приходит позже, а дальние выходы становятся привычным делом.",
-      cost: { fiber: 4, crude_tools: 1 },
-      researchTimeMs: 10000,
-      effect: { character: { enduranceBonus: 2, recoveryRatingBonus: 1 } },
-      requires: "campfire",
-      requiresTech: ["rest_discipline"],
-      outcomes: [
-        "Дальность безопасного выхода +2",
-        "Восстановление в лагере становится заметнее",
-        "Тяжёлая местность ощущается мягче",
-      ],
-    },
-
-    // ── Ветвь «Производство» — промежуточные узлы ───────────────────────
-    clay_reading: {
-      id: "clay_reading",
-      branch: "production",
-      order: 0,
-      name: "Чтение глины",
-      icon: "🏺",
-      description:
-        "Не всякая глина одинакова. Опытный глазок замечает влажность, цвет и зернистость — и выбирает ту, что лучше ляжет в обжиг.",
-      cost: { clay: 3, wood: 2 },
-      researchTimeMs: 8000,
-      effect: { automationIntervalMultiplier: 0.9 },
-      requires: null,
-      requiresTech: ["communal_memory"],
-      outcomes: [
-        "Автоматизация работает немного быстрее",
-        "Ранние производственные циклы становятся стабильнее",
-      ],
-    },
-    kiln_practice: {
-      id: "kiln_practice",
-      branch: "production",
-      order: 2,
-      name: "Печная практика",
-      icon: "🔥",
-      description:
-        "Жар жару рознь. Научившись управлять тягой и температурой, мастера добиваются равномерного обжига и заметно меньше брака.",
-      cost: { brick: 3, clay: 3 },
-      researchTimeMs: 11000,
-      effect: { automationIntervalMultiplier: 0.85 },
-      requires: "kiln",
-      requiresTech: ["mining"],
-      outcomes: [
-        "Обжиг ускоряется ещё сильнее",
-        "Производственные циклы становятся предсказуемее",
-      ],
-    },
-
-    // ── Ветвь «Развитие общины» — промежуточные узлы ────────────────────
-    camp_planning: {
-      id: "camp_planning",
-      branch: "community",
-      order: 0,
-      name: "Устройство стоянки",
-      icon: "🗺️",
-      description:
-        "Когда каждый знает, где что лежит и куда нести добытое, лагерь перестаёт быть беспорядочной грудой. Строительство идёт заметно легче.",
-      cost: { wood: 2, fiber: 3 },
-      researchTimeMs: 8000,
-      effect: { buildTimeMultiplier: 0.9 },
-      requires: null,
-      requiresTech: ["communal_memory"],
-      outcomes: [
-        "Строительство идёт немного быстрее",
-        "Лагерь начинает работать как связная система",
-      ],
-    },
-    work_rhythm: {
-      id: "work_rhythm",
-      branch: "community",
-      order: 2,
-      name: "Рабочий ритм",
-      icon: "🥁",
-      description:
-        "В слаженном коллективе каждый знает, когда строить, а когда отдыхать. Простои сокращаются, работа движется ровнее.",
-      cost: { plank: 4, crude_tools: 1 },
-      researchTimeMs: 10000,
-      effect: { buildTimeMultiplier: 0.8, character: { ingenuityBonus: 1 } },
-      requires: "workshop",
-      requiresTech: ["labor_division"],
-      outcomes: [
-        "Строительство ускоряется",
-        "Разбор и крафт идут быстрее",
-        "Слаженный труд становится основой перехода к следующей эпохе",
-      ],
-    },
-
-    // ── Ветвь «Ремесло» — дополнительные узлы ───────────────────────────
-    tool_sharpening: {
-      id: "tool_sharpening",
-      branch: "craft",
-      order: 2,
-      name: "Заточка орудий",
-      icon: "⚡",
-      description:
-        "Тупое орудие — потерянное время. Умея поддерживать режущий край, мастера добывают больше за тот же путь и реже возвращаются с пустыми руками.",
-      cost: { crude_tools: 2, stone: 3 },
-      researchTimeMs: 9000,
-      effect: { gatherBonus: 1, character: { fieldcraftBonus: 1 } },
-      requires: null,
-      requiresTech: ["basic_tools"],
-      outcomes: [
-        "Ручной сбор: ещё +1 к каждому действию",
-        "Путь по тяжёлой местности ощущается легче",
-      ],
-    },
-    material_sense: {
-      id: "material_sense",
-      branch: "craft",
-      order: 3,
-      name: "Чувство материала",
-      icon: "🔩",
-      description:
-        "Мастер знает, где волокно даст слабину, а где дерево расколется. Заготовки расходуются точнее, и обрезки идут в дело, а не в отходы.",
-      cost: { plank: 6, crude_tools: 2 },
-      researchTimeMs: 12000,
-      effect: { craftDiscount: 0.1, character: { ingenuityBonus: 1 } },
-      requires: "workshop",
-      requiresTech: ["crafting"],
-      outcomes: [
-        "Стоимость крафта снижается ещё на 10%",
-        "Разбор и крафт становятся быстрее",
-        "Мастерская начинает работать как настоящий производственный узел",
-      ],
-    },
-  },
+  // Runtime source of truth for recipes/buildings/buildingUpgrades/tech lives
+  // in prototype/data/production.js, which is loaded later in prototype.html.
+  // Keep game-data.js focused on bootstrap/shared/legacy data only.
 };
 
 // ─── Changelog data ─────────────────────────────────────────────────────────
 const CHANGELOG_DATA = [
+  {
+    version: "v0.1.18",
+    date: "2026-05-01",
+    title: "Стабилизация карты лагеря и сцены ранних озарений",
+    changes: [
+      {
+        type: "added",
+        text: "Сцены ранних озарений: отдельное модальное окно, визуальные fallback-сцены и переход в книгу знаний",
+      },
+      {
+        type: "added",
+        text: "Новые изображения озарений, построек и типов местности для пролога, лагеря и локальной карты",
+      },
+      {
+        type: "improved",
+        text: "Локальная карта лагеря стабилизирована: персонаж, переносимый груз, разгрузка в лагере и открытие участков теперь синхронизируются надёжнее",
+      },
+      {
+        type: "improved",
+        text: "Крупные UI-поверхности разнесены по модулям: лагерь, карта, персонаж, исследования, знания и discovery-scene слой",
+      },
+      {
+        type: "fixed",
+        text: "Исправлены откаты состояния camp map после разведки, основания лагеря и некоторых обновлений интерфейса",
+      },
+      {
+        type: "fixed",
+        text: "Убраны лишние sync/save-пути, из-за которых прототип мог ощутимо замедляться в браузере",
+      },
+    ],
+  },
   {
     version: "v0.1.17",
     date: "2026-04-24",

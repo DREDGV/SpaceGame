@@ -1,5 +1,9 @@
 # TASK 01 — FIRST PLAYABLE PROTOTYPE
 
+**Status:** IMPLEMENTED  
+**Audit:** v0.1.18  
+**Note:** Основной результат уже реализован; документ полезен как историческая спецификация.
+
 ## Goal
 
 Create the first playable browser prototype for the primitive stage of the game.

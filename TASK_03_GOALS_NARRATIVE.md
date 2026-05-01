@@ -1,5 +1,9 @@
 # TASK 03 — GOALS + NARRATIVE + AUTOMATION IMPROVEMENT
 
+**Status:** IMPLEMENTED  
+**Audit:** v0.1.18  
+**Note:** Основной результат уже реализован; документ полезен как историческая спецификация.
+
 ## Goal
 
 Improve player motivation, clarity, and immersion by:

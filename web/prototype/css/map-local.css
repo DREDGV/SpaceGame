@@ -35,8 +35,8 @@
 }
 
 .camp-tile .tile-image.is-terrain {
-  opacity: 0.82;
-  filter: none;
+  opacity: 0.9;
+  filter: brightness(1.04) saturate(1.03);
 }
 
 .camp-tile:focus,
@@ -120,6 +120,35 @@
   stroke: rgba(96, 165, 250, 0.95);
 }
 
+.camp-map-route-preview-layer {
+  pointer-events: none;
+}
+
+.camp-map-route-preview {
+  fill: none;
+  stroke: rgba(125, 211, 252, 0.88);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 5 7;
+  opacity: 0.9;
+  filter: drop-shadow(0 0 7px rgba(14, 165, 233, 0.34));
+}
+
+.camp-map-route-preview-node {
+  fill: rgba(186, 230, 253, 0.92);
+  stroke: rgba(12, 74, 110, 0.72);
+  stroke-width: 1;
+}
+
+.camp-map-route-preview-target {
+  fill: rgba(14, 165, 233, 0.08);
+  stroke: rgba(125, 211, 252, 0.92);
+  stroke-width: 2.2;
+  stroke-dasharray: 3 5;
+  filter: drop-shadow(0 0 8px rgba(14, 165, 233, 0.34));
+}
+
 .camp-map-travel-marker {
   fill: rgba(15, 23, 42, 0.95);
   stroke: rgba(251, 191, 36, 0.95);
@@ -130,6 +159,69 @@
 .camp-map-travel-marker.is-gathering {
   stroke: rgba(134, 239, 172, 0.95);
   filter: drop-shadow(0 0 9px rgba(134, 239, 172, 0.6));
+}
+
+.camp-map-player-marker {
+  pointer-events: none;
+  filter:
+    drop-shadow(0 5px 4px rgba(0, 0, 0, 0.55))
+    drop-shadow(0 0 8px rgba(251, 191, 36, 0.28));
+}
+
+.camp-map-player-marker.phase-outbound,
+.camp-map-player-marker.phase-return {
+  animation: campPlayerMarkerStep 0.48s ease-in-out infinite alternate;
+}
+
+.camp-map-player-marker.phase-gather {
+  animation: campPlayerMarkerGather 0.72s ease-in-out infinite;
+}
+
+.camp-map-player-marker.facing-home .camp-map-player-pointer {
+  transform: rotate(180deg);
+}
+
+.camp-map-player-halo {
+  fill: rgba(8, 13, 18, 0.86);
+  stroke: rgba(251, 191, 36, 0.78);
+  stroke-width: 1.8;
+}
+
+.camp-map-player-pointer {
+  fill: #f6c56d;
+  stroke: rgba(43, 29, 7, 0.72);
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+  transform-box: fill-box;
+  transform-origin: center center;
+}
+
+.camp-map-player-core {
+  fill: #111827;
+  stroke: rgba(255, 243, 205, 0.7);
+  stroke-width: 1.1;
+}
+
+.camp-map-player-load {
+  opacity: 0;
+  fill: #8f6a32;
+  stroke: rgba(255, 235, 186, 0.65);
+  stroke-width: 0.9;
+}
+
+.camp-map-player-marker.has-carry .camp-map-player-load,
+.camp-map-player-marker.phase-gather .camp-map-player-load,
+.camp-map-player-marker.phase-return .camp-map-player-load {
+  opacity: 1;
+}
+
+.camp-map-player-marker.resource-water .camp-map-player-load {
+  fill: #38bdf8;
+}
+
+.camp-map-player-marker.resource-food .camp-map-player-load,
+.camp-map-player-marker.resource-fiber .camp-map-player-load {
+  fill: #84cc16;
 }
 
 .camp-map-travel-icon {
@@ -148,77 +240,130 @@
 .camp-map-traveler {
   transform-box: fill-box;
   transform-origin: center bottom;
-  transform: scale(0.79);
   filter:
-    drop-shadow(0 6px 5px rgba(0, 0, 0, 0.65))
-    drop-shadow(0 0 10px rgba(251, 191, 36, 0.2));
+    drop-shadow(0 6px 4px rgba(0, 0, 0, 0.55))
+    drop-shadow(0 0 8px rgba(251, 191, 36, 0.22));
 }
 
 .camp-map-traveler.facing-home .traveler-body-wrap {
   transform: scaleX(-1);
 }
 
-/* Bob while walking — soft bounce */
 .camp-map-traveler.phase-outbound .traveler-body-wrap,
 .camp-map-traveler.phase-return .traveler-body-wrap {
-  animation: travelerSmoothBob 0.6s ease-in-out infinite alternate;
+  animation: travelerStep 0.44s steps(2, end) infinite;
 }
 
-/* Gather sway */
 .camp-map-traveler.phase-gather .traveler-body-wrap {
   animation: travelerGatherBend 0.82s ease-in-out infinite;
 }
 
+.camp-map-traveler.phase-idle.has-carry .carry-sack,
+.camp-map-traveler.phase-idle.has-carry.resource-wood .carry-wood,
+.camp-map-traveler.phase-idle.has-carry.resource-fiber .carry-wood,
+.camp-map-traveler.phase-idle.has-carry.resource-supplies .carry-wood,
+.camp-map-traveler.phase-idle.has-carry.resource-water .carry-water {
+  opacity: 1;
+}
+
 .traveler-shadow {
-  fill: rgba(0, 0, 0, 0.42);
+  fill: rgba(0, 0, 0, 0.45);
 }
 
-/* ── Minimalist Pawn Body ───────────────────────────── */
-
-.traveler-pawn-body {
-  fill: #e8cca5; /* Light soft cream/sand, stands out from dark map well */
-  stroke: rgba(43, 26, 12, 0.6);
-  stroke-width: 1.4;
-  stroke-linejoin: round;
+/* Body — warm skin ellipse */
+.traveler-torso {
+  fill: #bf8348;
+  stroke: rgba(18, 10, 4, 0.5);
+  stroke-width: 1.2;
 }
 
-.traveler-pawn-head {
-  fill: #e8cca5;
-  stroke: rgba(43, 26, 12, 0.6);
-  stroke-width: 1.4;
+/* Loincloth — dark strip at waist */
+.traveler-loincloth {
+  fill: #2b1a0a;
+  stroke: none;
 }
 
-/* Spear */
+/* Arms and legs — thick strokes, skin colour */
+.traveler-arm,
+.traveler-leg {
+  fill: none;
+  stroke: #bf8348;
+  stroke-width: 5.5;
+  stroke-linecap: round;
+  transform-box: fill-box;
+  transform-origin: center top;
+}
+
+.traveler-arm.arm-front,
+.traveler-leg.leg-front {
+  stroke: #cd9260;
+}
+
+/* Head */
+.traveler-head {
+  fill: #bf8348;
+  stroke: rgba(18, 10, 4, 0.48);
+  stroke-width: 1.2;
+}
+
+/* Hair — dark filled dome */
+.traveler-hair {
+  fill: #170f05;
+  stroke: none;
+}
+
+/* Eyes */
+.traveler-eye {
+  fill: #0e0804;
+}
+
+/* Walking animations */
+.camp-map-traveler.phase-outbound .leg-front,
+.camp-map-traveler.phase-return .leg-front {
+  animation: travelerFrontLeg 0.44s steps(2, end) infinite;
+}
+
+.camp-map-traveler.phase-outbound .leg-back,
+.camp-map-traveler.phase-return .leg-back {
+  animation: travelerBackLeg 0.44s steps(2, end) infinite;
+}
+
+.camp-map-traveler.phase-outbound .arm-front,
+.camp-map-traveler.phase-return .arm-front {
+  animation: travelerFrontArm 0.44s steps(2, end) infinite;
+}
+
+.camp-map-traveler.phase-outbound .arm-back,
+.camp-map-traveler.phase-return .arm-back {
+  animation: travelerBackArm 0.44s steps(2, end) infinite;
+}
+
+/* Club */
 .traveler-tool {
   fill: none;
-  stroke: #7a5028;
-  stroke-width: 2.2;
+  stroke: #6b4820;
+  stroke-width: 2.5;
   stroke-linecap: round;
 }
 
 .traveler-tool-head {
-  fill: #8c9090;
+  fill: #8a9090;
   stroke: #3a4040;
   stroke-width: 0.9;
 }
 
-.camp-map-traveler.phase-gather .traveler-tool,
-.camp-map-traveler.phase-gather .traveler-tool-head {
+.camp-map-traveler.phase-gather .traveler-tool {
   animation: travelerToolSwing 0.7s ease-in-out infinite;
-  transform-origin: 11px -22px;
+  transform-origin: 11px 8px;
 }
 
 .camp-map-traveler.phase-gather.resource-food .traveler-tool,
-.camp-map-traveler.phase-gather.resource-food .traveler-tool-head,
 .camp-map-traveler.phase-gather.resource-fiber .traveler-tool,
-.camp-map-traveler.phase-gather.resource-fiber .traveler-tool-head,
-.camp-map-traveler.phase-gather.resource-water .traveler-tool,
-.camp-map-traveler.phase-gather.resource-water .traveler-tool-head {
+.camp-map-traveler.phase-gather.resource-water .traveler-tool {
   opacity: 0.1;
 }
 
-/* ── Carry items ────────────────────────────────────── */
-
+/* Carry items */
 .camp-map-traveler.phase-outbound .traveler-carry {
   opacity: 0;
 }
@@ -328,15 +473,37 @@
   paint-order: stroke;
 }
 
-/* ── Minimalist Smooth Animations ── */
+@keyframes travelerStep {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
 
-@keyframes travelerSmoothBob {
-  0% {
-    transform: translateY(0) rotate(-2deg);
-  }
-  100% {
-    transform: translateY(-3px) rotate(2deg);
-  }
+/* Front leg: swings forward (9,22) → backward (−2,22) */
+@keyframes travelerFrontLeg {
+  0%, 100% { transform: rotate(13deg); }
+  50% { transform: rotate(-16deg); }
+}
+
+/* Back leg: swings backward (−9,22) → forward (2,22) */
+@keyframes travelerBackLeg {
+  0%, 100% { transform: rotate(-12deg); }
+  50% { transform: rotate(15deg); }
+}
+
+/* Front arm: opposite to front leg */
+@keyframes travelerFrontArm {
+  0%, 100% { transform: rotate(-11deg); }
+  50% { transform: rotate(13deg); }
+}
+
+/* Back arm: opposite to back leg */
+@keyframes travelerBackArm {
+  0%, 100% { transform: rotate(10deg); }
+  50% { transform: rotate(-12deg); }
 }
 
 @keyframes travelerGatherBend {
@@ -344,13 +511,13 @@
     transform: translateY(0) rotate(0deg);
   }
   50% {
-    transform: translate(2px, 3px) rotate(6deg);
+    transform: translate(2px, 3px) rotate(5deg);
   }
 }
 
 @keyframes travelerToolSwing {
   0%, 100% {
-    transform: rotate(-18deg);
+    transform: rotate(-24deg);
   }
   45% {
     transform: rotate(24deg);
@@ -364,7 +531,7 @@
   }
   100% {
     opacity: 0;
-    transform: translate(-3px, 1px) scale(1.6);
+    transform: translate(-5px, 1px) scale(1.9);
   }
 }
 
@@ -536,8 +703,31 @@
   stroke: rgba(97, 113, 120, 0.22) !important;
   stroke-width: 1 !important;
   opacity: 0.55;
-  pointer-events: none;
-  cursor: default;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.camp-tile.is-visible_locked:hover polygon {
+  stroke: rgba(153, 177, 191, 0.38) !important;
+  opacity: 0.72;
+}
+
+.camp-tile.is-terrain_seen polygon {
+  fill: #26372f !important;
+  stroke: rgba(156, 190, 153, 0.5) !important;
+  stroke-width: 1.3 !important;
+  opacity: 0.86;
+  cursor: pointer;
+}
+
+.camp-tile.is-terrain_seen:hover polygon {
+  stroke: rgba(190, 220, 184, 0.74) !important;
+  opacity: 0.96;
+  filter: brightness(1.08) drop-shadow(0 0 8px rgba(125, 211, 252, 0.18));
+}
+
+.tile-art-question.is-locked {
+  fill: rgba(158, 183, 197, 0.72);
 }
 
 /* Selected */
@@ -576,17 +766,29 @@
 }
 
 .camp-map-details-preview {
+  position: relative;
   display: grid;
   place-items: center;
-  min-height: 122px;
+  min-height: 132px;
+  aspect-ratio: 2.15 / 1;
   margin-bottom: 0.95rem;
   border: 1px solid rgba(142, 154, 163, 0.24);
-  border-radius: 14px;
+  border-radius: 10px;
   background:
     radial-gradient(circle at 65% 28%, rgba(255, 255, 255, 0.12), transparent 22%),
     linear-gradient(160deg, rgba(36, 73, 43, 0.95), rgba(8, 22, 18, 0.98));
   box-shadow: inset 0 -28px 60px rgba(0, 0, 0, 0.22);
   overflow: hidden;
+}
+
+.camp-map-details-preview::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 34%),
+    radial-gradient(circle at 50% 52%, transparent 42%, rgba(0, 0, 0, 0.34) 100%);
 }
 
 .camp-map-details-preview span,
@@ -596,9 +798,71 @@
 }
 
 .camp-map-details-preview img {
-  width: 84px;
-  height: 84px;
+  display: block;
+}
+
+.camp-map-details-preview-image.is-terrain {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  filter: saturate(1.08) contrast(1.04) brightness(0.95);
+}
+
+.camp-map-details-preview-image.is-icon {
+  width: 86px;
+  height: 86px;
   object-fit: contain;
+  z-index: 1;
+}
+
+.camp-map-details-preview-resources {
+  position: absolute;
+  left: 0.55rem;
+  right: 0.55rem;
+  bottom: 0.5rem;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+.camp-map-preview-resource-chip,
+.camp-map-preview-resource-stock {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  min-height: 24px;
+  padding: 0.22rem 0.45rem;
+  border: 1px solid rgba(218, 232, 202, 0.3);
+  border-radius: 7px;
+  background: rgba(4, 9, 10, 0.68);
+  color: #edf4de;
+  font-size: 0.7rem;
+  font-weight: 800;
+  box-shadow: 0 5px 12px rgba(0, 0, 0, 0.24);
+  filter: none;
+}
+
+.camp-map-details-preview .camp-map-preview-resource-chip,
+.camp-map-details-preview .camp-map-preview-resource-stock,
+.camp-map-details-preview .camp-map-preview-resource-chip span,
+.camp-map-details-preview .camp-map-preview-resource-stock span {
+  font-size: 0.7rem;
+  filter: none;
+}
+
+.camp-map-preview-resource-stock {
+  margin-left: auto;
+  color: #f4dca5;
+}
+
+.camp-map-preview-resource-icon img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  filter: none;
 }
 
 .camp-map-details-preview.terrain-water {
@@ -664,6 +928,139 @@
   color: #bcc7c6;
   line-height: 1.5;
   font-size: 0.84rem;
+}
+
+.camp-map-known-row,
+.camp-map-known-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.camp-map-known-row {
+  margin-top: 0.75rem;
+}
+
+.camp-map-known-block {
+  margin-top: 0.7rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(142, 154, 163, 0.15);
+}
+
+.camp-map-known-title {
+  margin-bottom: 0.4rem;
+  color: #8fb080;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.camp-map-known-chip,
+.camp-map-known-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 24px;
+  padding: 0.24rem 0.5rem;
+  border: 1px solid rgba(172, 190, 153, 0.24);
+  border-radius: 999px;
+  background: rgba(9, 18, 14, 0.5);
+  color: #e4ebd2;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.camp-map-known-chip.tone-water {
+  border-color: rgba(139, 205, 230, 0.32);
+}
+
+.camp-map-known-chip.tone-clay,
+.camp-map-known-chip.tone-trace,
+.camp-map-known-chip.tone-site {
+  border-color: rgba(218, 181, 130, 0.34);
+}
+
+.camp-map-resource-choice {
+  margin-top: 0.8rem;
+  padding: 0.7rem;
+  border: 1px solid rgba(172, 190, 153, 0.22);
+  border-radius: 8px;
+  background: rgba(8, 17, 14, 0.52);
+}
+
+.camp-map-resource-choice-title {
+  margin-bottom: 0.5rem;
+  color: #e8f0d6;
+  font-size: 0.75rem;
+  font-weight: 850;
+}
+
+.camp-map-resource-choice-grid {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.camp-map-resource-choice-btn {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 0.55rem;
+  align-items: center;
+  width: 100%;
+  padding: 0.52rem 0.6rem;
+  border: 1px solid rgba(143, 176, 128, 0.28);
+  border-radius: 8px;
+  background: rgba(14, 29, 20, 0.78);
+  color: #eef5df;
+  text-align: left;
+  cursor: pointer;
+}
+
+.camp-map-resource-choice-btn:hover:not(:disabled) {
+  border-color: rgba(178, 222, 138, 0.55);
+  background: rgba(23, 50, 31, 0.86);
+}
+
+.camp-map-resource-choice-btn:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.camp-map-resource-choice-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+  background: rgba(5, 11, 11, 0.5);
+}
+
+.camp-map-resource-choice-icon img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+.camp-map-resource-choice-copy {
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.camp-map-resource-choice-copy strong {
+  font-size: 0.78rem;
+}
+
+.camp-map-resource-choice-copy small,
+.camp-map-resource-choice-copy em {
+  color: #aebab0;
+  font-size: 0.68rem;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.camp-map-resource-choice-copy em {
+  color: #efc17d;
 }
 
 .camp-map-action-meta {
@@ -893,6 +1290,53 @@
   text-align: center;
 }
 
+.camp-map-quick-action {
+  max-width: 620px;
+  margin: 0.55rem auto 0;
+  padding: 0.55rem;
+  display: grid;
+  gap: 0.38rem;
+  border: 1px solid rgba(134, 239, 172, 0.26);
+  border-radius: 10px;
+  background: rgba(7, 20, 14, 0.74);
+}
+
+.camp-map-quick-action-btn {
+  width: 100%;
+  min-height: 42px;
+  padding: 0.6rem 0.9rem;
+  border-radius: 8px;
+  border: 1px solid rgba(134, 239, 172, 0.42);
+  background: linear-gradient(180deg, rgba(27, 88, 48, 0.92), rgba(14, 48, 30, 0.96));
+  color: #dcfce7;
+  font-size: 0.86rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.camp-map-quick-action-btn:hover {
+  border-color: rgba(134, 239, 172, 0.7);
+  box-shadow: 0 10px 24px rgba(5, 20, 10, 0.26);
+}
+
+.camp-map-quick-action.is-disabled {
+  border-color: rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.camp-map-quick-action.is-disabled .camp-map-quick-action-btn {
+  opacity: 0.55;
+  cursor: default;
+  box-shadow: none;
+}
+
+.camp-map-quick-action-meta {
+  color: #aeb7b6;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
 .camp-map-side-legend,
 .camp-map-details {
   border-radius: 12px;
@@ -1007,12 +1451,9 @@
   filter: grayscale(0.7) brightness(0.7);
 }
 
-/* Silhouette: единый нейтральный цвет поверх всех terrain-правил.
-   Специфичность повышена до (0,3,1) — как у terrain-правил — чтобы выиграть. */
-.camp-tile:not(.is-hidden).is-silhouette polygon {
-  fill: #1c2629 !important;
-  stroke: rgba(92, 112, 112, 0.3) !important;
-  opacity: 0.86;
+.camp-tile.is-silhouette polygon {
+  fill: #20272b !important;
+  stroke: rgba(111, 125, 124, 0.32) !important;
 }
 
 .camp-tile.is-camp polygon,
@@ -1029,19 +1470,9 @@
   filter: brightness(1.14) drop-shadow(0 0 12px rgba(236, 233, 202, 0.22));
 }
 
-.camp-tile:not(.is-hidden):not(.is-visible_locked):not(.is-silhouette):hover polygon {
+.camp-tile:not(.is-hidden):not(.is-visible_locked):hover polygon {
   opacity: 1;
   filter: brightness(1.18) drop-shadow(0 0 11px rgba(106, 180, 78, 0.3));
-}
-
-/* Silhouette: мягкий туманный ховер вместо зелёного */
-.camp-tile.is-silhouette {
-  cursor: pointer;
-}
-
-.camp-tile.is-silhouette:hover polygon {
-  opacity: 0.96;
-  filter: brightness(1.1) drop-shadow(0 0 10px rgba(80, 130, 140, 0.38));
 }
 
 .camp-tile.has-path-trail polygon {
@@ -1288,21 +1719,14 @@
 
 .tile-art-question {
   font-family: Georgia, serif;
-  font-size: 30px;
+  font-size: 34px;
   font-weight: 700;
   text-anchor: middle;
   dominant-baseline: central;
-  fill: rgba(168, 186, 186, 0.58);
-  stroke: rgba(3, 7, 9, 0.6);
-  stroke-width: 2;
+  fill: rgba(196, 201, 191, 0.62);
+  stroke: rgba(3, 7, 9, 0.72);
+  stroke-width: 2.2;
   paint-order: stroke;
-  pointer-events: none;
-  animation: silhouetteQuestionPulse 3.6s ease-in-out infinite;
-}
-
-@keyframes silhouetteQuestionPulse {
-  0%, 100% { opacity: 0.65; }
-  50%       { opacity: 1.0; }
 }
 
 .tile-image.is-building {
@@ -1357,6 +1781,148 @@
   transform: translate(1px, -1px);
 }
 
+.tile-resource-markers {
+  pointer-events: none;
+}
+
+.tile-resource-marker circle {
+  fill: rgba(18, 23, 19, 0.78);
+  stroke: rgba(239, 226, 178, 0.72);
+  stroke-width: 1.2;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.55));
+}
+
+.tile-resource-marker text {
+  fill: #f8f0cf;
+  font-size: 9.5px;
+  font-weight: 800;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+.tile-building-cluster {
+  pointer-events: none;
+}
+
+.tile-building-chip circle {
+  fill: rgba(34, 25, 14, 0.88);
+  stroke: rgba(248, 212, 138, 0.78);
+  stroke-width: 1.2;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.62));
+}
+
+.tile-building-chip.is-constructing circle {
+  fill: rgba(92, 55, 12, 0.9);
+  stroke: rgba(251, 191, 36, 0.9);
+}
+
+.tile-building-chip text {
+  fill: #fff3cc;
+  font-size: 10px;
+  font-weight: 900;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+.tile-building-more {
+  fill: #f8d48a;
+  font-size: 9px;
+  font-weight: 800;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: rgba(4, 8, 8, 0.86);
+  stroke-width: 2px;
+}
+
+.tile-build-usage rect {
+  fill: rgba(13, 18, 12, 0.82);
+  stroke: rgba(248, 212, 138, 0.34);
+  stroke-width: 0.7;
+}
+
+.tile-build-usage .tile-build-usage-fill {
+  fill: rgba(216, 160, 72, 0.9);
+  stroke: none;
+}
+
+.tile-build-usage text {
+  fill: #f8e4a8;
+  font-size: 8px;
+  font-weight: 800;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: rgba(4, 8, 8, 0.9);
+  stroke-width: 2px;
+}
+
+.camp-map-build-capacity {
+  margin: 0.6rem 0;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid rgba(138, 106, 58, 0.42);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(42, 30, 18, 0.72), rgba(24, 18, 12, 0.82));
+}
+
+.camp-map-build-capacity-row,
+.camp-map-building-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.78rem;
+}
+
+.camp-map-build-capacity-row span,
+.camp-map-building-row span:first-child {
+  color: #c8b898;
+}
+
+.camp-map-build-capacity-row strong,
+.camp-map-building-row span:last-child {
+  color: #f4d48a;
+}
+
+.camp-map-build-capacity-bar {
+  height: 6px;
+  margin-top: 0.45rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(16, 11, 7, 0.9);
+  border: 1px solid rgba(90, 67, 40, 0.7);
+}
+
+.camp-map-build-capacity-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #8f6b35, #f0b45c);
+}
+
+.camp-map-building-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.tile-resource-marker.tone-water circle {
+  stroke: rgba(139, 205, 230, 0.82);
+}
+
+.tile-resource-marker.tone-stone circle {
+  stroke: rgba(211, 207, 190, 0.78);
+}
+
+.tile-resource-marker.tone-wood circle,
+.tile-resource-marker.tone-fiber circle,
+.tile-resource-marker.tone-food circle {
+  stroke: rgba(182, 218, 135, 0.8);
+}
+
+.tile-resource-marker.tone-clay circle,
+.tile-resource-marker.tone-trace circle,
+.tile-resource-marker.tone-site circle {
+  stroke: rgba(218, 181, 130, 0.82);
+}
+
 .camp-tile .tile-path-mark {
   stroke: rgba(224, 217, 190, 0.78);
   stroke-width: 3;
@@ -1370,6 +1936,50 @@
 
 .camp-tile .tile-here-marker {
   stroke-width: 3;
+}
+
+/* Unknown map cells: same neutral fog, no semantic colour differences. */
+.camp-map-scene .camp-tile.is-hidden polygon,
+.camp-map-scene .camp-tile.is-silhouette polygon,
+.camp-map-scene .camp-tile.is-visible_locked polygon {
+  fill: #2b3034 !important;
+  stroke: rgba(152, 160, 164, 0.34) !important;
+  stroke-width: 1 !important;
+  opacity: 0.72;
+  filter: none;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.camp-map-scene .camp-tile.is-hidden:hover polygon,
+.camp-map-scene .camp-tile.is-silhouette:hover polygon,
+.camp-map-scene .camp-tile.is-visible_locked:hover polygon {
+  fill: #34393d !important;
+  stroke: rgba(182, 188, 190, 0.48) !important;
+  opacity: 0.82;
+}
+
+.camp-map-scene .camp-tile.is-terrain_seen polygon {
+  fill: #26372f !important;
+  stroke: rgba(156, 190, 153, 0.54) !important;
+  stroke-width: 1.25 !important;
+  opacity: 0.88;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.camp-map-scene .camp-tile.is-terrain_seen:hover polygon {
+  fill: #304238 !important;
+  stroke: rgba(190, 220, 184, 0.78) !important;
+  opacity: 0.98;
+}
+
+.camp-map-scene .camp-tile.is-hidden .tile-icon,
+.camp-map-scene .camp-tile.is-silhouette .tile-icon,
+.camp-map-scene .camp-tile.is-visible_locked .tile-icon,
+.camp-map-scene .tile-art-question,
+.camp-map-scene .tile-art-question.is-locked {
+  display: none !important;
 }
 
 @media (max-width: 1420px) {

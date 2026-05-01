@@ -1,10 +1,11 @@
 // Crafting panel rendering.
 
 Object.assign(UI.prototype, {
-
   renderCrafting() {
     const container = document.getElementById("craft-panel");
     if (!container) return;
+    const isEarlyProgression =
+      this.game.isEarlyProgressionMode?.() ?? this.game.isPrologueActive();
 
     if (
       this.game.isPrologueActive() &&
@@ -16,16 +17,14 @@ Object.assign(UI.prototype, {
 
     container.innerHTML = "";
     const title = document.createElement("h3");
-    title.textContent = this.game.isPrologueActive()
-      ? "🪢 Первые предметы"
-      : "⚒️ Крафт";
+    title.textContent = isEarlyProgression ? "🪢 Первые предметы" : "⚒️ Крафт";
     container.appendChild(title);
 
-    if (this.game.isPrologueActive()) {
+    if (isEarlyProgression) {
       const hint = document.createElement("p");
       hint.className = "hint";
       hint.textContent =
-        "Пока ещё нет мастерской и ремесла. Есть только одна полезная связка, которая помогает перейти от голых рук к первому орудию.";
+        "Пока ещё нет ремесла как отдельного дела. Сейчас можно только соединять простые находки в первые полезные вещи.";
       container.appendChild(hint);
     }
 
@@ -34,7 +33,7 @@ Object.assign(UI.prototype, {
     queueCard.className = "craft-queue-card";
     queueCard.innerHTML = `
       <div class="craft-queue-header">
-        <span class="craft-queue-title">${this.game.isPrologueActive() ? "Текущее занятие" : "Очередь производства"}</span>
+        <span class="craft-queue-title">${isEarlyProgression ? "Текущее занятие" : "Очередь производства"}</span>
         <span class="craft-queue-capacity">${queueState.items.length} / ${queueState.capacity}</span>
       </div>
       <div class="craft-queue-slots">
@@ -71,7 +70,7 @@ Object.assign(UI.prototype, {
         }).join("")}
       </div>
     `;
-    if (!this.game.isPrologueActive() || queueState.items.length > 0) {
+    if (!isEarlyProgression || queueState.items.length > 0) {
       this.setTooltip(queueCard, [
         "Очередь крафта: задания выполняются автоматически по порядку",
         `Слотов занято: ${queueState.items.length} / ${queueState.capacity}`,
@@ -175,5 +174,4 @@ Object.assign(UI.prototype, {
       container.appendChild(el);
     }
   },
-
 });
