@@ -46,22 +46,39 @@ Object.assign(UI.prototype, {
   },
 
   _renderGatherDecisionChips(profile, energyCost, options = {}) {
-    const chips = [
-      `<span class="grr-energy">⚡ ${this.formatNumber(energyCost, 2)} сил</span>`,
-    ];
-    if (Number.isFinite(options.durationMs)) {
+    const {
+      includeEnergy = true,
+      includeDuration = false,
+      includeTimeCost = false,
+      includeNeeds = true,
+      includeCarry = true,
+      includeTrips = true,
+      onlyAlerts = false,
+    } = options;
+    const chips = [];
+    if (includeEnergy) {
+      chips.push(
+        `<span class="grr-energy">⚡ ${this.formatNumber(energyCost, 2)} сил</span>`,
+      );
+    }
+    if (includeDuration && Number.isFinite(options.durationMs)) {
       chips.push(
         `<span class="grr-energy">⏱ ${this.formatSeconds(options.durationMs)}</span>`,
       );
     }
-    if (Number.isFinite(options.timeCost)) {
+    if (includeTimeCost && Number.isFinite(options.timeCost)) {
       chips.push(`<span class="grr-energy">⏳ ${options.timeCost}</span>`);
     }
-    if (profile?.needsImpact) {
+    const needsTone = profile?.needsImpact?.tone || "info";
+    if (
+      includeNeeds &&
+      profile?.needsImpact &&
+      (!onlyAlerts || (needsTone !== "ok" && needsTone !== "info"))
+    ) {
       chips.push(
-        `<span class="grr-energy grr-energy--${profile.needsImpact.tone || "info"}">🍖💧 ${profile.needsImpact.label}</span>`,
+        `<span class="grr-energy grr-energy--${needsTone}">🍖💧 ${profile.needsImpact.label}</span>`,
       );
-    } else {
+    } else if (includeNeeds && !onlyAlerts) {
       const costs = [];
       if (Number.isFinite(profile?.satietyCost)) {
         costs.push(`🍖 -${this.formatNumber(profile.satietyCost, 2)}`);
@@ -73,17 +90,48 @@ Object.assign(UI.prototype, {
         chips.push(`<span class="grr-energy">${costs.join(" · ")}</span>`);
       }
     }
-    if (profile?.carryState) {
+    const carryTone = profile?.carryState?.tone || "info";
+    if (
+      includeCarry &&
+      profile?.carryState &&
+      (!onlyAlerts || (carryTone !== "ok" && carryTone !== "info"))
+    ) {
       chips.push(
-        `<span class="grr-energy grr-energy--${profile.carryState.tone || "info"}">🎒 ${profile.carryState.label}</span>`,
+        `<span class="grr-energy grr-energy--${carryTone}">🧺 ${profile.carryState.label}</span>`,
       );
     }
-    if (profile?.deliveryTrips > 1) {
+    if (includeTrips && profile?.deliveryTrips > 1) {
       chips.push(
         `<span class="grr-warn">${profile.deliveryTrips} ходки</span>`,
       );
     }
     return chips.join("");
+  },
+
+  _focusGatherTile(tileId, options = {}) {
+    if (!tileId) return;
+    this.game.selectCampTile?.(tileId);
+    document.getElementById("camp-map-panel")?.scrollIntoView({
+      behavior: options.behavior || "smooth",
+      block: "nearest",
+    });
+    this.render({ forcePanels: true });
+  },
+
+  _getFoundingNeedLabels(output = {}, cost = {}) {
+    return Object.keys(output)
+      .filter((resId) => {
+        if (!cost[resId]) return false;
+        const have =
+          this.game.getCampFoundingResourceAmount?.(resId) ??
+          this.game.resources?.[resId] ??
+          0;
+        return have < cost[resId];
+      })
+      .map(
+        (resId) =>
+          `${this.getResourceDisplayIcon(resId)} ${this.getResourceDisplayName(resId)}`,
+      );
   },
 
   /** Prologue mode: classic action buttons for abstract hand-gathering. */
@@ -119,7 +167,7 @@ Object.assign(UI.prototype, {
         profile?.gatherDurationMs || this.game.getGatherDuration(id);
       const outputStr = this.formatResourcePairs(output, { plus: true });
       const loadText = profile
-        ? `🎒 ${this.formatNumber(profile.load)} / ${this.formatNumber(profile.carryCapacity)}`
+        ? `🧺 ${this.formatNumber(profile.load)} / ${this.formatNumber(profile.carryCapacity)}`
         : "";
       const zoneText = profile?.tile ? `🗺 ${profile.zoneLabel}` : "";
       const terrainText = profile?.terrainLabel
@@ -131,7 +179,7 @@ Object.assign(UI.prototype, {
       btn.type = "button";
       btn.innerHTML = `
         <span class="btn-icon">${copy.icon}</span>
-        <span class="btn-label">${copy.name}</span>
+        <span class="btn-label">В работу: ${copy.name}</span>
         ${copy.description ? `<span class="btn-desc">${copy.description}</span>` : ""}
         <div class="btn-meta-inline">
           <span class="btn-output">Находка: ${outputStr}</span>
@@ -144,7 +192,7 @@ Object.assign(UI.prototype, {
         </div>
         ${zoneText || terrainText ? `<span class="btn-efficiency">${[zoneText, terrainText].filter(Boolean).join(" · ")}</span>` : ""}
         ${profile?.blockedReason ? `<span class="btn-cooldown">🧍 ${profile.blockedReason}</span>` : ""}
-        ${profile?.limitedByCarry ? '<span class="btn-cooldown">🎒 Переносимость ограничивает вынос</span>' : ""}
+        ${profile?.limitedByCarry ? '<span class="btn-cooldown">🧺 Переносимость ограничивает вынос</span>' : ""}
         ${cooldown > 0 ? `<span class="btn-cooldown">⏳ ${this.formatCooldownMs(cooldown)}</span>` : ""}
         ${!this.game.hasEnergy(effectiveEnergyCost) && cooldown === 0 ? '<span class="btn-cooldown">⚡ Нет сил</span>' : ""}
       `;
@@ -153,9 +201,8 @@ Object.assign(UI.prototype, {
       btn.setAttribute("aria-disabled", disabled ? "true" : "false");
       // Нет setTooltip: кнопка уже показывает все данные inline (icon, name, desc, Находка, Энергия, Нагрузка, Местность)
       btn.addEventListener("click", () => {
-        if (this.game.gather(id)) {
+        if (this.game.enqueueManualGather(id)) {
           this.render({ forcePanels: true });
-          this._scheduleGatherCooldownRefresh(action.cooldown);
         } else {
           this.render({ forcePanels: true });
         }
@@ -223,7 +270,7 @@ Object.assign(UI.prototype, {
     hint.className = "hint";
     hint.textContent =
       carriedFoundingTotal > 0
-        ? "Материалы в рюкзаке уже засчитываются для основания. Доберите недостающее или выберите место стоянки, когда всё готово."
+        ? "Материалы, которые персонаж несёт с собой, уже засчитываются для основания. Доберите недостающее или выберите место стоянки, когда всё готово."
         : "Нажмите на участок с ресурсами на карте выше или соберите прямо из списка ниже.";
     container.appendChild(hint);
 
@@ -248,6 +295,27 @@ Object.assign(UI.prototype, {
     }
 
     const selectedTileId = this.game.getSelectedCampTileId();
+    const neededTileCount = resourceTiles.filter((tile) => {
+      if (tile.isDepleted) return false;
+      const action = this.data.gatherActions[tile.actionId];
+      if (!action) return false;
+      const output = this.game.getGatherOutput(action.id);
+      return this._getFoundingNeedLabels(output, cost).length > 0;
+    }).length;
+
+    const routesIntro = document.createElement("div");
+    routesIntro.className = "gather-route-summary";
+    routesIntro.innerHTML = `
+      <div class="gather-route-summary-head">
+        <div class="gather-route-summary-title">Маршруты сбора</div>
+        <div class="gather-route-summary-stats">
+          <span class="gather-route-summary-chip">${resourceTiles.length} участков</span>
+          <span class="gather-route-summary-chip${neededTileCount > 0 ? " is-needed" : ""}">${neededTileCount} помогают основанию</span>
+        </div>
+      </div>
+      <div class="gather-route-summary-text">Карточки ниже не заменяют карту: они помогают быстро решить, к какому участку идти сейчас, что он даст и закроет ли он текущую нехватку для лагеря.</div>
+    `;
+    container.appendChild(routesIntro);
 
     for (const tile of resourceTiles) {
       const action = this.data.gatherActions[tile.actionId];
@@ -256,7 +324,9 @@ Object.assign(UI.prototype, {
       const profile = this.game.getGatherProfile(action.id, {
         tileId: tile.id,
       });
-      const cooldown = this.game.getCooldownRemaining(action.id);
+      const cooldown = this.game.getCooldownRemaining(action.id, {
+        tileId: tile.id,
+      });
       const effectiveEnergyCost = profile?.energyCost ?? action.energyCost;
       const canGather = this.game.canGather(action.id, { tileId: tile.id });
       const output = profile?.output || this.game.getGatherOutput(action.id);
@@ -285,23 +355,22 @@ Object.assign(UI.prototype, {
       const placeName = tile.terrainName || tile.name;
       const placeRole =
         tile.knownPotentials?.[0]?.label || tile.roleLabel || tile.name;
+      const needLabels = this._getFoundingNeedLabels(output, cost);
+      const isSelected = tile.id === selectedTileId;
 
       // Highlight tiles that provide a resource still needed for founding
-      const stillNeeded =
-        !isDepleted &&
-        Object.keys(output || {}).some(
-          (resId) =>
-            cost[resId] &&
-            (this.game.getCampFoundingResourceAmount?.(resId) ||
-              this.game.resources[resId] ||
-              0) < cost[resId],
-        );
+      const stillNeeded = !isDepleted && needLabels.length > 0;
+      const rowSummary = stillNeeded
+        ? `Поможет закрыть: ${needLabels.join(", ")}`
+        : isSelected
+          ? "Сейчас этот участок выделен на карте."
+          : "Используйте карточку, чтобы быстро сфокусироваться на участке или собрать ресурс без лишнего поиска по карте.";
 
       const row = document.createElement("div");
       row.className = "gather-resource-row gather-resource-row--precamp";
       if (isDepleted) row.classList.add("is-depleted");
       if (stillNeeded) row.classList.add("is-needed");
-      if (tile.id === selectedTileId) row.classList.add("is-selected");
+      if (isSelected) row.classList.add("is-selected");
 
       const deliveryNote =
         profile?.deliveryTrips > 1
@@ -315,16 +384,29 @@ Object.assign(UI.prototype, {
           timeCost: profile?.timeCost || 1,
         },
       );
+      const badgesHtml = [
+        stillNeeded
+          ? '<span class="grr-badge grr-badge--needed">Нужно для основания</span>'
+          : "",
+        isSelected
+          ? '<span class="grr-badge grr-badge--selected">Выбрано на карте</span>'
+          : "",
+        isDepleted
+          ? '<span class="grr-badge grr-badge--muted">Исчерпан</span>'
+          : "",
+      ].join("");
 
       row.innerHTML = `
         <div class="grr-left">
           <span class="grr-icon">${rowIcon}</span>
           <div class="grr-info">
             <span class="grr-name">${placeName}</span>
+            ${badgesHtml ? `<div class="grr-badges">${badgesHtml}</div>` : ""}
             ${placeRole && placeRole !== placeName ? `<span class="grr-role">${placeRole}</span>` : ""}
             <span class="grr-meta">
               🗺 ${zoneLabel}${stockStr ? ` · 📦 ${stockStr}` : ""}
             </span>
+            <span class="grr-summary">${rowSummary}</span>
             ${isDepleted ? '<span class="grr-blocked">Участок исчерпан</span>' : ""}
             ${!isDepleted && cooldown > 0 ? `<span class="grr-cooldown">⏳ ${this.formatCooldownMs(cooldown)}</span>` : ""}
             ${profile?.blockedReason && !isDepleted ? `<span class="grr-blocked">${profile.blockedReason}</span>` : ""}
@@ -339,31 +421,45 @@ Object.assign(UI.prototype, {
 
       // Row click → select tile on map and scroll into view
       row.addEventListener("click", () => {
-        this.game.selectCampTile(tile.id);
-        document.getElementById("camp-map-panel")?.scrollIntoView({
-          behavior: "smooth",
-          block: "nearest",
-        });
-        this.render({ forcePanels: true });
+        this._focusGatherTile(tile.id);
       });
 
-      // Inline gather button
-      if (!isDepleted && canGather) {
-        const gatherBtn = document.createElement("button");
-        gatherBtn.className = "action-btn action-btn--gather-tile";
-        gatherBtn.innerHTML = `${actionCopy.icon} Собрать`;
-        gatherBtn.type = "button";
-        gatherBtn.addEventListener("click", (e) => {
-          e.stopPropagation(); // don't trigger row select
-          const gathered = this.game.gather(action.id, { tileId: tile.id });
-          this.game.selectCampTile(tile.id); // show which tile was used
-          this.render({ forcePanels: true });
-          if (gathered) {
-            this._scheduleGatherCooldownRefresh(action.cooldown);
-          }
-        });
-        row.appendChild(gatherBtn);
-      }
+      const actions = document.createElement("div");
+      actions.className = "grr-actions";
+
+      const focusBtn = document.createElement("button");
+      focusBtn.className = "grr-action grr-action--focus";
+      focusBtn.type = "button";
+      focusBtn.textContent = isSelected
+        ? "Участок на карте"
+        : "Показать на карте";
+      focusBtn.disabled = isSelected;
+      focusBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this._focusGatherTile(tile.id);
+      });
+      actions.appendChild(focusBtn);
+
+      const gatherBtn = document.createElement("button");
+      gatherBtn.className = "grr-action grr-action--gather";
+      gatherBtn.type = "button";
+      gatherBtn.innerHTML = `${actionCopy.icon} Поставить в очередь`;
+      gatherBtn.disabled = isDepleted || !canGather;
+      gatherBtn.title = isDepleted
+        ? "Участок исчерпан"
+        : cooldown > 0
+          ? `Перерыв: ${this.formatCooldownMs(cooldown)}`
+          : profile?.blockedReason
+            ? `${profile.blockedReason} (очередь работ)`
+            : "Поставить сбор в очередь работ";
+      gatherBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.game.enqueueManualGather(action.id, { tileId: tile.id });
+        this.game.selectCampTile(tile.id);
+        this.render({ forcePanels: true });
+      });
+      actions.appendChild(gatherBtn);
+      row.appendChild(actions);
 
       container.appendChild(row);
     }
@@ -440,7 +536,15 @@ Object.assign(UI.prototype, {
         const profile = this.game.getGatherProfile(action.id, {
           tileId: tile.id,
         });
-        const cooldown = this.game.getCooldownRemaining(action.id);
+        const details = this.game.getCampMapTileDetails?.(tile.id) || {
+          ...tile,
+          action,
+          gatherProfile: profile,
+        };
+        const logistics = this._getCampLogisticsSummary?.(details) || null;
+        const cooldown = this.game.getCooldownRemaining(action.id, {
+          tileId: tile.id,
+        });
         const canGather =
           !!profile &&
           !profile.blockedReason &&
@@ -471,9 +575,7 @@ Object.assign(UI.prototype, {
         // Path indicator
         const pathIcon = hasPath
           ? tile.pathData?.icon || "🥾"
-          : noPath && dist > 0
-            ? "·"
-            : "";
+          : "";
         const pathLabel = hasPath
           ? tile.pathData?.label || "Тропа"
           : noPath
@@ -486,12 +588,23 @@ Object.assign(UI.prototype, {
           Number.isFinite(tile.resourceCapacity)
             ? `${tile.resourceRemaining}/${tile.resourceCapacity}`
             : "";
+        const outputStr = this.formatResourcePairs(
+          profile?.output || this.game.getGatherOutput(action.id),
+          { plus: true },
+        );
 
         // Energy cost
         const energyCost = profile?.energyCost ?? action.energyCost;
         const decisionChips = this._renderGatherDecisionChips(
           profile,
           energyCost,
+          {
+            includeEnergy: false,
+            includeNeeds: true,
+            includeCarry: true,
+            includeTrips: false,
+            onlyAlerts: true,
+          },
         );
         const marker = tile.primaryMarker || tile.visibleMarkers?.[0] || null;
         const rowIcon = marker
@@ -506,6 +619,35 @@ Object.assign(UI.prototype, {
             : tile.icon || actionCopy.icon;
         const placeName = tile.terrainName || tile.name;
         const knownLabel = tile.knownPotentials?.[0]?.label || roleMeta?.label;
+        const routeSummary = [
+          logistics ? `⏱ ${logistics.totalLabel}` : "",
+          logistics ? `↔ ${logistics.routeLabel}` : `🗺 ${zoneLabel}`,
+          stockStr ? `📦 ${stockStr}` : "",
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        const routeStatus = tile.isDepleted
+          ? "Участок исчерпан"
+          : profile?.blockedReason
+            ? profile.blockedReason
+            : profile?.limitedByCarry
+              ? "Вынос упрётся в переносимость"
+              : profile?.deliveryTrips > 1
+                ? `Понадобится ${profile.deliveryTrips} ${profile.deliveryTrips === 1 ? "ходка" : profile.deliveryTrips >= 2 && profile.deliveryTrips <= 4 ? "ходки" : "ходок"}`
+                : noPath && dist > 1
+                  ? "Без тропы путь ощутимо тяжелее"
+                  : hasPath
+                    ? "Тропа уже облегчает рейс"
+                    : dist === 0
+                      ? "Сбор рядом с лагерем"
+                      : dist === 1
+                        ? "Ближний выход"
+                        : "Дальний выход";
+        const routeStatusClass = tile.isDepleted || profile?.blockedReason
+          ? "grr-blocked"
+          : noPath && dist > 1
+            ? "grr-warn"
+            : "grr-status";
 
         row.innerHTML = `
           <div class="grr-left">
@@ -516,15 +658,14 @@ Object.assign(UI.prototype, {
               <span class="grr-meta">
                 🗺 ${zoneLabel}
                 ${pathIcon ? ` · ${pathIcon} ${pathLabel}` : ""}
-                ${stockStr ? ` · 📦 ${stockStr}` : ""}
               </span>
-              ${profile?.blockedReason ? `<span class="grr-blocked">${profile.blockedReason}</span>` : ""}
-              ${tile.isDepleted ? '<span class="grr-blocked">Участок исчерпан</span>' : ""}
-              ${noPath && dist > 1 ? '<span class="grr-warn">Тяжёлый путь</span>' : ""}
+              ${routeSummary ? `<span class="grr-route">${routeSummary}</span>` : ""}
+              <span class="${routeStatusClass}">${routeStatus}</span>
             </div>
           </div>
           <div class="grr-right">
-            ${decisionChips}
+            <span class="grr-output">${outputStr}</span>
+            ${decisionChips ? `<div class="grr-decision-strip">${decisionChips}</div>` : ""}
             ${cooldown > 0 ? `<span class="grr-cooldown">⏳ ${this.formatCooldownMs(cooldown)}</span>` : ""}
           </div>
         `;
@@ -544,6 +685,8 @@ Object.assign(UI.prototype, {
           Number.isFinite(profile?.hydrationCost)
             ? `Вода: -${this.formatNumber(profile.hydrationCost, 2)}`
             : "",
+          logistics ? `Логистика: ${logistics.totalLabel}` : "",
+          logistics ? logistics.note : "",
           profile?.needsImpact ? profile.needsImpact.note : "",
           profile?.carryState ? profile.carryState.note : "",
           profile
@@ -567,7 +710,7 @@ Object.assign(UI.prototype, {
         if (!tile.isDepleted && canGather) {
           const gatherBtn = document.createElement("button");
           gatherBtn.className = "action-btn action-btn--gather-tile";
-          gatherBtn.innerHTML = `${actionCopy.icon} Собрать`;
+          gatherBtn.innerHTML = `${actionCopy.icon} Поставить в очередь`;
           gatherBtn.type = "button";
           gatherBtn.disabled = !!this._campTravelAction;
           gatherBtn.addEventListener("click", (e) => {
@@ -584,9 +727,8 @@ Object.assign(UI.prototype, {
               return;
             }
 
-            this.game.gather(action.id, { tileId: tile.id });
+            this.game.enqueueManualGather(action.id, { tileId: tile.id });
             this.render({ forcePanels: true });
-            this._scheduleGatherCooldownRefresh(action.cooldown);
           });
           row.appendChild(gatherBtn);
         }

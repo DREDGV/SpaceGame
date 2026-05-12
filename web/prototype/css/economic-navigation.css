@@ -1,0 +1,26 @@
+/* Stage 1C + 1D — guide highlight: soft, no layout growth, minimal overflow paint */
+
+.is-guided-highlight {
+  position: relative;
+  z-index: 0;
+  outline: none;
+  box-shadow:
+    0 0 0 1px rgba(212, 184, 108, 0.42),
+    0 0 0 3px rgba(212, 184, 108, 0.09);
+  border-radius: 8px;
+  animation: econ-guide-pulse 1.1s ease-in-out 2;
+}
+
+@keyframes econ-guide-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(212, 184, 108, 0.34),
+      0 0 0 2px rgba(212, 184, 108, 0.06);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(230, 200, 120, 0.5),
+      0 0 0 4px rgba(212, 184, 108, 0.1);
+  }
+}

@@ -757,6 +757,208 @@
   line-height: 1.6;
   font-style: italic;
 }
+
+.cs-build-plan {
+  display: grid;
+  gap: 0.62rem;
+  padding: 0.72rem;
+  border: 1px solid rgba(138, 106, 58, 0.35);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(32, 23, 13, 0.72), rgba(18, 12, 8, 0.64));
+}
+.cs-build-plan-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  color: #a89470;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.cs-build-plan-head strong {
+  flex-shrink: 0;
+  padding: 0.12rem 0.42rem;
+  border: 1px solid rgba(240, 180, 92, 0.32);
+  border-radius: 999px;
+  color: #f0cf86;
+  background: rgba(95, 57, 16, 0.22);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.cs-build-plan-current {
+  display: grid;
+  grid-template-columns: 2.2rem minmax(0, 1fr) auto;
+  gap: 0.55rem;
+  align-items: center;
+  padding: 0.62rem 0.66rem;
+  border: 1px solid rgba(240, 180, 92, 0.4);
+  border-radius: 7px;
+  background:
+    linear-gradient(180deg, rgba(91, 58, 22, 0.28), rgba(28, 18, 10, 0.56));
+  box-shadow: inset 0 1px 0 rgba(255, 220, 150, 0.08);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.cs-build-plan-current:hover,
+.cs-build-plan-current:focus-visible {
+  border-color: rgba(240, 180, 92, 0.64);
+  background:
+    linear-gradient(180deg, rgba(112, 70, 24, 0.34), rgba(35, 23, 12, 0.62));
+  outline: none;
+}
+.cs-build-plan-current.is-done,
+.cs-build-plan-current.is-complete {
+  border-color: rgba(74, 222, 128, 0.26);
+  background: rgba(21, 70, 38, 0.16);
+}
+.cs-build-plan-current.is-locked {
+  border-color: rgba(148, 116, 70, 0.32);
+  background: rgba(22, 15, 9, 0.58);
+}
+.cs-build-plan-current-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 8px;
+  color: #1e1208;
+  background: #f0b45c;
+  font-size: 1.12rem;
+  font-weight: 900;
+}
+.cs-build-plan-current.is-done .cs-build-plan-current-icon,
+.cs-build-plan-current.is-complete .cs-build-plan-current-icon {
+  background: #4ade80;
+}
+.cs-build-plan-current.is-locked .cs-build-plan-current-icon {
+  color: #b6a17a;
+  background: #3a2a18;
+}
+.cs-build-plan-current-body {
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+}
+.cs-build-plan-current-kicker {
+  color: #d8b068;
+  font-size: 0.62rem;
+  font-weight: 850;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.cs-build-plan-current-body strong {
+  color: #f4d48a;
+  font-size: 0.88rem;
+  line-height: 1.22;
+}
+.cs-build-plan-current-body em {
+  color: #c8b898;
+  font-size: 0.7rem;
+  font-style: normal;
+  line-height: 1.34;
+}
+.cs-build-plan-current-badge {
+  align-self: start;
+  padding: 0.16rem 0.42rem;
+  border: 1px solid rgba(240, 180, 92, 0.28);
+  border-radius: 999px;
+  color: #f0cf86;
+  background: rgba(12, 9, 6, 0.34);
+  font-size: 0.62rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+.cs-build-plan-steps {
+  display: grid;
+  gap: 0.34rem;
+}
+.cs-build-plan-step {
+  position: relative;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 1.15rem auto minmax(0, 1fr);
+  gap: 0.38rem;
+  align-items: center;
+  padding: 0.42rem 0.5rem;
+  border: 1px solid rgba(116, 86, 42, 0.4);
+  border-radius: 6px;
+  background: rgba(12, 9, 6, 0.38);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.cs-build-plan-step:hover,
+.cs-build-plan-step:focus-visible {
+  border-color: rgba(240, 180, 92, 0.5);
+  background: rgba(30, 20, 11, 0.58);
+  outline: none;
+}
+.cs-build-plan-index {
+  display: inline-grid;
+  place-items: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 999px;
+  color: #2a1a08;
+  background: #a8874c;
+  font-size: 0.66rem;
+  font-weight: 900;
+}
+.cs-build-plan-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 1.25rem;
+  font-size: 1rem;
+  line-height: 1;
+}
+.cs-build-plan-body {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.cs-build-plan-title,
+.cs-build-plan-note {
+  display: block;
+  min-width: 0;
+}
+.cs-build-plan-title {
+  color: #ead9b4;
+  font-size: 0.74rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+.cs-build-plan-note {
+  color: #9f9176;
+  font-size: 0.66rem;
+  line-height: 1.32;
+}
+.cs-build-plan-step.is-done {
+  border-color: rgba(74, 222, 128, 0.22);
+  background: rgba(21, 70, 38, 0.13);
+}
+.cs-build-plan-step.is-done .cs-build-plan-index {
+  background: #4ade80;
+}
+.cs-build-plan-step.is-active,
+.cs-build-plan-step.is-next {
+  border-color: rgba(240, 180, 92, 0.48);
+  background: rgba(95, 57, 16, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 220, 150, 0.08);
+}
+.cs-build-plan-step.is-active .cs-build-plan-index,
+.cs-build-plan-step.is-next .cs-build-plan-index {
+  background: #f0b45c;
+}
+.cs-build-plan-step.is-locked {
+  opacity: 0.58;
+}
+.cs-build-plan-step.is-locked .cs-build-plan-index {
+  color: #b6a17a;
+  background: #3a2a18;
+}
 .cs-detail-intro-hint {
   display: flex;
   align-items: flex-start;
@@ -855,6 +1057,7 @@
     linear-gradient(rgba(240, 200, 130, 0.035) 1px, transparent 1px),
     linear-gradient(90deg, rgba(240, 200, 130, 0.025) 1px, transparent 1px);
   background-size: 46px 46px;
+  -webkit-mask-image: radial-gradient(ellipse at 50% 50%, black 0%, transparent 75%);
   mask-image: radial-gradient(ellipse at 50% 50%, black 0%, transparent 75%);
   opacity: 0.65;
   z-index: 0;
@@ -881,24 +1084,30 @@
   color: #f4d48a;
 }
 
-.cs-scene-path {
+.cs-scene-grid {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 650px;
-  height: 320px;
+  width: min(76%, 620px);
+  height: min(68%, 430px);
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  grid-template-rows: repeat(4, 1fr);
+  gap: 8px;
   pointer-events: none;
-  border: 2px dashed rgba(160, 114, 52, 0.16);
-  border-radius: 50%;
-  transform: translate(-50%, -50%) rotate(-10deg);
+  transform: translate(-50%, -50%);
   z-index: 0;
+  opacity: 0.62;
+  -webkit-mask-image: radial-gradient(ellipse at 50% 50%, black 0%, transparent 92%);
+  mask-image: radial-gradient(ellipse at 50% 50%, black 0%, transparent 92%);
 }
 
-.cs-scene-path--b {
-  width: 450px;
-  height: 450px;
-  transform: translate(-50%, -50%) rotate(48deg);
-  border-color: rgba(160, 114, 52, 0.12);
+.cs-scene-cell {
+  border: 1px solid rgba(196, 142, 66, 0.16);
+  border-radius: 7px;
+  background:
+    linear-gradient(180deg, rgba(60, 42, 24, 0.18), rgba(16, 11, 7, 0.08));
+  box-shadow: inset 0 1px 0 rgba(248, 220, 140, 0.035);
 }
 
 /* ── Plot nodes — frameless floating icons in scene ──────────────────────── */
@@ -983,6 +1192,13 @@
 .cs-plot.is-empty .cs-plot-icon {
   opacity: 0.42;
   filter: grayscale(0.5) drop-shadow(0 3px 6px rgba(0, 0, 0, 0.4));
+}
+
+.cs-plot.is-empty .cs-core-marker {
+  opacity: 1;
+  filter:
+    drop-shadow(0 0 12px rgba(216, 160, 72, 0.28))
+    drop-shadow(0 4px 9px rgba(0, 0, 0, 0.58));
 }
 
 /* Center/campfire gets a warm ambient halo on the ground glow */
@@ -1114,6 +1330,104 @@
 .cs-build-option-art,
 .cs-det-inline-icon {
   position: relative;
+}
+
+.cs-core-marker {
+  overflow: hidden;
+  border: 1px solid rgba(138, 106, 58, 0.42);
+  border-radius: 10px;
+  background:
+    radial-gradient(ellipse at 50% 72%, rgba(130, 96, 48, 0.32), transparent 58%),
+    radial-gradient(circle at 48% 28%, rgba(216, 160, 72, 0.2), transparent 44%),
+    linear-gradient(180deg, rgba(44, 30, 16, 0.76), rgba(17, 11, 7, 0.76));
+}
+
+.cs-sidebar-core-icon {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cs-core-marker--detail {
+  width: 54px;
+  height: 54px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cs-core-marker-ground,
+.cs-core-marker-log,
+.cs-core-marker-stake,
+.cs-core-marker-flag {
+  position: absolute;
+  display: block;
+  pointer-events: none;
+}
+
+.cs-core-marker-ground {
+  left: 14%;
+  right: 14%;
+  bottom: 18%;
+  height: 22%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(116, 85, 44, 0.72), transparent 72%);
+}
+
+.cs-core-marker-log {
+  left: 28%;
+  bottom: 28%;
+  width: 46%;
+  height: 9%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #6f4824, #b47b3c 48%, #5a351c);
+  box-shadow: inset 0 1px 0 rgba(248, 220, 140, 0.16);
+}
+
+.cs-core-marker-log--a { transform: rotate(-16deg); }
+.cs-core-marker-log--b { transform: translateY(-45%) rotate(18deg); opacity: 0.9; }
+
+.cs-core-marker-stake {
+  width: 7%;
+  height: 50%;
+  bottom: 31%;
+  border-radius: 999px 999px 3px 3px;
+  background: linear-gradient(180deg, #d6a05a, #6f4521 72%, #3a2111);
+  transform-origin: bottom center;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.32);
+}
+
+.cs-core-marker-stake--a {
+  left: 38%;
+  transform: rotate(-11deg);
+}
+
+.cs-core-marker-stake--b {
+  right: 34%;
+  height: 43%;
+  transform: rotate(10deg);
+  opacity: 0.86;
+}
+
+.cs-core-marker-flag {
+  left: 45%;
+  top: 21%;
+  width: 20%;
+  height: 13%;
+  border-radius: 2px 6px 6px 2px;
+  background: linear-gradient(135deg, rgba(236, 188, 98, 0.95), rgba(164, 96, 42, 0.92));
+  transform: rotate(-7deg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.32);
+}
+
+.cs-core-marker--prepared .cs-core-marker-ground {
+  background: radial-gradient(ellipse, rgba(148, 104, 52, 0.78), transparent 74%);
+}
+
+.cs-core-marker--prepared .cs-core-marker-flag {
+  background: linear-gradient(135deg, rgba(246, 210, 122, 0.98), rgba(186, 126, 46, 0.94));
 }
 
 /* Level badge (shown on dock/detail icons, not on scene plot-icon) */
@@ -1812,6 +2126,11 @@
   opacity: 0.55;
   filter: grayscale(0.5);
 }
+
+.cs-dock-item.is-empty .cs-core-marker {
+  opacity: 0.95;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.38));
+}
 /* Icon <img> sizing inside dock */
 .cs-dock-icon img {
   width: 1.9em !important;
@@ -1903,10 +2222,10 @@
   border: 1px dashed #5a4328;
   background: transparent;
   width: auto;
-  min-width: 42px;
+  min-width: 54px;
   padding: 0 0.35rem;
   border-radius: 999px;
-  font-size: 0.68rem;
+  font-size: 0.64rem;
   font-weight: 800;
 }
 
@@ -1996,22 +2315,61 @@
 }
 .cs-camp-summary-val { color: #f4d48a; font-weight: 600; }
 
-/* ── Responsive: narrow screens ─────────────────────────────────────────── */
-@media (max-width: 800px) {
-  .cs-main { flex-direction: column; }
-  .cs-sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; max-height: 120px; }
+/* ── Responsive: narrow and embedded screens ────────────────────────────── */
+@media (max-width: 1120px) {
+  .cs-main {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .cs-sidebar {
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: stretch;
+    max-height: 150px;
+    overflow-y: auto;
+    border-right: none;
+    border-bottom: 1px solid #3a2a18;
+  }
+  .cs-sidebar-header {
+    width: min(270px, 100%);
+    flex-shrink: 0;
+  }
+  .cs-sidebar-section-title {
+    display: none;
+  }
+  .cs-dock {
+    flex: 1;
+    min-width: 320px;
+    flex-direction: row;
+    overflow-x: auto;
+    padding-bottom: 0.2rem;
+  }
+  .cs-dock-item {
+    width: 240px;
+  }
+  .cs-scene-wrap {
+    flex: 0 0 auto;
+    min-height: 360px;
+    padding: 0.75rem;
+    overflow: visible;
+  }
   .cs-detail {
     width: 100%;
-    max-height: 45vh;
+    max-height: none;
     border-left: none;
     border-top: 1px solid #3a2a18;
   }
   .cs-scene { width: 400px; height: 320px; }
   .cs-scene.cs-scene--plots {
-    width: min(100%, 440px);
+    width: min(calc(100vw - 2rem), 640px);
     min-width: 0;
-    height: 330px;
+    height: 360px;
     min-height: 0;
+  }
+  .cs-scene-grid {
+    width: min(82%, 520px);
+    height: min(70%, 280px);
   }
   .cs-plot {
     width: 112px;
@@ -2035,5 +2393,30 @@
   .cs-plot-building .cs-building-img {
     width: 23px;
     height: 23px;
+  }
+}
+
+@media (max-width: 640px) {
+  .cs-build-plan-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.22rem;
+  }
+  .cs-build-plan-head strong {
+    text-align: left;
+  }
+  .cs-build-plan-steps {
+    grid-template-columns: 1fr;
+  }
+  .cs-build-plan-step {
+    grid-template-columns: auto auto minmax(0, 1fr);
+    min-height: 0;
+  }
+  .cs-build-plan-icon,
+  .cs-build-plan-body {
+    grid-column: auto;
+  }
+  .cs-build-plan-title {
+    white-space: normal;
   }
 }

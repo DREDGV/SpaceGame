@@ -17,6 +17,11 @@ class UI {
     this._justFoundedTimer = null;
     this._campMapStateSnapshot = null;
     this._campMapStateSnapshotKey = "";
+    this._shellMode = "map";
+    this.lastShellHeaderRenderKey = "";
+    this.lastResourceHudRenderKey = "";
+    this.lastShellSummaryRenderKey = "";
+    this.lastShellProductionRenderKey = "";
     this.bindStaticControls();
   }
 
@@ -110,6 +115,114 @@ class UI {
     this.bindDiscoveryModal?.();
     this.bindCampModals();
     this.bindCharacterModal?.();
+    this.bindShellControls();
+  }
+
+  bindShellControls() {
+    const storageLayer = document.getElementById("shell-storage-layer");
+    const serviceMenu = document.getElementById("shell-service-menu");
+    const logPanel = document.getElementById("log-panel");
+    const closeFloatingPanels = () => {
+      document.body.classList.remove("is-shell-log-open");
+      document.body.classList.remove("is-camp-details-open");
+      document
+        .querySelectorAll('[data-shell-command="log"]')
+        .forEach((button) => button.setAttribute("aria-pressed", "false"));
+      document
+        .querySelectorAll("[data-camp-details-toggle]")
+        .forEach((button) => button.setAttribute("aria-expanded", "false"));
+      document
+        .querySelectorAll(".camp-map-details-secondary")
+        .forEach((panel) => panel.setAttribute("aria-hidden", "true"));
+    };
+
+    document.addEventListener("click", (e) => {
+      if (serviceMenu && !serviceMenu.contains(e.target)) {
+        serviceMenu.removeAttribute("open");
+      }
+
+      const storageToggle = e.target.closest?.("[data-shell-storage-toggle]");
+      if (storageToggle && storageLayer) {
+        e.preventDefault();
+        storageLayer.hidden = !storageLayer.hidden;
+        if (!storageLayer.hidden) {
+          closeFloatingPanels();
+          document.getElementById("resources-panel")?.focus?.();
+        }
+        this.renderShellModeState();
+        return;
+      }
+
+      const logToggle = e.target.closest?.("[data-shell-log-toggle]");
+      if (logToggle && logPanel) {
+        e.preventDefault();
+        const willOpen = !document.body.classList.contains("is-shell-log-open");
+        if (storageLayer) storageLayer.hidden = true;
+        document.body.classList.toggle("is-shell-log-open", willOpen);
+        document
+          .querySelectorAll('[data-shell-command="log"]')
+          .forEach((button) =>
+            button.setAttribute("aria-pressed", willOpen ? "true" : "false"),
+          );
+        if (willOpen) logPanel.focus?.();
+        return;
+      }
+
+      const modeButton = e.target.closest?.("[data-shell-mode-target]");
+      if (!modeButton) return;
+
+      closeFloatingPanels();
+      if (storageLayer) storageLayer.hidden = true;
+      const target = modeButton.getAttribute("data-shell-mode-target");
+
+      if (target === "camp" && this.game.isCampSetupDone?.()) {
+        this.openCampScreen?.();
+        return;
+      }
+
+      const nextMode =
+        target === "production" || target === "knowledge" ? target : "map";
+      this.setShellMode(nextMode);
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && storageLayer && !storageLayer.hidden) {
+        storageLayer.hidden = true;
+        this.renderShellModeState();
+      }
+      if (e.key === "Escape" && document.body.classList.contains("is-shell-log-open")) {
+        closeFloatingPanels();
+      }
+      if (e.key === "Escape" && document.body.classList.contains("is-camp-details-open")) {
+        closeFloatingPanels();
+      }
+      if (e.key === "Escape" && serviceMenu?.open) {
+        serviceMenu.removeAttribute("open");
+      }
+    });
+  }
+
+  getShellMode() {
+    return ["map", "production", "knowledge"].includes(this._shellMode)
+      ? this._shellMode
+      : "map";
+  }
+
+  setShellMode(mode = "map") {
+    const previousMode = this.getShellMode();
+    const nextMode = ["map", "production", "knowledge"].includes(mode)
+      ? mode
+      : "map";
+    if (this._shellMode === nextMode) {
+      this.renderShellModeState();
+      return false;
+    }
+    this._shellMode = nextMode;
+    if (nextMode === "map" && previousMode !== "map") {
+      document.getElementById("shell-extra-systems")?.removeAttribute("open");
+    }
+    this.renderShellModeState();
+    return true;
   }
 
   bindChangelogModal() {
@@ -1425,7 +1538,262 @@ class UI {
     const isPrologue = this.game.isPrologueActive();
     const isIntroScreen = this.game.shouldShowOnboardingIntro();
     document.body.classList.toggle("is-prologue-active", isPrologue);
+    document.body.classList.toggle(
+      "is-prologue-handoff",
+      isPrologue && !!this.game?.onboarding?.handoff,
+    );
     document.body.classList.toggle("is-intro-screen", isIntroScreen);
+  }
+
+  renderShellModeState() {
+    const mode = this.getShellMode();
+    const campReady = !!this.game.isCampSetupDone?.();
+    const body = document.body;
+    if (body) body.dataset.shellMode = mode;
+
+    const copy = document.getElementById("shell-mode-copy");
+    const extraSystems = document.getElementById("shell-extra-systems");
+    const campQuest = document.getElementById("camp-founding-quest");
+    const mapWorkspace = document.getElementById("shell-map-workspace");
+    const operationalRow = document.getElementById("shell-operational-row");
+
+    const modeCopy = {
+      map: {
+        title: "Карта и решения на местности",
+        text: campReady
+          ? "Выбирайте участки, планируйте маршрут и смотрите детали выбранной точки прямо рядом с картой."
+          : "Сейчас главный экран — местность вокруг стоянки: сначала выберите место лагеря и ближайшие полезные участки.",
+      },
+      production: {
+        title: "Производство и рабочий ритм",
+        text: "Сверху собрана сводка по очереди, стройке и автоматике, ниже расположен сам рабочий контур лагеря: крафт, состояние персонажа и инфраструктура.",
+      },
+      knowledge: {
+        title: "Знания и направление развития",
+        text: "Используйте этот режим, чтобы смотреть исследования, книгу знаний и решать, какое понимание эпохи открыть следующим.",
+      },
+    };
+    const resolvedCopy = modeCopy[mode] || modeCopy.map;
+
+    if (copy) {
+      copy.innerHTML = `
+        <strong>${resolvedCopy.title}</strong>
+        <span>${resolvedCopy.text}</span>
+      `;
+    }
+
+    this.renderShellProductionOverview();
+
+    document.querySelectorAll(".shell-mode-tab").forEach((button) => {
+      const target = button.getAttribute("data-shell-mode-target") || "map";
+      const normalizedTarget =
+        target === "production" || target === "knowledge" ? target : "map";
+      const isCampButton = target === "camp";
+      const isDisabled = isCampButton && !campReady;
+      const isActive = isCampButton ? false : normalizedTarget === mode;
+
+      button.classList.toggle("is-active", isActive);
+      button.classList.toggle("is-disabled", isDisabled);
+      button.setAttribute("aria-pressed", isActive ? "true" : "false");
+      button.setAttribute("aria-disabled", isDisabled ? "true" : "false");
+      button.disabled = isDisabled;
+      if (isDisabled) {
+        button.title = "Лагерь откроется после основания стоянки.";
+      } else if (isCampButton) {
+        button.title = "Открыть экран лагеря";
+      } else {
+        button.removeAttribute("title");
+      }
+    });
+
+    document.querySelectorAll(".shell-command-btn").forEach((button) => {
+      const target = button.getAttribute("data-shell-mode-target") || "";
+      const command = button.getAttribute("data-shell-command") || target;
+      const normalizedTarget =
+        target === "production" || target === "knowledge" ? target : "map";
+      const isModeButton = !!target && command !== "storage" && command !== "log";
+      const isCampButton = target === "camp";
+      const isDisabled = isCampButton && !campReady;
+      const isActive = isModeButton
+        ? isCampButton
+          ? false
+          : normalizedTarget === mode
+        : command === "storage"
+          ? !document.getElementById("shell-storage-layer")?.hidden
+          : command === "log"
+            ? document.body.classList.contains("is-shell-log-open")
+            : false;
+
+      button.classList.toggle("is-active", isActive);
+      button.classList.toggle("is-disabled", isDisabled);
+      button.setAttribute("aria-pressed", isActive ? "true" : "false");
+      button.setAttribute("aria-disabled", isDisabled ? "true" : "false");
+      button.disabled = isDisabled;
+    });
+
+    if (extraSystems && mode !== "map") {
+      extraSystems.open = true;
+    }
+
+    if (campQuest) {
+      campQuest.hidden = mode !== "map";
+    }
+    if (mapWorkspace) {
+      mapWorkspace.hidden = mode !== "map";
+    }
+    if (operationalRow) {
+      operationalRow.hidden = mode === "knowledge";
+    }
+  }
+
+  renderShellProductionOverview() {
+    const container = document.getElementById("shell-production-brief");
+    if (!container) return;
+
+    const isVisible = this.getShellMode() === "production";
+    container.hidden = !isVisible;
+    if (!isVisible) {
+      this.lastShellProductionRenderKey = "";
+      return;
+    }
+
+    const queueState = this.game.getCraftQueueState?.() || {
+      items: [],
+      capacity: 0,
+    };
+    const activeQueueItem =
+      queueState.items.find((item) => item.isActive) || queueState.items[0] || null;
+    const construction = this.game.getConstructionState?.() || null;
+    const automationBuildings = Object.entries(this.game.buildings || {}).filter(
+      ([buildingId, isBuilt]) =>
+        isBuilt && this.data.buildings?.[buildingId]?.effect?.automation,
+    );
+    const runningAutomationCount = automationBuildings.filter(
+      ([buildingId]) => this.game.buildings?.[buildingId]?.isAutomationRunning,
+    ).length;
+    const totalAutomationCount = automationBuildings.length;
+    const availableRecipes = (this.game.getVisibleRecipeIds?.() || []).filter(
+      (recipeId) => this.game.canQueueCraft?.(recipeId),
+    ).length;
+    const availableBuilds = (this.game.getVisibleBuildingIds?.() || []).filter(
+      (buildingId) => this.game.canBuild?.(buildingId),
+    ).length;
+    const readyWorkCount = availableRecipes + availableBuilds;
+    const characterState = this.game.getCharacterState?.() || null;
+    const characterStatus = characterState
+      ? this._cpComputePanelStatus?.(characterState) || null
+      : null;
+
+    const focusTitle = construction
+      ? `Сейчас лагерь собирает ${construction.name}`
+      : activeQueueItem
+        ? `В работе ${activeQueueItem.name}`
+        : "Производственный контур ждёт следующего решения";
+    const focusText = construction
+      ? "Стройка уже заняла руки лагеря, поэтому важно держать очередь крафта заполненной и смотреть, где ручную нагрузку можно снять автоматикой."
+      : activeQueueItem
+        ? "Основная задача уже идёт. Ниже удобно проверить запас в очереди, состояние персонажа и готовность следующей постройки."
+        : "Сейчас нет активной работы. Этот экран помогает быстро понять, что можно немедленно поставить в очередь или начать строить.";
+    const priorityTitle = readyWorkCount > 0
+      ? "Есть готовые действия"
+      : totalAutomationCount > 0
+        ? "Проверьте работающие циклы"
+        : "Нужно собрать основу";
+    const priorityText = readyWorkCount > 0
+      ? `Прямо сейчас готовы ${availableRecipes} ${this._formatProductionPlural(availableRecipes, ["рецепт", "рецепта", "рецептов"])} и ${availableBuilds} ${this._formatProductionPlural(availableBuilds, ["стройка", "стройки", "строек"])}.`
+      : totalAutomationCount > 0
+        ? "Новых ручных действий немного, так что полезнее смотреть на снабжение и включённость уже доступных циклов лагеря."
+        : "До устойчивого рабочего ритма ещё нужно дотянуться материалами, первыми постройками или новыми открытиями.";
+
+    const metrics = [
+      {
+        label: "Очередь",
+        value: `${queueState.items.length} / ${queueState.capacity}`,
+        note: activeQueueItem
+          ? `Сейчас: ${activeQueueItem.name} · ${this.formatSeconds(activeQueueItem.remainingMs)}`
+          : availableRecipes > 0
+            ? `Можно запустить ещё ${availableRecipes} ${this._formatProductionPlural(availableRecipes, ["рецепт", "рецепта", "рецептов"])}.`
+            : "Очередь пуста и готовых рецептов сейчас нет.",
+      },
+      {
+        label: "Стройка",
+        value: construction ? construction.name : "Свободно",
+        note: construction
+          ? `Готовность ${Math.round((construction.progress || 0) * 100)}% · осталось ${this.formatSeconds(construction.remainingMs)}`
+          : availableBuilds > 0
+            ? `Доступно ${availableBuilds} ${this._formatProductionPlural(availableBuilds, ["стройка", "стройки", "строек"])} для старта.`
+            : "Новых строек для запуска сейчас нет.",
+      },
+      {
+        label: "Автоматика",
+        value:
+          totalAutomationCount > 0
+            ? `${runningAutomationCount} / ${totalAutomationCount}`
+            : "0",
+        note:
+          totalAutomationCount > 0
+            ? runningAutomationCount === totalAutomationCount
+              ? "Все доступные циклы включены и работают как основа лагеря."
+              : `${totalAutomationCount - runningAutomationCount} ${this._formatProductionPlural(totalAutomationCount - runningAutomationCount, ["цикл ждёт", "цикла ждут", "циклов ждут"])} запуска или снабжения.`
+            : "Автоматизация появится после профильных построек.",
+      },
+      {
+        label: "Персонаж",
+        value: characterStatus?.label || "Стабильно",
+        note: characterState
+          ? `⚡ ${this.formatNumber(characterState.energy.current, 0)} / ${this.formatNumber(characterState.energy.max, 0)} · 🍖 ${this.formatNumber(characterState.satiety.current, 0)} / ${this.formatNumber(characterState.satiety.max, 0)} · 💧 ${this.formatNumber(characterState.hydration.current, 0)} / ${this.formatNumber(characterState.hydration.max, 0)}`
+          : "Следите за силами и восстановлением, чтобы не ронять темп производства.",
+      },
+    ];
+
+    const renderKey = JSON.stringify({
+      focusTitle,
+      focusText,
+      priorityTitle,
+      priorityText,
+      metrics,
+    });
+    if (this.lastShellProductionRenderKey === renderKey) {
+      return;
+    }
+    this.lastShellProductionRenderKey = renderKey;
+
+    container.innerHTML = `
+      <div class="shell-production-head">
+        <div class="shell-production-overview">
+          <span class="shell-production-kicker">Рабочая доска лагеря</span>
+          <h3>${focusTitle}</h3>
+          <p>${focusText}</p>
+        </div>
+        <div class="shell-production-priority">
+          <span class="shell-production-priority-label">Следующее окно решения</span>
+          <strong>${priorityTitle}</strong>
+          <p>${priorityText}</p>
+        </div>
+      </div>
+      <div class="shell-production-metrics">
+        ${metrics
+          .map(
+            (metric) => `
+              <article class="shell-production-metric">
+                <span class="shell-production-metric-label">${metric.label}</span>
+                <strong>${metric.value}</strong>
+                <p>${metric.note}</p>
+              </article>
+            `,
+          )
+          .join("")}
+      </div>
+    `;
+  }
+
+  _formatProductionPlural(value, forms) {
+    const normalized = Math.abs(Number(value)) % 100;
+    const tail = normalized % 10;
+    if (normalized > 10 && normalized < 20) return forms[2];
+    if (tail > 1 && tail < 5) return forms[1];
+    if (tail === 1) return forms[0];
+    return forms[2];
   }
 
   renderPrologueLayoutState() {
@@ -2534,11 +2902,40 @@ class UI {
         const res = this.data.resources[id];
         const icon =
           isPrologue && res?.prologueIcon ? res.prologueIcon : res?.icon || "";
-        const value =
-          decimals > 0 ? Number(amount).toFixed(decimals) : String(amount);
+        const value = this.formatResourceAmount(id, amount, {
+          decimals,
+          stripTrailingZeros: decimals <= 0,
+        });
         return `${icon}${plus ? "+" : ""}${value}`;
       })
       .join(" ");
+  }
+
+  formatResourceAmount(
+    resourceId,
+    amount,
+    { decimals, includeUnit = true, stripTrailingZeros = true } = {},
+  ) {
+    const resource = this.data.resources?.[resourceId] || null;
+    const numericAmount = Number(amount);
+    if (!Number.isFinite(numericAmount)) return String(amount);
+
+    const resolvedDecimals = Number.isFinite(decimals)
+      ? decimals
+      : Number.isFinite(resource?.amountDisplayDecimals)
+        ? resource.amountDisplayDecimals
+        : Number.isInteger(numericAmount)
+          ? 0
+          : 1;
+
+    let value = numericAmount.toFixed(resolvedDecimals);
+    if (stripTrailingZeros && resolvedDecimals > 0) {
+      value = value.replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
+    }
+
+    const unit =
+      includeUnit && resource?.amountUnit ? ` ${resource.amountUnit}` : "";
+    return `${value}${unit}`;
   }
 
   formatSeconds(ms) {
@@ -2688,8 +3085,10 @@ class UI {
     this._campMapStateSnapshot = null;
     this._campMapStateSnapshotKey = "";
     this.renderHeaderModeState();
+    this.renderShellModeState();
     this.renderPrologueLayoutState();
     this.renderStoryEvent();
+    this.renderShellStatus?.();
 
     // Prevent click loss when DOM is rebuilt between pointer down/up.
     if (this.isPointerDown) {
@@ -2702,7 +3101,13 @@ class UI {
       this.hideOnboardingStep();
     } else if (this.game.isOnboardingActive()) {
       this.hideOnboardingIntro();
-      this.renderOnboardingStep();
+      const shellMode = this.getShellMode?.() || "map";
+      if (shellMode === "map") {
+        this.renderOnboardingStep();
+      } else {
+        /* Пролог не перекрывает «Работы» / «Знания» — шаги снова на карте */
+        this.hideOnboardingStep();
+      }
     } else {
       this.hideOnboarding();
     }
@@ -2710,7 +3115,11 @@ class UI {
     if (forcePanels || !this.isPanelHovered("character-panel")) {
       this.renderCharacterPanel();
     }
-    if (forcePanels || !this.isPanelHovered("camp-map-panel")) {
+    if (
+      forcePanels ||
+      (!this.isPanelHovered("camp-map-panel") &&
+        !this.isPanelHovered("shell-map-inspector-host"))
+    ) {
       this.renderCampMap();
     }
     if (forcePanels || !this.isPanelHovered("camp-founding-quest")) {
@@ -2731,8 +3140,12 @@ class UI {
     if (forcePanels || !this.isPanelHovered("automation-panel")) {
       this.renderAutomationPanel();
     }
-    this.renderResearchWidget();
-    this.renderKnowledgeWidget();
+    if (forcePanels || !this.isPanelHovered("research-widget")) {
+      this.renderResearchWidget();
+    }
+    if (forcePanels || !this.isPanelHovered("knowledge-widget")) {
+      this.renderKnowledgeWidget();
+    }
     const _rModal = document.getElementById("research-modal");
     if (
       _rModal &&
@@ -2752,6 +3165,9 @@ class UI {
     this.syncDiscoveryModal?.();
     this.renderLog();
     this.renderEraProgress();
+    this.renderEconomicCorePanel?.();
+    this.renderEconomicShellStatus?.();
+    this.renderDayCyclePanel?.();
     this.renderSaveStatus();
     this.renderCampScreen();
   }
@@ -2807,6 +3223,10 @@ class UI {
       return;
     }
 
+    const showHandoffActions =
+      !!this.game?.onboarding?.handoff ||
+      (typeof step.id === "string" && step.id.startsWith("prologue_handoff_"));
+
     const steps = this.data.onboarding.steps;
     const currentIdx = this.game.onboarding.currentStep;
     const progressPct = Math.round((currentIdx / steps.length) * 100);
@@ -2861,6 +3281,15 @@ class UI {
             <div class="prologue-step-actions">
               <button id="prologueInsightsBtn" class="prologue-link-btn" type="button">✨ Озарения</button>
               <button id="prologueBookBtn" class="prologue-link-btn" type="button">📚 Книга знаний</button>
+              ${
+                showHandoffActions
+                  ? `
+                    <button id="prologueGoMapBtn" class="prologue-link-btn is-secondary" type="button">🗺 Карта</button>
+                    <button id="prologueGoProdBtn" class="prologue-link-btn is-secondary" type="button">🧰 Производство</button>
+                    <button id="prologueGoStoreBtn" class="prologue-link-btn is-secondary" type="button">📦 Запасы</button>
+                  `
+                  : ""
+              }
             </div>
           </div>
           <aside class="prologue-focus-aside">
@@ -2892,6 +3321,24 @@ class UI {
       .getElementById("prologueBookBtn")
       ?.addEventListener("click", () => {
         this.openKnowledgeModal();
+      });
+
+    document.getElementById("prologueGoMapBtn")?.addEventListener("click", () => {
+      this.setShellMode?.("map");
+    });
+    document
+      .getElementById("prologueGoProdBtn")
+      ?.addEventListener("click", () => {
+        this.setShellMode?.("production");
+      });
+    document
+      .getElementById("prologueGoStoreBtn")
+      ?.addEventListener("click", () => {
+        const storageLayer = document.getElementById("shell-storage-layer");
+        if (storageLayer) {
+          storageLayer.hidden = false;
+          document.getElementById("resources-panel")?.focus?.();
+        }
       });
   }
 
@@ -3010,7 +3457,7 @@ class UI {
         ? `<div class="character-trip-compact">
           <span class="character-trip-compact-kind">${tripKind}</span>
           <span>🗺 ${trip.zoneLabel}</span>
-          ${Number.isFinite(trip.load) ? `<span>🎒 ${this.formatNumber(trip.load)} / ${this.formatNumber(trip.carryCapacity)}</span>` : ""}
+          ${Number.isFinite(trip.load) ? `<span>🧺 ${this.formatNumber(trip.load)} / ${this.formatNumber(trip.carryCapacity)}</span>` : ""}
           ${trip.pathLabel ? `<span>${trip.pathIcon || "·"} ${trip.pathLabel}</span>` : ""}
           <span>⚡ -${trip.energyCost}</span>
           ${trip.blockedReason ? `<span class="character-trip-warning">${trip.blockedReason}</span>` : ""}
@@ -3032,7 +3479,7 @@ class UI {
             <span>🗺 ${trip.zoneLabel}</span>
             ${
               Number.isFinite(trip.load)
-                ? `<span>🎒 ${this.formatNumber(trip.load)} / ${this.formatNumber(trip.carryCapacity)}</span>`
+                ? `<span>🧺 ${this.formatNumber(trip.load)} / ${this.formatNumber(trip.carryCapacity)}</span>`
                 : ""
             }
             ${
@@ -3120,7 +3567,7 @@ class UI {
         </div>
         <div class="character-topline-right">
           <div class="character-mini-stack">
-            <span class="character-carry">🎒 ${this.formatNumber(state.carry.capacity)} ед.${carryBonusText}</span>
+            <span class="character-carry">🧺 ${this.formatNumber(state.carry.capacity)} ед.${carryBonusText}</span>
             <span class="character-knowledge">${knowledgeText}</span>
           </div>
           <button id="character-toggle-btn" class="character-toggle-btn" type="button" aria-expanded="${expanded}" title="${expanded ? "Свернуть" : "Развернуть"}">
@@ -3583,7 +4030,7 @@ class UI {
       const output = profile?.output || this.game.getGatherOutput(id);
       const outputStr = this.formatResourcePairs(output, { plus: true });
       const loadText = profile
-        ? `🎒 ${this.formatNumber(profile.load)} / ${this.formatNumber(profile.carryCapacity)}`
+        ? `🧺 ${this.formatNumber(profile.load)} / ${this.formatNumber(profile.carryCapacity)}`
         : "";
       const zoneText = profile?.tile ? `🗺 ${profile.zoneLabel}` : "";
       const terrainText = profile?.terrainLabel
@@ -3604,7 +4051,7 @@ class UI {
         </div>
         ${zoneText || terrainText ? `<span class="btn-efficiency">${[zoneText, terrainText].filter(Boolean).join(" · ")}</span>` : ""}
         ${profile?.blockedReason ? `<span class="btn-cooldown">🧍 ${profile.blockedReason}</span>` : ""}
-        ${profile?.limitedByCarry ? '<span class="btn-cooldown">🎒 Переносимость ограничивает вынос</span>' : ""}
+        ${profile?.limitedByCarry ? '<span class="btn-cooldown">🧺 Переносимость ограничивает вынос</span>' : ""}
         ${cooldown > 0 ? `<span class="btn-cooldown">⏳ ${this.formatCooldownMs(cooldown)}</span>` : ""}
         ${!this.game.hasEnergy(effectiveEnergyCost) && cooldown === 0 ? '<span class="btn-cooldown">⚡ Нет сил</span>' : ""}
         ${isTraveling ? '<span class="btn-cooldown">🧍 В пути…</span>' : ""}
@@ -3624,7 +4071,7 @@ class UI {
         profile?.blockedReason || "",
       ]);
       btn.addEventListener("click", () => {
-        // Prefer sending character on a map travel trip to the tile
+        let manualOpts = {};
         if (!this._campTravelAction) {
           const tileDetails = this.game.getBestGatherTileDetails(id);
           if (tileDetails?.action && tileDetails.canGather) {
@@ -3633,10 +4080,11 @@ class UI {
               this.render({ forcePanels: true });
               return;
             }
+            if (tileDetails.id) manualOpts = { tileId: tileDetails.id };
           }
         }
-        // Fallback: direct gather (already traveling, no tile, or travel failed)
-        this.game.gather(id);
+        // Fallback: queue manual gather (already traveling, no tile, or travel failed)
+        this.game.enqueueManualGather(id, manualOpts);
         this.render({ forcePanels: true });
       });
       container.appendChild(btn);
@@ -3762,7 +4210,7 @@ class UI {
       btn.classList.toggle("busy", cooldown > 0);
       btn.setAttribute("aria-disabled", disabled ? "true" : "false");
       btn.addEventListener("click", () => {
-        // Prefer sending character on a map travel trip to the tile
+        let manualOpts = {};
         if (!this._campTravelAction) {
           const tileDetails = this.game.getBestGatherTileDetails(id);
           if (tileDetails?.action && tileDetails.canGather) {
@@ -3771,10 +4219,11 @@ class UI {
               this.render({ forcePanels: true });
               return;
             }
+            if (tileDetails.id) manualOpts = { tileId: tileDetails.id };
           }
         }
-        // Fallback: direct gather (already traveling, no tile, or travel failed)
-        this.game.gather(id);
+        // Fallback: queue manual gather (already traveling, no tile, or travel failed)
+        this.game.enqueueManualGather(id, manualOpts);
         this.render({ forcePanels: true });
       });
       container.appendChild(btn);
@@ -5165,6 +5614,60 @@ class UI {
     let goalHtml = "";
     const goal = this.game.getCurrentGoal();
     const goalProgress = this.game.getGoalProgress();
+    const currentFocus = this.game.getCurrentFocus?.();
+    const goalChain = this.game.getCurrentGoalChain?.();
+    const focusHtml =
+      currentFocus &&
+      !this.game.isOnboardingActive() &&
+      !this.game.shouldShowOnboardingIntro()
+        ? `
+        <div class="era-focus-block is-${currentFocus.tone || "info"}">
+          <div class="era-focus-label">Сейчас главное</div>
+          <div class="era-focus-title">${currentFocus.value || currentFocus.title}</div>
+          <div class="era-focus-note">${currentFocus.note || "Главное узкое место лагеря."}</div>
+        </div>
+      `
+        : "";
+
+    const chainIcon = {
+      done: "✓",
+      active: "↻",
+      current: "→",
+      waiting: "·",
+    };
+    const chainHtml =
+      goalChain?.steps?.length &&
+      !this.game.isOnboardingActive() &&
+      !this.game.shouldShowOnboardingIntro()
+        ? `
+        <div class="era-chain-block">
+          <div class="era-chain-head">
+            <span class="era-chain-label">Цепочка вехи</span>
+            <span class="era-chain-count">${goalChain.progress.done}/${goalChain.progress.total}</span>
+          </div>
+          <div class="era-chain-title">${goalChain.title}</div>
+          ${goalChain.note ? `<div class="era-chain-note">${goalChain.note}</div>` : ""}
+          <div class="era-chain-list">
+            ${goalChain.steps
+              .map(
+                (step) => `
+                  <div class="era-chain-step is-${step.status || "waiting"}">
+                    <span class="era-chain-step-mark">${chainIcon[step.status] || "·"}</span>
+                    <div class="era-chain-step-body">
+                      <div class="era-chain-step-line">
+                        <span class="era-chain-step-title">${step.title}</span>
+                        ${step.meta ? `<span class="era-chain-step-meta">${step.meta}</span>` : ""}
+                      </div>
+                      <div class="era-chain-step-note">${step.note}</div>
+                    </div>
+                  </div>
+                `,
+              )
+              .join("")}
+          </div>
+        </div>
+      `
+        : "";
 
     if (
       this.game.isOnboardingActive() ||
@@ -5179,7 +5682,7 @@ class UI {
       goalHtml = `
         <div class="era-goal-block">
           <div class="era-goal-header">
-            <span class="era-goal-label">Цель ${goalProgress.done + 1}/${goalProgress.total}:</span>
+            <span class="era-goal-label">Веха ${goalProgress.done + 1}/${goalProgress.total}:</span>
             <span class="era-goal-text">${goal.text}</span>
           </div>
           ${goal.hint ? `<div class="era-goal-hint">💡 ${goal.hint}</div>` : ""}
@@ -5209,6 +5712,8 @@ class UI {
       <div class="era-milestones">
         ${milestonesHtml}
       </div>
+      ${focusHtml}
+      ${chainHtml}
       ${goalHtml}
       ${statsHtml}
     `;

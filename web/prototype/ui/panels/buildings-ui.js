@@ -1,6 +1,69 @@
 // Buildings and automation panels.
 
 Object.assign(UI.prototype, {
+  _renderAutomationSupplySummary(supply, options = {}) {
+    if (!supply) return "";
+    const { compact = false, showProgress = true } = options;
+    const inputStr = this.formatResourcePairs(supply.input);
+    const outputStr = this.formatResourcePairs(supply.output, { plus: true });
+    const efficiency = supply.efficiency;
+    const perSecond = efficiency
+      ? this.formatResourcePairs(efficiency.outputPerSecond, { decimals: 1 })
+      : "";
+    const cycleText = efficiency
+      ? `${outputStr} / ${efficiency.cycleSeconds.toFixed(0)}с${perSecond ? ` = ${perSecond} / с` : ""}`
+      : "";
+    const missingText = supply.missingInput.length
+      ? supply.missingInput
+          .map(
+            ({ id, missing }) =>
+              `${this.getResourceDisplayIcon(id)} ${this.getResourceDisplayName(id)} ×${missing}`,
+          )
+          .join(" · ")
+      : "достаточно";
+    const outputMeta = supply.outputItems.length
+      ? supply.outputItems
+          .map((item) => {
+            const label = this.getResourceDisplayName(item.id);
+            return `${label}: ${item.current}/${item.capacity}`;
+          })
+          .join(" · ")
+      : "без складирования";
+    const progressHtml =
+      showProgress && supply.enabled && supply.statusId === "running"
+        ? `<div class="automation-bar"><div class="automation-bar-fill" style="width:${supply.progress * 100}%"></div></div>`
+        : "";
+    const classes = [
+      "automation-supply",
+      compact ? "automation-supply--compact" : "",
+      `is-${supply.tone || "info"}`,
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    return `
+      <div class="${classes}">
+        <div class="automation-supply-flow">${inputStr} → ${outputStr}</div>
+        ${cycleText ? `<div class="automation-efficiency">${cycleText}</div>` : ""}
+        <div class="automation-supply-grid">
+          <div class="automation-supply-row">
+            <span class="automation-supply-label">Вход</span>
+            <strong>${inputStr}</strong>
+            <em>${missingText}</em>
+          </div>
+          <div class="automation-supply-row">
+            <span class="automation-supply-label">Выход</span>
+            <strong>${outputStr}</strong>
+            <em>${outputMeta}</em>
+          </div>
+        </div>
+        <span class="automation-state-label ${supply.statusClass}">${supply.statusLabel}</span>
+        <span class="automation-supply-note">${supply.statusNote}</span>
+        ${progressHtml}
+      </div>
+    `;
+  },
+
   renderBuildingsPanel() {
     const container = document.getElementById("buildings-panel");
     if (!container) return;
@@ -86,35 +149,11 @@ Object.assign(UI.prototype, {
 
         if (building.effect.automation) {
           const auto = building.effect.automation;
-          const autoId = auto.id;
-          const state = this.game.getAutomationState(autoId);
-          const remaining = this.game.getAutomationRemaining(autoId);
-          const inputStr = this.formatResourcePairs(auto.input);
-          const outputStr = this.formatResourcePairs(auto.output, {
-            plus: true,
-          });
-          const efficiency = this.game.getAutomationEfficiency(autoId);
-          const perSecond = efficiency
-            ? this.formatResourcePairs(efficiency.outputPerSecond, {
-                decimals: 1,
-              })
-            : "";
-
-          let stateLabel = "";
-          let stateClass = "";
-          if (state === "running") {
-            stateLabel = `⏳ ${remaining.toFixed(1)}с до результата`;
-            stateClass = "state-running";
-          } else if (state === "waiting") {
-            stateLabel = `⚠️ Нет входа: ${inputStr}`;
-            stateClass = "state-waiting";
-          }
+          const supply = this.game.getAutomationSupplyStatus?.(auto.id);
 
           extraInfo += `
             <div class="automation-inline">
-              <span class="automation-flow">${inputStr} → ${outputStr}</span>
-              <span class="automation-efficiency">${outputStr} / ${efficiency.cycleSeconds.toFixed(0)}с = ${perSecond} / с</span>
-              <span class="automation-state ${stateClass}">${stateLabel}</span>
+              ${this._renderAutomationSupplySummary(supply, { compact: true, showProgress: false })}
             </div>
           `;
         }
@@ -340,35 +379,11 @@ Object.assign(UI.prototype, {
 
         if (building.effect.automation) {
           const auto = building.effect.automation;
-          const autoId = auto.id;
-          const state = this.game.getAutomationState(autoId);
-          const remaining = this.game.getAutomationRemaining(autoId);
-          const inputStr = this.formatResourcePairs(auto.input);
-          const outputStr = this.formatResourcePairs(auto.output, {
-            plus: true,
-          });
-          const efficiency = this.game.getAutomationEfficiency(autoId);
-          const perSecond = efficiency
-            ? this.formatResourcePairs(efficiency.outputPerSecond, {
-                decimals: 1,
-              })
-            : "";
-
-          let stateLabel = "";
-          let stateClass = "";
-          if (state === "running") {
-            stateLabel = `⏳ ${remaining.toFixed(1)}с до результата`;
-            stateClass = "state-running";
-          } else if (state === "waiting") {
-            stateLabel = `⚠️ Нет входа: ${inputStr}`;
-            stateClass = "state-waiting";
-          }
+          const supply = this.game.getAutomationSupplyStatus?.(auto.id);
 
           extraInfo += `
             <div class="automation-inline">
-              <span class="automation-flow">${inputStr} → ${outputStr}</span>
-              <span class="automation-efficiency">${outputStr} / ${efficiency.cycleSeconds.toFixed(0)}с = ${perSecond} / с</span>
-              <span class="automation-state ${stateClass}">${stateLabel}</span>
+              ${this._renderAutomationSupplySummary(supply, { compact: true, showProgress: false })}
             </div>
           `;
         }
@@ -479,48 +494,10 @@ Object.assign(UI.prototype, {
       const buildingData = this.game.buildings[buildingId];
       const auto = building.effect.automation;
       const autoId = auto.id;
-      let state = this.game.getAutomationState(autoId);
-      if (!buildingData.isAutomationRunning) {
-        state = "idle";
-      }
-      const progress = this.game.getAutomationProgress(autoId);
-      const remaining = this.game.getAutomationRemaining(autoId);
-      const efficiency = this.game.getAutomationEfficiency(autoId);
-      const perSecond = efficiency
-        ? this.formatResourcePairs(efficiency.outputPerSecond, {
-            decimals: 1,
-          })
-        : "";
+      const supply = this.game.getAutomationSupplyStatus?.(autoId);
 
       const el = document.createElement("div");
       el.className = "automation-card";
-
-      const inputStr = this.formatResourcePairs(auto.input);
-      const outputStr = this.formatResourcePairs(auto.output, { plus: true });
-
-      let stateDisplay = "";
-      let progressHtml = "";
-
-      if (state === "running") {
-        stateDisplay = `<span class="automation-state-label state-running">🔄 Работает — ${remaining.toFixed(1)}с</span>`;
-        progressHtml = `
-          <div class="automation-bar">
-            <div class="automation-bar-fill" style="width:${progress * 100}%"></div>
-          </div>
-        `;
-      } else if (state === "waiting") {
-        const missing = this.game.getMissingResources(auto.input);
-        const missingStr = missing
-          .map(
-            ({ id, missing: amount }) =>
-              `${this.getResourceDisplayIcon(id)}${amount}`,
-          )
-          .join(" ");
-        stateDisplay = `<span class="automation-state-label state-waiting">⚠️ Ожидание — не хватает ${missingStr || inputStr}</span>`;
-        progressHtml = `<div class="automation-bar"><div class="automation-bar-fill" style="width:0%"></div></div>`;
-      } else {
-        stateDisplay = `<span class="automation-state-label state-idle">⏸ Остановлено</span>`;
-      }
 
       const toggleBtn = document.createElement("button");
       toggleBtn.className = "automation-toggle-btn";
@@ -540,22 +517,16 @@ Object.assign(UI.prototype, {
         <span class="btn-icon">${building.icon}</span>
         <span class="btn-label">${building.name}</span>
         ${auto.description ? `<span class="btn-desc">${auto.description}</span>` : ""}
-        <span class="automation-flow">${inputStr} → ${outputStr}</span>
-        <span class="automation-efficiency">${outputStr} / ${efficiency.cycleSeconds.toFixed(0)}с = ${perSecond} / с</span>
-        ${stateDisplay}
-        ${progressHtml}
+        ${this._renderAutomationSupplySummary(supply)}
       `;
       el.appendChild(toggleBtn);
 
       this.setTooltip(el, [
         `${building.name}: автоматизация`,
-        state === "running"
-          ? "Статус: работает и выпускает ресурс по циклу"
-          : state === "waiting"
-            ? "Статус: ожидание, пока не хватает входных ресурсов"
-            : buildingData.isAutomationRunning
-              ? "Статус: остановлено вручную"
-              : "Статус: неактивно, цикл ещё не запущен",
+        supply?.statusNote || "Статус: цикл ещё не рассчитан",
+        buildingData.isAutomationRunning
+          ? "Автоматизация включена"
+          : "Автоматизация выключена вручную",
         "Автоматизация снижает ручную нагрузку и поддерживает цепочку",
       ]);
 

@@ -1,6 +1,6 @@
 // Character modal: full character sheet (avatar, bars, state, inventory,
-// current action, camp status, nearest target, tips). Read-only visual layer
-// on top of existing character state — introduces no new mechanics.
+// current action, camp status, nearest target, tips) with direct controls for
+// the same core needs as the HUD.
 
 Object.assign(UI.prototype, {
   bindCharacterModal() {
@@ -32,6 +32,39 @@ Object.assign(UI.prototype, {
     // Делегирование клика по тумблерам авто-потребления.
     if (body) {
       body.addEventListener("click", (e) => {
+        const supplyBtn = e.target.closest("[data-cm-supply]");
+        if (supplyBtn) {
+          const kind = supplyBtn.getAttribute("data-cm-supply");
+          if (kind === "food" || kind === "water") {
+            this.game.consumeCharacterSupply?.(kind);
+            this.render({ forcePanels: true });
+            this.renderCharacterModalContent();
+          }
+          return;
+        }
+
+        const restBtn = e.target.closest("[data-cm-rest]");
+        if (restBtn) {
+          if (this.game.restCharacter?.()) {
+            this.scheduleRestCooldownRefresh?.(
+              this.game.getCharacterRestCooldownMs?.() || 0,
+            );
+          }
+          this.render({ forcePanels: true });
+          this.renderCharacterModalContent();
+          return;
+        }
+
+        const returnBtn = e.target.closest("[data-cm-return]");
+        if (returnBtn) {
+          if (!this._campTravelAction) {
+            this._startCampReturnTrip?.();
+          }
+          this.render({ forcePanels: true });
+          this.renderCharacterModalContent();
+          return;
+        }
+
         // Авто-потребление
         const toggleBtn = e.target.closest("[data-cm-toggle]");
         if (toggleBtn) {
@@ -356,7 +389,7 @@ Object.assign(UI.prototype, {
     // Carry
     if (state.carry.capacityBonus > 0) {
       items.push({
-        icon: "🎒",
+        icon: "🧺",
         tone: "ok",
         name: "Нагрузка комфортная",
         desc: "Скорость без штрафов",
@@ -437,8 +470,123 @@ Object.assign(UI.prototype, {
     return `<div class="cm-inv-grid">${slots.join("")}</div>${emptyNote}`;
   },
 
+  _cmRenderImmediateActions(state) {
+    const waterAction = this.game.getCharacterManualSupplyProfile?.("water");
+    const foodAction = this.game.getCharacterManualSupplyProfile?.("food");
+    const rest = state.restProfile || {};
+    const atCamp =
+      state.location?.atCamp ??
+      state.location?.isAtCamp ??
+      this.game.isCharacterAtCamp?.() ??
+      true;
+    const tripTotal = this.game.getTripInventoryTotal?.() || 0;
+    const fmtGain = (value) =>
+      this._cmFmt(value, Number.isInteger(value) ? 0 : 1);
+    const esc = (value) => this._cmEscapeHtml(value);
+    const buttons = [];
+
+    const buildButton = ({
+      tone,
+      label,
+      meta,
+      title,
+      disabled = false,
+      attr = "",
+    }) => `
+      <button
+        type="button"
+        class="cm-immediate-btn cm-immediate-btn--${tone}${disabled ? " is-disabled" : ""}"
+        title="${esc(title)}"
+        ${attr}
+        ${disabled ? "disabled" : ""}
+      >
+        <span class="cm-immediate-btn-title">${label}</span>
+        <span class="cm-immediate-btn-meta">${meta}</span>
+      </button>
+    `;
+
+    if (waterAction?.show) {
+      buttons.push(
+        buildButton({
+          tone: "water",
+          label: `${waterAction.icon} ${waterAction.actionLabel}`,
+          meta: waterAction.canUse
+            ? `+${fmtGain(waterAction.gain)} воды · ${waterAction.sourceShortLabel}`
+            : waterAction.blockedShortLabel,
+          title: waterAction.canUse
+            ? `${waterAction.actionLabel}: +${fmtGain(waterAction.gain)} воды ${waterAction.sourceLabel}.`
+            : waterAction.blockedReason,
+          disabled: !waterAction.canUse,
+          attr: 'data-cm-supply="water"',
+        }),
+      );
+    }
+
+    if (foodAction?.show) {
+      buttons.push(
+        buildButton({
+          tone: "food",
+          label: `${foodAction.icon} ${foodAction.actionLabel}`,
+          meta: foodAction.canUse
+            ? `+${fmtGain(foodAction.gain)} сытости · ${foodAction.sourceShortLabel}`
+            : foodAction.blockedShortLabel,
+          title: foodAction.canUse
+            ? `${foodAction.actionLabel}: +${fmtGain(foodAction.gain)} сытости ${foodAction.sourceLabel}.`
+            : foodAction.blockedReason,
+          disabled: !foodAction.canUse,
+          attr: 'data-cm-supply="food"',
+        }),
+      );
+    }
+
+    const showRest =
+      rest.canRest ||
+      rest.remainingMs > 0 ||
+      (!atCamp && state.energy?.current < state.energy?.max);
+    if (showRest) {
+      buttons.push(
+        buildButton({
+          tone: "rest",
+          label: "🛌 Передохнуть",
+          meta: rest.canRest
+            ? `+${fmtGain(rest.energyGain + (rest.willUseWater ? rest.waterBonusEnergy || 0 : 0))} сил`
+            : rest.remainingMs > 0
+              ? `⌛ ${this.formatCooldownMs(rest.remainingMs)}`
+              : "к стоянке",
+          title: rest.canRest
+            ? rest.label
+            : rest.blockedReason || "Передышка недоступна.",
+          disabled: !rest.canRest,
+          attr: "data-cm-rest",
+        }),
+      );
+    }
+
+    if (!atCamp || tripTotal > 0) {
+      const disabled = !!this._campTravelAction;
+      buttons.push(
+        buildButton({
+          tone: "return",
+          label: atCamp ? "📥 Сгрузить" : "🏠 Вернуться",
+          meta: atCamp ? "добыча в лагерь" : "к стоянке и запасам",
+          title: disabled
+            ? "Персонаж уже в пути"
+            : atCamp
+              ? "Сгрузить переносимый запас в лагерь."
+              : "Вернуться к стоянке и выгрузить добычу.",
+          disabled,
+          attr: "data-cm-return",
+        }),
+      );
+    }
+
+    if (buttons.length === 0) return "";
+    return `<div class="cm-immediate-actions">${buttons.join("")}</div>`;
+  },
+
   _cmRenderActionBlock(state) {
     const trip = state.tripProfile;
+    const immediateActions = this._cmRenderImmediateActions(state);
     if (trip) {
       const kind =
         state.tripType === "build"
@@ -475,6 +623,7 @@ Object.assign(UI.prototype, {
         ? tripSummary
         : needsImpact?.label || "Цель выхода уже выбрана";
       return `
+        ${immediateActions}
         <div class="cm-action">
           <div class="cm-action-icon">${icon}</div>
           <div class="cm-action-body">
@@ -487,8 +636,8 @@ Object.assign(UI.prototype, {
           <div class="cm-note-copy">${trip.blockedReason || tripSummaryNote}</div>
         </div>
         <div class="cm-kv-list cm-kv-list--spaced">
-          ${carryState ? `<div class="cm-kv"><span class="cm-kv-label">🎒 Ощущение груза</span><span class="cm-kv-value cm-kv-value--${carryState.tone === "ok" ? "good" : "bad"}">${carryState.label}</span></div>` : ""}
-          ${Number.isFinite(trip.load) ? `<div class="cm-kv"><span class="cm-kv-label">🎒 Нагрузка</span><span class="cm-kv-value">${this._cmFmt(trip.load, 1)} / ${this._cmFmt(trip.carryCapacity, 1)}</span></div>` : ""}
+          ${carryState ? `<div class="cm-kv"><span class="cm-kv-label">🧺 Ощущение груза</span><span class="cm-kv-value cm-kv-value--${carryState.tone === "ok" ? "good" : "bad"}">${carryState.label}</span></div>` : ""}
+          ${Number.isFinite(trip.load) ? `<div class="cm-kv"><span class="cm-kv-label">🧺 Нагрузка</span><span class="cm-kv-value">${this._cmFmt(trip.load, 1)} / ${this._cmFmt(trip.carryCapacity, 1)}</span></div>` : ""}
           ${Number.isFinite(trip.tripsRequired) ? `<div class="cm-kv"><span class="cm-kv-label">📦 Ходки</span><span class="cm-kv-value">${Math.max(1, Math.round(trip.tripsRequired))}</span></div>` : ""}
           ${Number.isFinite(trip.totalLoad) ? `<div class="cm-kv"><span class="cm-kv-label">Σ Общий объём</span><span class="cm-kv-value">${this._cmFmt(trip.totalLoad, 1)}</span></div>` : ""}
         </div>
@@ -497,6 +646,7 @@ Object.assign(UI.prototype, {
 
     const regenSec = (state.regen.remainingMs / 1000).toFixed(1);
     return `
+      ${immediateActions}
       <div class="cm-action">
         <div class="cm-action-icon">🏕</div>
         <div class="cm-action-body">
@@ -657,7 +807,7 @@ Object.assign(UI.prototype, {
     const carryCap = state.carry.capacity;
     const carryCur = Number.isFinite(carryLoad) ? carryLoad : 0;
     const carryBar = this._cmRenderStatBar({
-      icon: "🎒",
+      icon: "🧺",
       name: "Нагрузка",
       current: carryCur,
       max: carryCap,
@@ -870,7 +1020,7 @@ Object.assign(UI.prototype, {
         note: fieldcraftNote,
       },
       {
-        icon: "🎒",
+        icon: "🧺",
         title: "Груз",
         value: carryValue,
         note: cargoNote,
@@ -957,7 +1107,7 @@ Object.assign(UI.prototype, {
         </div>
         ${campBadge}
         <div class="cm-hero-chip">
-          <span class="cm-hero-chip-icon">🎒</span>
+          <span class="cm-hero-chip-icon">🧺</span>
           <span class="cm-hero-chip-text"><b>${carryBadgeValue}</b><span>нагрузка</span></span>
         </div>
       </div>

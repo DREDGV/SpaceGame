@@ -18,6 +18,8 @@
       ...state,
       characterTileId: state.characterTileId || null,
       carriedResources: state.carriedResources || {},
+      routeChoices: state.routeChoices || {},
+      taskQueue: Array.isArray(state.taskQueue) ? state.taskQueue : [],
     };
   };
 
@@ -31,6 +33,158 @@
       }
     }
     return inventory;
+  };
+
+  GameState.prototype._sanitizeCampRouteChoices = function (raw) {
+    const routeChoices = {};
+    if (!raw || typeof raw !== "object") return routeChoices;
+    const tiles = this._getCampMapTiles?.() || {};
+    for (const [tileId, routeId] of Object.entries(raw)) {
+      if (!tiles[tileId] || typeof routeId !== "string") continue;
+      const safeRouteId = routeId.replace(/[^a-z0-9_-]/gi, "").slice(0, 32);
+      if (safeRouteId) routeChoices[tileId] = safeRouteId;
+    }
+    return routeChoices;
+  };
+
+  GameState.prototype._sanitizeCampTaskQueue = function (raw) {
+    if (!Array.isArray(raw)) return [];
+    const tiles = this._getCampMapTiles?.() || {};
+    return raw
+      .map((entry) => {
+        const tileId = typeof entry?.tileId === "string" ? entry.tileId : "";
+        const tile = tiles[tileId];
+        if (!tile) return null;
+        const actionId =
+          typeof entry?.actionId === "string"
+            ? entry.actionId
+            : tile.actionId || "";
+        if (!actionId || !this.data.gatherActions?.[actionId]) return null;
+        const action = this.data.gatherActions[actionId];
+        const resourceId =
+          typeof entry?.resourceId === "string" &&
+          Object.prototype.hasOwnProperty.call(
+            action.output || {},
+            entry.resourceId,
+          )
+            ? entry.resourceId
+            : "";
+        const routeId =
+          typeof entry?.routeId === "string"
+            ? entry.routeId.replace(/[^a-z0-9_-]/gi, "").slice(0, 32)
+            : "";
+        const createdAt = Number.isFinite(entry?.createdAt)
+          ? entry.createdAt
+          : Date.now();
+        return {
+          tileId,
+          actionId,
+          resourceId,
+          routeId,
+          createdAt,
+        };
+      })
+      .filter(Boolean)
+      .slice(0, 6);
+  };
+
+  GameState.prototype.getCampTaskQueueGate = function () {
+    const insightId = "route_marks";
+    const insight = this.data.prologue?.insights?.[insightId] || null;
+    const unlocked =
+      !(this.isEarlyProgressionMode?.() ?? false) ||
+      !!this.insights?.[insightId];
+    return {
+      insightId,
+      insightName: insight?.name || "Путевые метки",
+      unlocked,
+      reason: unlocked
+        ? "Путевой лист доступен."
+        : `Нужно озарение «${insight?.name || "Путевые метки"}».`,
+    };
+  };
+
+  GameState.prototype.getCampRouteChoice = function (tileId) {
+    if (!this.localCampMap || !tileId) return "";
+    this.localCampMap.routeChoices = this._sanitizeCampRouteChoices(
+      this.localCampMap.routeChoices,
+    );
+    return this.localCampMap.routeChoices[tileId] || "";
+  };
+
+  GameState.prototype.setCampRouteChoice = function (tileId, routeId) {
+    if (!this.localCampMap || !tileId || !this._getCampMapTile(tileId)) {
+      return false;
+    }
+    const safeRouteId =
+      typeof routeId === "string"
+        ? routeId.replace(/[^a-z0-9_-]/gi, "").slice(0, 32)
+        : "";
+    if (!safeRouteId) return false;
+    this.localCampMap.routeChoices = this._sanitizeCampRouteChoices(
+      this.localCampMap.routeChoices,
+    );
+    if (this.localCampMap.routeChoices[tileId] === safeRouteId) return false;
+    this.localCampMap.routeChoices[tileId] = safeRouteId;
+    this.markDirty();
+    return true;
+  };
+
+  GameState.prototype.getCampTaskQueue = function () {
+    if (!this.localCampMap) return [];
+    this.localCampMap.taskQueue = this._sanitizeCampTaskQueue(
+      this.localCampMap.taskQueue,
+    );
+    return this.localCampMap.taskQueue.map((entry) => ({ ...entry }));
+  };
+
+  GameState.prototype.setCampTaskQueue = function (queue) {
+    if (!this.localCampMap) return false;
+    this.localCampMap.taskQueue = this._sanitizeCampTaskQueue(queue);
+    this.markDirty();
+    return true;
+  };
+
+  GameState.prototype.addCampTaskQueueEntry = function (entry) {
+    const gate = this.getCampTaskQueueGate?.();
+    if (gate && !gate.unlocked) return { ok: false, reason: gate.reason };
+    const current = this.getCampTaskQueue();
+    if (current.length >= 6) {
+      return { ok: false, reason: "Путевой лист уже заполнен." };
+    }
+    const next = this._sanitizeCampTaskQueue([
+      ...current,
+      { ...entry, createdAt: Date.now() },
+    ]);
+    if (next.length <= current.length) {
+      return {
+        ok: false,
+        reason: "Этот пункт нельзя добавить в путевой лист.",
+      };
+    }
+    this.localCampMap.taskQueue = next;
+    this.markDirty();
+    return { ok: true, queue: this.getCampTaskQueue() };
+  };
+
+  GameState.prototype.removeCampTaskQueueEntry = function (index) {
+    const current = this.getCampTaskQueue();
+    const safeIndex = Math.floor(Number(index));
+    if (safeIndex < 0 || safeIndex >= current.length) return false;
+    current.splice(safeIndex, 1);
+    return this.setCampTaskQueue(current);
+  };
+
+  GameState.prototype.clearCampTaskQueue = function () {
+    return this.setCampTaskQueue([]);
+  };
+
+  GameState.prototype.shiftCampTaskQueue = function () {
+    const current = this.getCampTaskQueue();
+    if (!current.length) return null;
+    const [entry] = current.splice(0, 1);
+    this.setCampTaskQueue(current);
+    return entry;
   };
 
   GameState.prototype._getCampHomeTileId = function () {
@@ -59,6 +213,8 @@
         ? raw.characterTileId
         : homeTileId;
     state.carriedResources = this._sanitizeTripInventory(raw?.carriedResources);
+    state.routeChoices = this._sanitizeCampRouteChoices(raw?.routeChoices);
+    state.taskQueue = this._sanitizeCampTaskQueue(raw?.taskQueue);
     return state;
   };
 
@@ -69,6 +225,10 @@
       carriedResources: this._sanitizeTripInventory(
         this.localCampMap?.carriedResources,
       ),
+      routeChoices: this._sanitizeCampRouteChoices(
+        this.localCampMap?.routeChoices,
+      ),
+      taskQueue: this._sanitizeCampTaskQueue(this.localCampMap?.taskQueue),
     };
   };
 

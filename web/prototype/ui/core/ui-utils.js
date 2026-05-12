@@ -4,8 +4,10 @@ Object.assign(UI.prototype, {
   formatResourcePairs(resourceMap, { plus = false, decimals = 0 } = {}) {
     return Object.entries(resourceMap)
       .map(([id, amount]) => {
-        const value =
-          decimals > 0 ? Number(amount).toFixed(decimals) : String(amount);
+        const value = this.formatResourceAmount(id, amount, {
+          decimals,
+          stripTrailingZeros: decimals <= 0,
+        });
         return `${this.getResourceDisplayIcon(id)}${plus ? "+" : ""}${value}`;
       })
       .join(" ");
@@ -14,11 +16,39 @@ Object.assign(UI.prototype, {
   formatResourcePairsPlain(resourceMap, { plus = false, decimals = 0 } = {}) {
     return Object.entries(resourceMap)
       .map(([id, amount]) => {
-        const value =
-          decimals > 0 ? Number(amount).toFixed(decimals) : String(amount);
+        const value = this.formatResourceAmount(id, amount, {
+          decimals,
+          stripTrailingZeros: decimals <= 0,
+        });
         return `${this.getResourceDisplayName(id)} ${plus ? "+" : ""}${value}`;
       })
       .join(", ");
+  },
+
+  formatResourceAmount(
+    resourceId,
+    amount,
+    { decimals, includeUnit = true, stripTrailingZeros = true } = {},
+  ) {
+    const resource = this.data.resources?.[resourceId] || null;
+    const numericAmount = Number(amount);
+    if (!Number.isFinite(numericAmount)) return String(amount);
+
+    const resolvedDecimals = Number.isFinite(decimals)
+      ? decimals
+      : Number.isFinite(resource?.amountDisplayDecimals)
+        ? resource.amountDisplayDecimals
+        : Number.isInteger(numericAmount)
+          ? 0
+          : 1;
+
+    let value = numericAmount.toFixed(resolvedDecimals);
+    if (stripTrailingZeros && resolvedDecimals > 0) {
+      value = value.replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
+    }
+
+    const unit = includeUnit && resource?.amountUnit ? ` ${resource.amountUnit}` : "";
+    return `${value}${unit}`;
   },
 
   formatSeconds(ms) {

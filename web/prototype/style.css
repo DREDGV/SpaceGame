@@ -3988,11 +3988,30 @@ body.is-prologue-active #game-main {
 
 .story-event-layer {
   position: fixed;
-  top: 1rem;
+  top: auto;
   right: 1rem;
-  z-index: 950;
+  bottom: 1rem;
+  z-index: var(--z-toast, 120);
   width: min(360px, calc(100vw - 2rem));
   pointer-events: none;
+}
+
+/* In map mode, keep story toasts off the right inspector column. */
+body[data-shell-mode="map"] .story-event-layer {
+  right: calc(1rem + 266px + 0.34rem);
+}
+
+@media (max-width: 820px) {
+  body[data-shell-mode="map"] .story-event-layer {
+    right: 0.75rem;
+  }
+}
+
+@media (max-width: 760px) {
+  .story-event-layer {
+    bottom: calc(1rem + 56px + env(safe-area-inset-bottom));
+    right: 0.75rem;
+  }
 }
 
 .story-event {

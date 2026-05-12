@@ -7,14 +7,129 @@ Object.assign(UI.prototype, {
     );
   },
 
-  _getCampTravelPathTo(tileId, { allowFallback = true } = {}) {
+  _getCampTravelPathTo(tileId, { allowFallback = true, routeId = "" } = {}) {
     const originTileId = this._getCampHomeTileIdForPath();
     if (!originTileId || !tileId) return [originTileId, tileId].filter(Boolean);
+    if (routeId && routeId !== "direct") {
+      const routedPath = this._getCampRoutePathById(tileId, routeId, {
+        allowFallback,
+      });
+      if (Array.isArray(routedPath) && routedPath.length > 0) return routedPath;
+    }
     const path = this.game._findCampHexPath?.(originTileId, tileId, {
       allowFallback,
     });
     if (Array.isArray(path) && path.length > 0) return path;
     return allowFallback ? [originTileId, tileId].filter(Boolean) : [];
+  },
+
+  _getCampRoutePathById(
+    tileId,
+    routeId = "direct",
+    { allowFallback = true } = {},
+  ) {
+    const originTileId = this._getCampHomeTileIdForPath();
+    if (!originTileId || !tileId) return [originTileId, tileId].filter(Boolean);
+    if (routeId === "easy" || routeId === "known") {
+      const path = this._findCampWeightedRoutePath(originTileId, tileId, {
+        mode: routeId,
+        allowFallback,
+      });
+      if (Array.isArray(path) && path.length > 0) return path;
+    }
+    const path = this.game._findCampHexPath?.(originTileId, tileId, {
+      allowFallback,
+    });
+    if (Array.isArray(path) && path.length > 0) return path;
+    return allowFallback ? [originTileId, tileId].filter(Boolean) : [];
+  },
+
+  _getCampRouteTileCost(tileId, mode = "easy") {
+    const tile = this.game._getCampMapTile?.(tileId) || null;
+    const state = this.game.getCampTileState?.(tileId) || "hidden";
+    const profile = this.game._getCampTileMoveProfile?.(tile) || {
+      cost: this.game._getCampTileMoveCost?.(tile) || 1,
+      pathLevel: this.game.getCampPathLevel?.(tileId) || "none",
+    };
+    let cost = Math.max(0.55, Number(profile.cost) || 1);
+
+    if (mode === "known") {
+      if (this._isCampRouteEstimateState(state)) cost += 2.6;
+      if (state === "terrain_seen") cost += 0.55;
+      if (profile.pathLevel && profile.pathLevel !== "none") cost -= 0.2;
+      const traffic = this.game.getCampPathUseProgress?.(tileId)?.uses || 0;
+      cost -= Math.min(0.32, Math.max(0, Number(traffic) || 0) * 0.06);
+    }
+
+    if (mode === "easy") {
+      const terrainCost = Math.max(
+        1,
+        Number(profile.baseCost || profile.cost || 1),
+      );
+      cost += Math.max(0, terrainCost - 1) * 0.85;
+      if (profile.pathLevel && profile.pathLevel !== "none") cost -= 0.14;
+    }
+
+    return Math.max(0.25, cost);
+  },
+
+  _findCampWeightedRoutePath(fromTileId, toTileId, options = {}) {
+    if (fromTileId === toTileId) return [fromTileId];
+    const mode = options.mode || "easy";
+    const allowFallback = options.allowFallback !== false;
+    const canEnterTile = (tileId) => {
+      if (tileId === fromTileId || tileId === toTileId) return true;
+      const tile = this.game._getCampMapTile?.(tileId) || null;
+      const state = this.game.getCampTileState?.(tileId) || "hidden";
+      if (
+        [
+          "camp",
+          "camp_candidate",
+          "developed",
+          "discovered",
+          "terrain_seen",
+        ].includes(state)
+      ) {
+        return true;
+      }
+      return !tile || this.game.isCampTilePresentationUnlocked?.(tile);
+    };
+
+    const distances = new Map([[fromTileId, 0]]);
+    const previous = new Map([[fromTileId, null]]);
+    const open = [{ tileId: fromTileId, cost: 0 }];
+
+    while (open.length > 0) {
+      open.sort((left, right) => left.cost - right.cost);
+      const current = open.shift();
+      if (!current) break;
+      if (current.cost > (distances.get(current.tileId) || 0) + 1e-9) continue;
+      if (current.tileId === toTileId) {
+        const path = [];
+        let node = toTileId;
+        while (node !== null) {
+          path.unshift(node);
+          node = previous.get(node);
+        }
+        return path;
+      }
+
+      for (const neighborId of this.game._getCampNeighborTileIds?.(
+        current.tileId,
+      ) || []) {
+        if (!canEnterTile(neighborId)) continue;
+        const nextCost =
+          current.cost + this._getCampRouteTileCost(neighborId, mode);
+        if (nextCost + 1e-9 >= (distances.get(neighborId) ?? Infinity)) {
+          continue;
+        }
+        distances.set(neighborId, nextCost);
+        previous.set(neighborId, current.tileId);
+        open.push({ tileId: neighborId, cost: nextCost });
+      }
+    }
+
+    return allowFallback ? [fromTileId, toTileId].filter(Boolean) : [];
   },
 
   _getCampPathTravelMetrics(path) {
@@ -79,6 +194,121 @@ Object.assign(UI.prototype, {
       entries,
       terrainSummary: labels.join(" + "),
     };
+  },
+
+  _getCampRouteOptions(tileId) {
+    const originTileId = this._getCampHomeTileIdForPath();
+    if (!originTileId || !tileId || originTileId === tileId) return [];
+    const definitions = [
+      {
+        id: "direct",
+        label: "Прямой",
+        note: "меньше клеток, без обходов",
+      },
+      {
+        id: "easy",
+        label: "Лёгкий",
+        note: "обходит тяжёлый рельеф, если есть проход",
+      },
+      {
+        id: "known",
+        label: "По следу",
+        note: "держится открытых клеток и троп",
+      },
+    ];
+    const seen = new Set();
+    const options = [];
+
+    for (const definition of definitions) {
+      const path = this._getCampRoutePathById(tileId, definition.id, {
+        allowFallback: false,
+      });
+      if (!Array.isArray(path) || path.length < 2) continue;
+      const signature = path.join("|");
+      if (seen.has(signature)) continue;
+      seen.add(signature);
+      const metrics = this._getCampPathTravelMetrics(path);
+      const travelMs = this._getCampRouteWalkDurationMs(metrics, {
+        setupMs: 280,
+        minMs: metrics.hexCount > 0 ? 850 : 0,
+        maxMs: 180000,
+        extraCoef: 1.02,
+      });
+      options.push({
+        ...definition,
+        path,
+        metrics,
+        travelMs,
+      });
+    }
+
+    if (!options.length) {
+      const fallbackPath = this._getCampTravelPathTo(tileId);
+      if (fallbackPath.length > 1) {
+        const metrics = this._getCampPathTravelMetrics(fallbackPath);
+        options.push({
+          ...definitions[0],
+          path: fallbackPath,
+          metrics,
+          travelMs: this._getCampRouteWalkDurationMs(metrics, {
+            setupMs: 280,
+            minMs: metrics.hexCount > 0 ? 850 : 0,
+            maxMs: 180000,
+            extraCoef: 1.02,
+          }),
+        });
+      }
+    }
+
+    return options;
+  },
+
+  _getActiveCampRouteChoiceId(tileId, routeOptions = null) {
+    const options = routeOptions || this._getCampRouteOptions(tileId);
+    if (!options.length) return "";
+    const stored = this.game.getCampRouteChoice?.(tileId) || "";
+    if (stored && options.some((option) => option.id === stored)) return stored;
+    return options[0].id;
+  },
+
+  _renderCampRouteChoiceBlock(
+    details,
+    routeOptions = null,
+    activeRouteId = "",
+  ) {
+    if (!details || (details.distanceFromCamp || 0) <= 0) return "";
+    const options = routeOptions || this._getCampRouteOptions(details.id);
+    if (!options.length) return "";
+    const activeId =
+      activeRouteId || this._getActiveCampRouteChoiceId(details.id, options);
+    const activeOption =
+      options.find((option) => option.id === activeId) || options[0];
+    return `
+      <div class="camp-map-route-choice" aria-label="Выбор маршрута">
+        <div class="camp-map-route-choice-head">
+          <span>Маршрут к цели</span>
+          <strong>${this._formatCampRouteTimeLabel(activeOption.travelMs, activeOption.metrics)}</strong>
+        </div>
+        <div class="camp-map-route-choice-grid">
+          ${options
+            .map(
+              (option) => `
+                <button
+                  type="button"
+                  class="camp-map-route-choice-btn${option.id === activeId ? " is-active" : ""}"
+                  data-camp-route-choice="${option.id}"
+                  aria-pressed="${option.id === activeId ? "true" : "false"}"
+                >
+                  <span>${option.label}</span>
+                  <small>${this._formatCampRouteMetricLabel(option.metrics)} · ${this._formatCampRouteTimeLabel(option.travelMs, option.metrics)}</small>
+                  <em>${option.note}</em>
+                </button>
+              `,
+            )
+            .join("")}
+        </div>
+      </div>
+    `;
   },
 
   _getCampRouteWalkDurationMs(
@@ -195,6 +425,1109 @@ Object.assign(UI.prototype, {
     return `${prefix}${this.formatSeconds(durationMs)}`;
   },
 
+  _getCampLogisticsSummary(details, routeMetrics = null, travelPlan = null) {
+    if (!details?.action) return null;
+    const profile = details.gatherProfile || null;
+    const path = routeMetrics ? null : this._getCampTravelPathTo(details.id);
+    const metrics = routeMetrics || this._getCampPathTravelMetrics(path);
+    const plan = travelPlan || this._getCampTravelPlan(details, metrics);
+    const distance = Math.max(0, Number(details.distanceFromCamp || 0));
+    const pathData =
+      details.pathData || this.game.getCampPathData?.(details.id) || null;
+    const pathLevel = details.pathLevel || profile?.pathLevel || pathData?.id;
+    const output = profile?.output || {};
+    const load = Number(profile?.load || 0);
+    const totalLoad = Number(profile?.totalLoad || load);
+    const carryCapacity = Math.max(
+      1,
+      Number(
+        profile?.carryCapacity || this.game.getCharacterCarryCapacity?.() || 1,
+      ),
+    );
+    const trips = Math.max(1, Number(profile?.deliveryTrips || 1));
+    const routeLabel = this._formatCampRouteMetricLabel(metrics);
+    const totalLabel = this._formatCampRouteTimeLabel(
+      plan.totalMs || 0,
+      metrics,
+    );
+    const walkLabel = this._formatCampRouteTimeLabel(
+      plan.outboundMs || 0,
+      metrics,
+    );
+    const gatherLabel = this.formatSeconds(plan.gatherMs || 0);
+    const loadLabel = `${this.formatNumber(load, 1)} / ${this.formatNumber(carryCapacity, 1)}`;
+    const totalLoadLabel = this.formatNumber(totalLoad, 1);
+    const pathLabel =
+      distance <= 0
+        ? "на месте"
+        : `${pathData?.icon || "·"} ${pathData?.label || "Без тропы"}`;
+    const outputLabel = Object.keys(output).length
+      ? this.formatResourcePairs(output, { plus: true })
+      : "нет выноса";
+    const stockLabel = Number.isFinite(details.resourceRemaining)
+      ? `${details.resourceRemaining}/${details.resourceCapacity}`
+      : "";
+    const outputUnits = details.resourceType
+      ? Number(output[details.resourceType] || 0)
+      : Object.values(output).reduce(
+          (sum, amount) => sum + (Number(amount) || 0),
+          0,
+        );
+    const remainingRuns =
+      Number.isFinite(details.resourceRemaining) && outputUnits > 0
+        ? Math.ceil(Math.max(0, details.resourceRemaining) / outputUnits)
+        : null;
+    const remainingRunsLabel = Number.isFinite(remainingRuns)
+      ? remainingRuns > 0
+        ? `ещё ${remainingRuns} ${remainingRuns === 1 ? "выход" : "выходов"}`
+        : "исчерпан"
+      : "";
+
+    let tone = "ok";
+    let note =
+      "Один понятный рейс: путь, сбор и груз не создают отдельного узкого места.";
+    if (profile?.blockedReason) {
+      tone = "bad";
+      note = profile.blockedReason;
+    } else if (profile?.limitedByCarry) {
+      tone = "warn";
+      note =
+        "Переносимость режет вынос: часть возможной добычи не помещается в рейс.";
+    } else if (trips > 1) {
+      tone = "warn";
+      note = `Доставка требует ${trips} ходки: важен не только сбор, но и поднос к лагерю.`;
+    } else if (distance > 1 && (!pathLevel || pathLevel === "none")) {
+      tone = "warn";
+      note =
+        "Дальний участок без тропы: маршрут сам становится издержкой производства.";
+    } else if ((profile?.terrainPenalty || 0) > 0) {
+      tone = "warn";
+      note = "Местность утяжеляет выход: этот ресурс дороже ближнего сбора.";
+    } else if (pathLevel && pathLevel !== "none") {
+      note = "Тропа уже снижает цену доставки этого ресурса.";
+    }
+
+    return {
+      tone,
+      note,
+      routeLabel,
+      totalLabel,
+      walkLabel,
+      gatherLabel,
+      pathLabel,
+      terrainLabel:
+        profile?.terrainLabel || details.terrainLabel || "обычный участок",
+      outputLabel,
+      stockLabel,
+      remainingRunsLabel,
+      loadLabel,
+      totalLoadLabel,
+      trips,
+      needsLabel: profile?.needsImpact?.label || "",
+      carryLabel: profile?.carryState?.label || "",
+    };
+  },
+
+  _renderCampLogisticsBlock(summary, options = {}) {
+    if (!summary) return "";
+    const { compact = false } = options;
+    if (compact) {
+      return `
+        <div class="grr-logistics is-${summary.tone}">
+          <span>↔ ${summary.routeLabel}</span>
+          <span>⏱ ${summary.totalLabel}</span>
+          <span>🧺 ${summary.loadLabel}</span>
+          ${summary.remainingRunsLabel ? `<span>↻ ${summary.remainingRunsLabel}</span>` : ""}
+          ${summary.trips > 1 ? `<span>${summary.trips} ходки</span>` : ""}
+        </div>
+      `;
+    }
+    return `
+      <div class="camp-map-logistics-card is-${summary.tone}">
+        <div class="camp-map-logistics-head">
+          <span>Логистика</span>
+          <strong>${summary.totalLabel}</strong>
+        </div>
+        <div class="camp-map-logistics-grid">
+          <span><b>Маршрут</b>${summary.routeLabel}</span>
+          <span><b>Цикл</b>ходьба ${summary.walkLabel} · сбор ${summary.gatherLabel}</span>
+          <span><b>Вынос</b>${summary.outputLabel} · груз ${summary.loadLabel}</span>
+          ${summary.stockLabel ? `<span><b>Запас</b>${summary.stockLabel} · ${summary.remainingRunsLabel}</span>` : ""}
+          <span><b>Путь</b>${summary.pathLabel} · ${summary.terrainLabel}</span>
+        </div>
+        <div class="camp-map-logistics-note">${summary.note}</div>
+      </div>
+    `;
+  },
+
+  _getCampMapLayerMode() {
+    const mode = this._campMapLayerMode || "terrain";
+    return ["terrain", "resources", "paths", "survey"].includes(mode)
+      ? mode
+      : "terrain";
+  },
+
+  _setCampMapLayerMode(mode) {
+    const nextMode = ["terrain", "resources", "paths", "survey"].includes(mode)
+      ? mode
+      : "terrain";
+    if (this._campMapLayerMode === nextMode) return false;
+    this._campMapLayerMode = nextMode;
+    return true;
+  },
+
+  _renderCampMapLayerControls(activeMode = this._getCampMapLayerMode()) {
+    const modes = [
+      {
+        id: "terrain",
+        label: "Рельеф",
+        hint: "Природная карта без служебных меток",
+      },
+      { id: "resources", label: "Ресурсы", hint: "Абстрактные точки ресурсов" },
+      { id: "paths", label: "Пути", hint: "Тропы и логистика маршрутов" },
+      {
+        id: "survey",
+        label: "Разведка",
+        hint: "Статус участков и будущие зоны",
+      },
+    ];
+    return `
+      <div class="camp-map-layer-switch" role="group" aria-label="Слой карты">
+        ${modes
+          .map(
+            (mode) => `
+              <button
+                type="button"
+                class="camp-map-layer-btn${activeMode === mode.id ? " is-active" : ""}"
+                data-camp-map-layer="${mode.id}"
+                aria-pressed="${activeMode === mode.id ? "true" : "false"}"
+                title="${mode.hint}"
+              >${mode.label}</button>
+            `,
+          )
+          .join("")}
+      </div>
+    `;
+  },
+
+  _renderCampRouteIntelBlock(details, routeMetrics = null) {
+    if (!details || (details.distanceFromCamp || 0) <= 0) return "";
+    const path = routeMetrics ? null : this._getCampTravelPathTo(details.id);
+    const metrics = routeMetrics || this._getCampPathTravelMetrics(path);
+    const walkMs = this._getCampRouteWalkDurationMs(metrics, {
+      setupMs: 280,
+      minMs: metrics.hexCount > 0 ? 850 : 0,
+      maxMs: 180000,
+      extraCoef: 1.02,
+    });
+    const pathData =
+      details.pathData || this.game.getCampPathData?.(details.id);
+    const tone = metrics.isApproximate
+      ? "warn"
+      : pathData?.id && pathData.id !== "none"
+        ? "ok"
+        : "neutral";
+    const note = metrics.isApproximate
+      ? "Маршрут пока примерный: часть пути проходит через неясную местность."
+      : pathData?.id && pathData.id !== "none"
+        ? "Путь уже подготовлен, поэтому этот участок легче включать в регулярные выходы."
+        : "Путь пока сырой: для дальнего участка тропа может стать важнее самого ресурса.";
+    return `
+      <div class="camp-map-route-card is-${tone}">
+        <div class="camp-map-route-card-head">
+          <span>Маршрут участка</span>
+          <strong>${this._formatCampRouteTimeLabel(walkMs, metrics)}</strong>
+        </div>
+        <div class="camp-map-route-card-grid">
+          <span><b>Дистанция</b>${this._formatCampRouteMetricLabel(metrics)}</span>
+          <span><b>Проход</b>${pathData?.icon || "·"} ${pathData?.label || "Без тропы"}</span>
+          <span><b>Местность</b>${details.terrainLabel || this.getCampTerrainLabel(details.terrainType)}</span>
+        </div>
+        <div class="camp-map-route-card-note">${note}</div>
+      </div>
+    `;
+  },
+
+  _renderCampTileJournalBlock(details) {
+    if (!details) return "";
+    const items = [];
+    items.push({
+      label: "Статус",
+      value: this.getCampTileStateLabel(details.state),
+    });
+    items.push({
+      label: "Кольцо",
+      value:
+        (details.distanceFromCamp || 0) <= 0
+          ? "центр"
+          : `${details.distanceFromCamp} от лагеря`,
+    });
+    if (details.pathData) {
+      items.push({
+        label: "Путь",
+        value: details.pathData.label || "Без тропы",
+      });
+    }
+    if (Number.isFinite(details.resourceRemaining)) {
+      items.push({
+        label: "Запас",
+        value: `${details.resourceRemaining}/${details.resourceCapacity}`,
+      });
+    }
+    if (details.isDepleted) {
+      items.push({ label: "Ресурс", value: "исчерпан" });
+    }
+    if (details.roleLabel) {
+      items.push({ label: "Роль", value: details.roleLabel });
+    }
+    if (details.terrainSeen) {
+      items.push({ label: "Смысл", value: "осмотрен, но ещё не раскрыт" });
+    }
+    return `
+      <div class="camp-map-tile-journal">
+        <div class="camp-map-tile-journal-title">Журнал участка</div>
+        <div class="camp-map-tile-journal-grid">
+          ${items
+            .map((item) => `<span><b>${item.label}</b>${item.value}</span>`)
+            .join("")}
+        </div>
+      </div>
+    `;
+  },
+
+  _renderCampExpansionBlock(details, mapState) {
+    const expansion = this.data.localCampMap?.expansion || null;
+    if (!expansion) return "";
+    const expansionState = mapState.expansionState || {};
+    const preparedRadius = Number(
+      expansionState.preparedRadius ||
+        expansion.preparedRadius ||
+        mapState.radius ||
+        0,
+    );
+    const currentRadius = Number(
+      expansionState.radius || mapState.radius || expansion.currentRadius || 0,
+    );
+    const nextRings = Object.entries(expansion.rings || {})
+      .map(([ring, plan]) => ({ ring: Number(ring), plan }))
+      .filter(
+        (entry) => entry.ring > currentRadius && entry.ring <= preparedRadius,
+      )
+      .sort((left, right) => left.ring - right.ring);
+    const selectedRingPlan =
+      expansion.rings?.[details?.distanceFromCamp] || null;
+    if (!selectedRingPlan && nextRings.length === 0) return "";
+    const plan = selectedRingPlan || nextRings[0]?.plan || null;
+    if (!plan) return "";
+    const ring = selectedRingPlan
+      ? details.distanceFromCamp
+      : nextRings[0].ring;
+    const gate = (expansionState.gates || []).find(
+      (entry) => Number(entry.opensRadius) === Number(ring),
+    );
+    const gateText = gate
+      ? gate.met
+        ? "Условия выполнены"
+        : `Нужно: ${gate.missing.slice(0, 3).join(" · ")}`
+      : "Условия открытия ещё не заданы";
+    const prospectTags = [
+      ...(Array.isArray(plan.futureResourceHints)
+        ? plan.futureResourceHints.slice(0, 3).map((item) => `ресурс: ${item}`)
+        : []),
+      ...(Array.isArray(plan.wildlifeHints)
+        ? plan.wildlifeHints.slice(0, 2).map((item) => `след: ${item}`)
+        : []),
+      ...(Array.isArray(plan.eventSeeds)
+        ? plan.eventSeeds.slice(0, 2).map((item) => `событие: ${item}`)
+        : []),
+      ...(Array.isArray(plan.hazardTags) ? plan.hazardTags.slice(0, 2) : []),
+    ].slice(0, 8);
+    const nextLabel = selectedRingPlan
+      ? `${details.distanceFromCamp} кольцо: ${plan.label}`
+      : `Следующее: ${nextRings[0].ring} кольцо, ${plan.label}`;
+    return `
+      <div class="camp-map-expansion-card">
+        <div class="camp-map-expansion-head">
+          <span>Расширение карты</span>
+          <strong>${currentRadius}/${preparedRadius}</strong>
+        </div>
+        <div class="camp-map-expansion-title">${nextLabel}</div>
+        <div class="camp-map-expansion-gate">${gateText}</div>
+        <div class="camp-map-expansion-text">${plan.unlockHint || plan.notes || "Данные кольца готовы для будущего открытия."}</div>
+        ${
+          prospectTags.length
+            ? `<div class="camp-map-expansion-tags">${prospectTags.map((tag) => `<span>${tag}</span>`).join("")}</div>`
+            : ""
+        }
+      </div>
+    `;
+  },
+
+  _renderCampSurveyStatus(mapState) {
+    const expansion = this.data.localCampMap?.expansion || {};
+    const expansionState = mapState.expansionState || {};
+    const tiles = Array.isArray(mapState.tiles) ? mapState.tiles : [];
+    const knownCount = tiles.filter(
+      (tile) =>
+        !["hidden", "silhouette", "visible_locked"].includes(tile.state),
+    ).length;
+    const seenCount = tiles.filter(
+      (tile) => tile.state === "terrain_seen",
+    ).length;
+    const frontierCount = tiles.filter(
+      (tile) => tile.state === "visible_locked" || tile.state === "silhouette",
+    ).length;
+    const nextGate = expansionState.nextGate || null;
+    const nextRingPlan = nextGate
+      ? expansion.rings?.[nextGate.opensRadius] || null
+      : null;
+    const signalTags = nextRingPlan
+      ? [
+          ...(nextRingPlan.surveySignals || []).slice(0, 3),
+          ...(nextRingPlan.futureResourceHints || []).slice(0, 2),
+          ...(nextRingPlan.wildlifeHints || []).slice(0, 2),
+        ].slice(0, 7)
+      : [];
+    const actionableExploreCount =
+      typeof this.game.canExploreCampTile === "function"
+        ? tiles.filter((tile) => this.game.canExploreCampTile(tile.id)).length
+        : 0;
+    const actionableExploreLabel =
+      actionableExploreCount % 10 === 1 && actionableExploreCount % 100 !== 11
+        ? "участок"
+        : actionableExploreCount % 10 >= 2 &&
+            actionableExploreCount % 10 <= 4 &&
+            ![12, 13, 14].includes(actionableExploreCount % 100)
+          ? "участка"
+          : "участков";
+    const gateLine = nextGate
+      ? nextGate.met
+        ? `${nextGate.label}: готово к открытию`
+        : `${nextGate.label}: ${nextGate.missing.slice(0, 3).join(" · ")}`
+      : "Подготовленный радиус достигнут";
+    const nextStepLine =
+      actionableExploreCount > 0
+        ? `Что дальше: можно разведать ${actionableExploreCount} ${actionableExploreLabel}. Выберите рубеж или осмотренный гекс и отправьте персонажа.`
+        : nextGate && !nextGate.met && nextGate.missing?.length
+          ? `Что дальше: подготовьте следующее кольцо — ${nextGate.missing.slice(0, 2).join(" · ")}.`
+          : nextGate?.met
+            ? "Что дальше: следующее кольцо уже готово, остаётся выбрать направление разведки."
+            : "Что дальше: осматривайте рубеж и готовьте следующее кольцо расширения.";
+
+    return `
+      <div class="camp-map-survey-card">
+        <div class="camp-map-survey-head">
+          <span>Разведка</span>
+          <strong>${mapState.radius}/${expansionState.preparedRadius || mapState.radius}</strong>
+        </div>
+        <div class="camp-map-survey-grid">
+          <span><b>${knownCount}</b>открыто</span>
+          <span><b>${seenCount}</b>осмотрено</span>
+          <span><b>${frontierCount}</b>рубеж</span>
+        </div>
+        <div class="camp-map-survey-gate">${gateLine}</div>
+        <div class="camp-map-survey-next">${nextStepLine}</div>
+        ${
+          signalTags.length
+            ? `<div class="camp-map-survey-tags">${signalTags.map((tag) => `<span>${tag}</span>`).join("")}</div>`
+            : ""
+        }
+        <div class="camp-map-survey-legend">
+          <span><i class="survey-dot is-known"></i>открыто</span>
+          <span><i class="survey-dot is-seen"></i>осмотрено</span>
+          <span><i class="survey-dot is-frontier"></i>рубеж</span>
+          <span><i class="survey-dot is-unknown"></i>неизвестно</span>
+        </div>
+      </div>
+    `;
+  },
+
+  _clearCampInterruptedTravelAction() {
+    this._campInterruptedTravelAction = null;
+  },
+
+  _getCampInterruptedTravelSummary() {
+    const paused = this._campInterruptedTravelAction;
+    if (!paused || this._campTravelAction) return null;
+
+    const currentTileId = this.game.getCharacterTileId?.() || null;
+    const atCamp = this.game.isCharacterAtCamp?.() ?? true;
+    const targetTile = paused.tileId
+      ? this.game._getCampMapTile?.(paused.tileId)
+      : null;
+    const stopTile = paused.stopTileId
+      ? this.game._getCampMapTile?.(paused.stopTileId)
+      : null;
+    const targetLabel = targetTile?.name || paused.targetTileName || "цели";
+    const stopLabel =
+      stopTile?.name || paused.stopTileName || "текущего участка";
+    const onTarget = !!paused.tileId && currentTileId === paused.tileId;
+
+    let primaryAction = "";
+    let primaryLabel = "";
+    let note = "";
+
+    if (paused.isReturnTrip) {
+      primaryAction = atCamp ? "" : "resume-return";
+      primaryLabel = "Продолжить возврат";
+      note = atCamp
+        ? "Возврат был прерван уже у лагеря: можно сразу разобрать ношу вручную."
+        : `Возврат в лагерь прерван у участка \"${stopLabel}\". Можно сразу продолжить путь домой.`;
+    } else if (onTarget) {
+      if (paused.isExplore) {
+        primaryAction = "complete-explore";
+        primaryLabel = "Завершить разведку";
+        note = `Персонаж дошёл до \"${targetLabel}\", но осмотр был прерван. Можно сразу закончить разведку на месте.`;
+      } else if (paused.isMove) {
+        primaryAction = "complete-move";
+        primaryLabel = "Остаться на участке";
+        note = `Персонаж уже дошёл до \"${targetLabel}\". Можно оставить его здесь и продолжить планировать следующий ход.`;
+      } else {
+        primaryAction = "complete-gather";
+        primaryLabel = "Собрать здесь";
+        note = `Персонаж уже на участке \"${targetLabel}\". Можно сразу закончить сбор без нового перехода.`;
+      }
+    } else {
+      primaryAction = paused.isExplore
+        ? "resume-explore"
+        : paused.isMove
+          ? "resume-move"
+          : "resume-route";
+      primaryLabel = paused.isExplore
+        ? "Продолжить разведку"
+        : paused.isMove
+          ? "Продолжить переход"
+          : "Продолжить маршрут";
+      note = `Путь к участку \"${targetLabel}\" прерван у \"${stopLabel}\". Можно продолжить тот же выход или сменить решение.`;
+    }
+
+    return {
+      ...paused,
+      targetLabel,
+      stopLabel,
+      onTarget,
+      primaryAction,
+      primaryLabel,
+      note,
+      showReturnAlternative: !atCamp && !paused.isReturnTrip,
+    };
+  },
+
+  _resumeCampInterruptedTravelAction() {
+    const paused = this._campInterruptedTravelAction;
+    const summary = this._getCampInterruptedTravelSummary();
+    if (!paused || !summary || this._campTravelAction) return false;
+
+    this.game.selectCampTile?.(paused.tileId || paused.stopTileId || null);
+
+    if (summary.primaryAction === "resume-return") {
+      const started = this._startCampReturnTrip();
+      if (started) this._clearCampInterruptedTravelAction();
+      return started;
+    }
+
+    if (summary.primaryAction === "complete-explore") {
+      const discovery = this.game.discoverCampTile?.(paused.tileId, {
+        silent: false,
+        pushStory: true,
+      });
+      const ok =
+        discovery === true ||
+        !!discovery?.ok ||
+        this.game.getCampTileState?.(paused.tileId) === "discovered";
+      if (!ok) {
+        const hint =
+          this.game.getCampTileUnlockHint?.(paused.tileId) ||
+          "Место осмотрено, но его смысл пока не ясен.";
+        this.game.addLog?.(
+          `🚶 Персонаж дошёл до неизвестного участка. ${hint}`,
+        );
+      }
+      if (ok) this._clearCampInterruptedTravelAction();
+      this.render({ forcePanels: true });
+      return ok;
+    }
+
+    if (summary.primaryAction === "complete-gather") {
+      const ok = this.game.performCampTileAction?.(paused.tileId, {
+        resourceId: paused.resourceId || null,
+      });
+      if (ok) this._clearCampInterruptedTravelAction();
+      this.render({ forcePanels: true });
+      return ok;
+    }
+
+    if (summary.primaryAction === "complete-move") {
+      this._clearCampInterruptedTravelAction();
+      this.render({ forcePanels: true });
+      return true;
+    }
+
+    if (summary.primaryAction === "resume-explore") {
+      const started = this._startCampTileExplore(paused.tileId);
+      if (started) this._clearCampInterruptedTravelAction();
+      return started;
+    }
+
+    if (summary.primaryAction === "resume-move") {
+      const started = this._startCampTileVisit(paused.tileId);
+      if (started) this._clearCampInterruptedTravelAction();
+      return started;
+    }
+
+    if (summary.primaryAction === "resume-route") {
+      const targetDetails = this.game.getCampMapTileDetails?.(paused.tileId);
+      const started =
+        !!targetDetails?.action &&
+        this._startCampTileTravel(targetDetails, {
+          resourceId: paused.resourceId || null,
+        });
+      if (started) this._clearCampInterruptedTravelAction();
+      return started;
+    }
+
+    return false;
+  },
+
+  _getCampExpeditionSummary() {
+    const currentTileId = this.game.getCharacterTileId?.() || null;
+    const currentTile = currentTileId
+      ? this.game._getCampMapTile?.(currentTileId)
+      : null;
+    const atCamp = this.game.isCharacterAtCamp?.() ?? true;
+    const carried = this.game.getTripInventory?.() || {};
+    const carriedTotal = Object.values(carried).reduce(
+      (sum, amount) => sum + (Number(amount) || 0),
+      0,
+    );
+    const load = this.game.getTripInventoryLoad?.() || 0;
+    const capacity = this.game.getCharacterCarryCapacity?.() || 0;
+    const available =
+      this.game.getCharacterAvailableCarryCapacity?.() ??
+      Math.max(0, capacity - load);
+    const activeTravel = this._campTravelAction || null;
+    const busy = !!activeTravel;
+    const travelState = activeTravel
+      ? this._getCampTravelPhaseState(activeTravel)
+      : null;
+    const pausedTravel = !busy ? this._getCampInterruptedTravelSummary() : null;
+    const cargoLabel =
+      carriedTotal > 0 ? this.formatResourcePairs(carried) : "ноша пуста";
+    const locationLabel = atCamp
+      ? this.game.isCampSetupDone?.()
+        ? "лагерь"
+        : "ночёвка"
+      : currentTile?.name || "участок карты";
+
+    let note =
+      "Можно выбрать ресурсный участок и отправить персонажа в новый выход.";
+    if (busy) {
+      note = activeTravel?.fromQueue
+        ? `${travelState?.phaseLabel || "Персонаж в пути"}: выполняется пункт путевого листа.`
+        : `${travelState?.phaseLabel || "Персонаж в пути"}: можно остановиться на достигнутом участке без завершения действия.`;
+    } else if (pausedTravel) {
+      note = pausedTravel.note;
+    } else if (!atCamp && carriedTotal > 0) {
+      note =
+        "Груз станет общим запасом только после возврата и разгрузки в лагере.";
+    } else if (!atCamp) {
+      note = "Персонаж вне лагеря: новый маршрут начнётся с этого участка.";
+    } else if (carriedTotal > 0) {
+      note = "Груз уже у лагеря: его можно переложить в общий запас.";
+    }
+
+    return {
+      currentTileId,
+      locationLabel,
+      atCamp,
+      carried,
+      carriedTotal,
+      cargoLabel,
+      load,
+      capacity,
+      available,
+      busy,
+      activeTravel,
+      travelState,
+      pausedTravel,
+      canStop: busy,
+      canReturn: !pausedTravel && !atCamp && !busy,
+      canUnload: !pausedTravel && atCamp && carriedTotal > 0 && !busy,
+      note,
+      tone: busy || pausedTravel ? "warn" : carriedTotal > 0 ? "cargo" : "idle",
+    };
+  },
+
+  _renderCampExpeditionBlock(summary) {
+    if (!summary) return "";
+    const loadLabel = `${this.formatNumber(summary.load, 1)} / ${this.formatNumber(summary.capacity, 1)}`;
+    const freeLabel = this.formatNumber(summary.available, 1);
+    const pausedTravel = summary.pausedTravel || null;
+    const actionHtml = summary.canStop
+      ? `<button id="camp-map-stop-travel-command" class="camp-map-expedition-action is-stop" type="button">Остановиться</button>`
+      : pausedTravel?.primaryAction
+        ? `${pausedTravel.primaryLabel ? `<button id="camp-map-resume-travel-command" class="camp-map-expedition-action" type="button">${pausedTravel.primaryLabel}</button>` : ""}${pausedTravel.showReturnAlternative ? `<button id="camp-map-return-command" class="camp-map-expedition-action is-secondary" type="button">Вернуться и разгрузить</button>` : ""}`
+        : summary.canReturn
+          ? `<button id="camp-map-return-command" class="camp-map-expedition-action" type="button">Вернуться и разгрузить</button>`
+          : summary.canUnload
+            ? `<button id="camp-map-unload-command" class="camp-map-expedition-action" type="button">Разгрузить ношу</button>`
+            : "";
+    const progressHtml = summary.travelState
+      ? `<div class="camp-map-expedition-progress">
+          <span>${summary.travelState.phaseLabel}</span>
+          <strong>${this.formatCooldownMs(summary.travelState.totalRemainingMs)}</strong>
+        </div>`
+      : "";
+
+    return `
+      <div class="camp-map-expedition is-${summary.tone}">
+        <div class="camp-map-expedition-head">
+          <span>Экспедиция</span>
+          <strong>${summary.locationLabel}</strong>
+        </div>
+        <div class="camp-map-expedition-grid">
+          <span><b>Груз</b>${summary.cargoLabel}</span>
+          <span><b>Ноша</b>${loadLabel} · свободно ${freeLabel}</span>
+        </div>
+        ${progressHtml}
+        <div class="camp-map-expedition-note">${summary.note}</div>
+        ${actionHtml}
+      </div>
+    `;
+  },
+
+  _getCampFoundingGuideTile(guidance, selectedId = "") {
+    const candidates = [
+      ...(guidance?.tileHints || []),
+      ...(guidance?.supportTiles || []),
+      guidance?.preferredTile,
+    ].filter(Boolean);
+    const seen = new Set();
+    const resolved = candidates
+      .filter((tile) => {
+        const tileId = tile?.id || "";
+        if (!tileId || tileId === selectedId || seen.has(tileId)) return false;
+        seen.add(tileId);
+        return true;
+      })
+      .map((tile) => this.game.getCampMapTileDetails?.(tile.id) || tile);
+    return (
+      resolved.find((tile) => {
+        const state =
+          this.game.getCampTileState?.(tile.id) || tile.state || "hidden";
+        return !this._isCampTileUnknownState(state);
+      }) ||
+      resolved[0] ||
+      null
+    );
+  },
+
+  _renderCampFoundingDockBlock(selected, options = {}) {
+    if (this.game.isCampSetupDone?.()) return "";
+
+    const cost = this.game.getCampFoundingCost?.() || {};
+    const progressItems = this.getCampFoundingProgressItems?.(cost) || [];
+    if (!progressItems.length) return "";
+
+    const check = this.game.canFoundCamp?.() || {
+      ok: false,
+      missingResources: {},
+    };
+    const guidance = !check.ok
+      ? this.getCampFoundingResourceGuidance?.(check) || null
+      : null;
+    const preferredTile = this._getCampFoundingGuideTile(
+      guidance,
+      selected?.id || "",
+    );
+    const readyCount = progressItems.filter((item) => item.done).length;
+    const carriedTotal = progressItems.reduce(
+      (sum, item) => sum + Math.max(0, Number(item.carried) || 0),
+      0,
+    );
+    const note = check.ok
+      ? options.selectedCanFoundBeforeCamp
+        ? "Материалы собраны. На выбранной площадке можно сразу начать основание лагеря."
+        : "Материалы собраны. Выберите подходящую площадку на карте, чтобы основать лагерь."
+      : carriedTotal > 0
+        ? "Ноша уже засчитывается. Осталось добрать недостающее и выбрать место стоянки."
+        : preferredTile
+          ? `Ближайший полезный участок: ${preferredTile.name}.`
+          : "Соберите недостающие материалы с карты или из списка ресурсов ниже.";
+    const actionHtml =
+      check.ok && options.selectedCanFoundBeforeCamp
+        ? `
+          <button
+            id="camp-map-founding-ready-action"
+            class="camp-map-founding-dock-action"
+            type="button"
+          >
+            🏕️ Основать лагерь здесь
+          </button>
+        `
+        : preferredTile && preferredTile.id !== selected?.id
+          ? `
+            <button
+              id="camp-map-founding-guide-action"
+              class="camp-map-founding-dock-action is-secondary"
+              type="button"
+              data-tile-id="${preferredTile.id}"
+            >
+              🧭 Показать нужный участок
+            </button>
+          `
+          : "";
+
+    return `
+      <section class="camp-map-founding-dock" aria-label="Подготовка к основанию лагеря">
+        <div class="camp-map-founding-dock-head">
+          <span>Подготовка к основанию</span>
+          <strong>${readyCount}/${progressItems.length}</strong>
+        </div>
+        <div class="camp-map-founding-dock-grid">
+          ${progressItems
+            .map(
+              (item) => `
+                <div class="camp-map-founding-chip${item.done ? " is-done" : ""}">
+                  <div class="camp-map-founding-chip-head">
+                    <span>${item.icon} ${item.name}</span>
+                    <strong>${item.have}/${item.needed}</strong>
+                  </div>
+                  <div class="camp-map-founding-chip-meta">${this.formatCampFoundingResourceMeta?.(item) || (item.done ? "Готово" : `Осталось собрать: ${item.missing}`)}</div>
+                </div>
+              `,
+            )
+            .join("")}
+        </div>
+        <div class="camp-map-founding-dock-note">${note}</div>
+        ${actionHtml}
+      </section>
+    `;
+  },
+
+  _buildCampInlineActionOverlayHtml(layout, options = {}) {
+    if (this._campTravelAction) return "";
+
+    const selected = options.selected || null;
+    const coord = selected?.id ? layout?.tileCoordById?.[selected.id] : null;
+    if (
+      !selected?.id ||
+      !coord ||
+      this._isCampTileUnknownState(selected.state)
+    ) {
+      return "";
+    }
+    if (this._campInlineActionDismissedTileId === selected.id) {
+      return "";
+    }
+
+    const buttons = [];
+    const addButton = ({
+      kind,
+      label,
+      resourceId = "",
+      actionId = "",
+      secondary = false,
+      disabled = false,
+    }) => {
+      if (!kind || !label) return;
+      buttons.push(`
+        <button
+          type="button"
+          class="camp-map-inline-action-btn${secondary ? " is-secondary" : ""}${disabled ? " is-disabled" : ""}"
+          data-camp-inline-action="${kind}"
+          ${resourceId ? `data-resource-id="${resourceId}"` : ""}
+          ${actionId ? `data-action-id="${actionId}"` : ""}
+          ${disabled ? "disabled" : ""}
+          aria-disabled="${disabled ? "true" : "false"}"
+        >
+          ${label}
+        </button>
+      `);
+    };
+
+    let title = "";
+    if (options.selectedCanFoundBeforeCamp) {
+      title = "Место стоянки";
+      addButton({
+        kind: "visit",
+        label: options.selectedIsCharacterTile
+          ? "🚶 Вы уже здесь"
+          : "🚶 Идти сюда",
+        secondary: true,
+        disabled: !options.selectedCanMoveHere,
+      });
+      addButton({
+        kind: "found",
+        label: "🏕️ Поставить лагерь",
+        disabled: !options.selectedCampSiteCheck?.ok,
+      });
+    } else if (options.selectedHasGatherAction) {
+      const resourceChoices = options.selectedResourceChoices || [];
+      const singleChoice = resourceChoices[0] || null;
+      title = resourceChoices.length > 1 ? "Что собрать" : "Быстрое действие";
+
+      if (resourceChoices.length > 1) {
+        resourceChoices.forEach((choice) => {
+          addButton({
+            kind: "gather",
+            label: `${choice.icon} ${choice.name}`,
+            resourceId: choice.id,
+            actionId: choice.actionId,
+            disabled: !choice.canGather,
+          });
+        });
+      } else if (singleChoice) {
+        addButton({
+          kind: "gather",
+          label: options.selectedIsCharacterTile
+            ? `${singleChoice.icon} Собрать здесь`
+            : `${singleChoice.icon} Собрать`,
+          resourceId: singleChoice.id,
+          actionId: singleChoice.actionId,
+          disabled: !singleChoice.canGather,
+        });
+      }
+    } else if (options.selectedCanMoveHere) {
+      title = "Переход";
+      addButton({
+        kind: "visit",
+        label: "🚶 Идти сюда",
+      });
+    }
+
+    if (!buttons.length) return "";
+
+    const sceneWidth = Math.max(1, Number(layout?.sceneWidth) || 0);
+    const sceneHeight = Math.max(1, Number(layout?.sceneHeight) || 0);
+    const viewBox = layout?.viewBox || {
+      x: -288,
+      y: -320,
+      width: 576,
+      height: 640,
+    };
+    const scale = Math.min(
+      sceneWidth / viewBox.width,
+      sceneHeight / viewBox.height,
+    );
+    const offsetX = (sceneWidth - viewBox.width * scale) / 2;
+    const offsetY = (sceneHeight - viewBox.height * scale) / 2;
+    const anchorX = offsetX + (coord.x - viewBox.x) * scale;
+    const anchorY = offsetY + (coord.y - viewBox.y) * scale;
+
+    const panelWidth = options.selectedCanFoundBeforeCamp ? 204 : 186;
+    const panelHeight = 16 + (title ? 18 : 0) + buttons.length * 38;
+    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+    const preferBelow = anchorY < 120;
+    const x = clamp(anchorX - panelWidth / 2, 10, sceneWidth - panelWidth - 10);
+    const y = preferBelow
+      ? clamp(anchorY + 34, 10, sceneHeight - panelHeight - 10)
+      : clamp(anchorY - panelHeight - 28, 10, sceneHeight - panelHeight - 10);
+
+    return `
+      <div
+        class="camp-map-inline-panel${preferBelow ? " is-below" : " is-above"}"
+        style="left:${x.toFixed(1)}px; top:${y.toFixed(1)}px; width:${panelWidth}px;"
+      >
+        <div class="camp-map-inline-head">
+          ${title ? `<div class="camp-map-inline-title">${title}</div>` : ""}
+          <button
+            type="button"
+            class="camp-map-inline-close"
+            data-camp-inline-dismiss="true"
+            aria-label="Закрыть"
+          >×</button>
+        </div>
+        <div class="camp-map-inline-actions">
+          ${buttons.join("")}
+        </div>
+      </div>
+    `;
+  },
+
+  _getCampTaskQueueEntryView(entry, index = 0) {
+    const details = this.game.getCampMapTileDetails?.(entry.tileId) || null;
+    if (!details?.action) {
+      return {
+        index,
+        valid: false,
+        title: "Недоступный участок",
+        meta: "Цель больше нельзя собрать.",
+      };
+    }
+    const resourceId = entry.resourceId || "";
+    const choiceDetails = resourceId
+      ? this._getCampGatherChoiceDetails(details, resourceId, entry.actionId)
+      : details;
+    const actionCopy = this.getGatherActionCopy(choiceDetails.action);
+    const profile = choiceDetails.gatherProfile || null;
+    const routePath = this._getCampTravelPathTo(details.id, {
+      routeId:
+        entry.routeId || this.game.getCampRouteChoice?.(details.id) || "",
+    });
+    const routeMetrics = this._getCampPathTravelMetrics(routePath);
+    const travelPlan = this._getCampTravelPlan(choiceDetails, routeMetrics);
+    const resourceName = resourceId
+      ? this.getResourceDisplayName(resourceId)
+      : this.formatResourcePairs(profile?.output || {}, { plus: true });
+    const resourceIcon = resourceId
+      ? this.getResourceDisplayIcon(resourceId)
+      : actionCopy.icon;
+    const routeOption = this._getCampRouteOptions(details.id).find(
+      (option) => option.id === entry.routeId,
+    );
+    return {
+      index,
+      valid: !!choiceDetails.canGather,
+      tileId: details.id,
+      resourceId,
+      title: `${resourceIcon} ${resourceName}`,
+      location: details.name,
+      routeLabel: routeOption?.label || "маршрут",
+      timeLabel: this._formatCampRouteTimeLabel(
+        travelPlan.totalMs,
+        routeMetrics,
+      ),
+      meta: `${details.name} · ${this._formatCampRouteMetricLabel(routeMetrics)} · ${this._formatCampRouteTimeLabel(travelPlan.totalMs, routeMetrics)}`,
+      disabledReason: this._getCampGatherDisabledReason(choiceDetails),
+    };
+  },
+
+  _renderCampTaskQueueBlock() {
+    const gate = this.game.getCampTaskQueueGate?.() || {
+      unlocked: true,
+      insightName: "Путевые метки",
+      reason: "",
+    };
+    const queue = this.game.getCampTaskQueue?.() || [];
+    const activeTravel = this._campTravelAction || null;
+    const activeQueue = !!activeTravel?.fromQueue;
+    const canStart = gate.unlocked && queue.length > 0 && !activeTravel;
+    const queueViews = queue.map((entry, index) =>
+      this._getCampTaskQueueEntryView(entry, index),
+    );
+    const emptyText = gate.unlocked
+      ? "Выберите ресурсный участок и добавьте его в лист."
+      : gate.reason;
+    const itemsHtml = queueViews.length
+      ? queueViews
+          .map(
+            (entry) => `
+              <div class="camp-map-task-item${entry.valid ? "" : " is-blocked"}">
+                <div>
+                  <strong>${entry.title}</strong>
+                  <span>${entry.meta}</span>
+                  ${entry.disabledReason ? `<em>${entry.disabledReason}</em>` : ""}
+                </div>
+                <button type="button" class="camp-map-task-remove" data-camp-queue-remove="${entry.index}" aria-label="Убрать пункт">×</button>
+              </div>
+            `,
+          )
+          .join("")
+      : `<div class="camp-map-task-empty">${emptyText}</div>`;
+    const activeText = activeQueue
+      ? "Выполняется текущий пункт. Оставшиеся задачи ждут очереди."
+      : queue.length > 0
+        ? `${queue.length} ${queue.length === 1 ? "пункт" : queue.length >= 2 && queue.length <= 4 ? "пункта" : "пунктов"} в листе.`
+        : "Лист пуст.";
+
+    return `
+      <div class="camp-map-task-queue${gate.unlocked ? "" : " is-locked"}">
+        <div class="camp-map-task-head">
+          <span>Путевой лист</span>
+          <strong>${gate.unlocked ? `${queue.length}/6` : "закрыт"}</strong>
+        </div>
+        <div class="camp-map-task-list">${itemsHtml}</div>
+        <div class="camp-map-task-note">${activeText}</div>
+        <div class="camp-map-task-actions">
+          <button
+            id="camp-map-queue-start"
+            class="camp-map-task-action"
+            type="button"
+            ${canStart ? "" : "disabled"}
+            aria-disabled="${canStart ? "false" : "true"}"
+          >Начать лист</button>
+          <button
+            id="camp-map-queue-clear"
+            class="camp-map-task-action is-ghost"
+            type="button"
+            ${queue.length ? "" : "disabled"}
+            aria-disabled="${queue.length ? "false" : "true"}"
+          >Очистить</button>
+        </div>
+      </div>
+    `;
+  },
+
+  _startCampQueuedEntry(entry) {
+    if (!entry || this._campTravelAction) return false;
+    const details = this.game.getCampMapTileDetails?.(entry.tileId) || null;
+    if (!details?.action) {
+      this.game.addLog?.("Пункт путевого листа больше недоступен.");
+      return false;
+    }
+    const travelDetails = entry.resourceId
+      ? this._getCampGatherChoiceDetails(
+          details,
+          entry.resourceId,
+          entry.actionId,
+        )
+      : details;
+    const blockedReason = this._getCampGatherDisabledReason(travelDetails);
+    if (!travelDetails.canGather || blockedReason) {
+      this.game.addLog?.(
+        `Путевой лист остановлен: ${blockedReason || "пункт нельзя выполнить"}`,
+      );
+      return false;
+    }
+    return this._startCampTileTravel(travelDetails, {
+      resourceId: entry.resourceId || null,
+      routeId:
+        entry.routeId || this.game.getCampRouteChoice?.(entry.tileId) || "",
+      fromQueue: true,
+    });
+  },
+
+  _startCampTaskQueue() {
+    const gate = this.game.getCampTaskQueueGate?.();
+    if (gate && !gate.unlocked) {
+      this.game.addLog?.(gate.reason);
+      return false;
+    }
+    if (this._campTravelAction) return false;
+    const queue = this.game.getCampTaskQueue?.() || [];
+    if (!queue.length) return false;
+    const [entry, ...rest] = queue;
+    if (!this._startCampQueuedEntry(entry)) return false;
+    this.game.setCampTaskQueue?.(rest);
+    this.render({ forcePanels: true });
+    return true;
+  },
+
+  _continueCampTaskQueue() {
+    const queue = this.game.getCampTaskQueue?.() || [];
+    if (!queue.length) {
+      this.game.addLog?.("Путевой лист выполнен.");
+      this.render({ forcePanels: true });
+      return;
+    }
+    const available = this.game.getCharacterAvailableCarryCapacity?.() ?? 0;
+    if (available <= 0.01) {
+      this.game.addLog?.(
+        "Путевой лист остановлен: ноша заполнена, нужно вернуться и разгрузиться.",
+      );
+      this.render({ forcePanels: true });
+      return;
+    }
+    if (this._campTaskQueueTimer) clearTimeout(this._campTaskQueueTimer);
+    this._campTaskQueueTimer = setTimeout(() => {
+      this._campTaskQueueTimer = null;
+      if (!this._startCampTaskQueue()) {
+        this.render({ forcePanels: true });
+      }
+    }, 180);
+  },
+
   _refreshCampTravelEstimate(
     task,
     { reachedIndex = 0, now = Date.now() } = {},
@@ -252,7 +1585,10 @@ Object.assign(UI.prototype, {
     if (!details?.action) return "";
     const profile = details.gatherProfile || null;
     if (activeTravel) return "Персонаж уже занят другим выходом.";
-    const cooldown = this.game.getCooldownRemaining?.(details.action.id) || 0;
+    const cooldown =
+      this.game.getCooldownRemaining?.(details.action.id, {
+        tileId: details.id,
+      }) || 0;
     if (cooldown > 0) {
       return `Нужно подождать ещё ${this.formatCooldownMs(cooldown)}.`;
     }
@@ -275,18 +1611,26 @@ Object.assign(UI.prototype, {
     return "";
   },
 
-  _getCampGatherChoiceDetails(details, resourceId) {
-    if (!details?.action || !resourceId) return details;
-    const gatherProfile = this.game.getGatherProfile?.(details.action.id, {
+  _getCampGatherChoiceDetails(details, resourceId, actionId = "") {
+    const selectedActionId =
+      actionId || details?.actionId || details?.action?.id || "";
+    const action =
+      (selectedActionId && this.data.gatherActions?.[selectedActionId]) ||
+      details?.action ||
+      null;
+    if (!details || !action || !resourceId) return details;
+    const gatherProfile = this.game.getGatherProfile?.(action.id, {
       tileId: details.id,
       resourceId,
     });
     return {
       ...details,
+      action,
+      actionId: action.id,
       gatherResourceId: resourceId,
       gatherProfile,
       canGather: gatherProfile
-        ? this.game.canGather?.(details.action.id, {
+        ? this.game.canGather?.(action.id, {
             tileId: details.id,
             resourceId,
           }) || false
@@ -295,17 +1639,32 @@ Object.assign(UI.prototype, {
   },
 
   _getCampGatherResourceChoices(details) {
-    if (!details?.action?.output) return [];
-    return Object.keys(details.action.output)
-      .filter((resourceId) => Number(details.action.output[resourceId]) > 0)
-      .map((resourceId) => {
+    const actions = (
+      details?.gatherActions?.length
+        ? details.gatherActions
+        : details?.action
+          ? [details.action]
+          : []
+    ).filter(Boolean);
+    const seen = new Set();
+    const choices = [];
+    for (const action of actions) {
+      const resolvedActionId = action?.id || details?.actionId || "";
+      for (const resourceId of Object.keys(action.output || {})) {
+        if (Number(action.output[resourceId]) <= 0 || seen.has(resourceId)) {
+          continue;
+        }
+        seen.add(resourceId);
         const choiceDetails = this._getCampGatherChoiceDetails(
           details,
           resourceId,
+          resolvedActionId,
         );
         const profile = choiceDetails.gatherProfile || null;
-        return {
+        choices.push({
           id: resourceId,
+          actionId: resolvedActionId,
+          action,
           icon: this.getResourceDisplayIcon(resourceId),
           name: this.getResourceDisplayName(resourceId),
           profile,
@@ -313,8 +1672,10 @@ Object.assign(UI.prototype, {
           output: profile?.output || { [resourceId]: 0 },
           canGather: !!choiceDetails.canGather,
           disabledReason: this._getCampGatherDisabledReason(choiceDetails),
-        };
-      });
+        });
+      }
+    }
+    return choices;
   },
 
   _getCampTileResourceInfoItems(details, choices = null) {
@@ -507,7 +1868,9 @@ Object.assign(UI.prototype, {
         phase: "gather",
         phaseLabel: travelAction.isReturnTrip
           ? "Выгрузка добычи"
-          : "Сбор ресурсов",
+          : travelAction.isMove
+            ? "Осматривает участок"
+            : "Сбор ресурсов",
         progress: 1,
         phaseRemainingMs: Math.max(0, travelAction.gatherEndsAt - now),
         totalRemainingMs,
@@ -529,6 +1892,123 @@ Object.assign(UI.prototype, {
     };
   },
 
+  _getCampTravelReachedIndex(path, timings, progress) {
+    if (!Array.isArray(path) || path.length === 0) return 0;
+    if (!Array.isArray(timings) || timings.length !== path.length) {
+      return Math.max(
+        0,
+        Math.min(path.length - 1, Math.floor(progress * (path.length - 1))),
+      );
+    }
+    const clamped = Math.max(0, Math.min(1, progress));
+    let reachedIndex = 0;
+    for (let index = 1; index < timings.length; index += 1) {
+      if (clamped + 0.001 >= timings[index]) reachedIndex = index;
+    }
+    return reachedIndex;
+  },
+
+  _getCampTravelStopPoint(task, now = Date.now()) {
+    if (!task) return null;
+    const travelState = this._getCampTravelPhaseState(task, now);
+    if (!travelState) return null;
+
+    const useReturnPath = travelState.phase === "return";
+    const path =
+      useReturnPath && task.returnPath?.length ? task.returnPath : task.path;
+    const timings = useReturnPath ? task.returnTimings : task.pathTimings;
+    if (!Array.isArray(path) || path.length === 0) return null;
+
+    const reachedIndex =
+      travelState.phase === "gather"
+        ? path.length - 1
+        : this._getCampTravelReachedIndex(path, timings, travelState.progress);
+    const tileId = path[Math.max(0, Math.min(path.length - 1, reachedIndex))];
+    return {
+      tileId,
+      path: path.slice(0, reachedIndex + 1),
+      phase: travelState.phase,
+      reachedDestination: reachedIndex >= path.length - 1,
+      travelState,
+    };
+  },
+
+  _cancelCampTravelAction() {
+    const task = this._campTravelAction;
+    if (!task) return false;
+
+    const now = Date.now();
+    this._revealCampTravelPathProgress();
+    const stopPoint = this._getCampTravelStopPoint(task, now);
+    if (!stopPoint?.tileId) return false;
+
+    const stopTile = this.game._getCampMapTile?.(stopPoint.tileId) || null;
+    const targetTile = task.tileId
+      ? this.game._getCampMapTile?.(task.tileId)
+      : null;
+    const stopPath = Array.isArray(stopPoint.path) ? stopPoint.path : [];
+    if (stopPath.length > 1) {
+      this.game.discoverCampTilesAlongPath?.(stopPath, {
+        includeDestination: true,
+        pushStory: false,
+      });
+      this.game.recordCampPathUse?.(stopPath, {
+        weight: stopPoint.reachedDestination ? 0.75 : 0.45,
+        source: "cancel",
+      });
+    }
+
+    this._clearCampTileTravel();
+    document
+      .getElementById("camp-map-svg")
+      ?.querySelector(".camp-map-travel-layer")
+      ?.remove();
+
+    const homeTileId = this.game._getCampHomeTileId?.();
+    const reachedHome = stopPoint.tileId && stopPoint.tileId === homeTileId;
+    if (reachedHome && this.game.localCampMap) {
+      this.game.localCampMap.characterTileId = stopPoint.tileId;
+      this.game.markDirty?.();
+    } else {
+      this.game.arriveCharacterAtTile?.(stopPoint.tileId);
+    }
+    this.game.selectCampTile?.(stopPoint.tileId);
+
+    if (!(task.isReturnTrip && reachedHome)) {
+      this._campInterruptedTravelAction = {
+        tileId: task.tileId,
+        targetTileName: targetTile?.name || "",
+        actionId: task.actionId,
+        resourceId: task.resourceId || null,
+        isExplore: !!task.isExplore,
+        isMove: !!task.isMove,
+        isReturnTrip: !!task.isReturnTrip,
+        fromQueue: !!task.fromQueue,
+        stopTileId: stopPoint.tileId,
+        stopTileName: stopTile?.name || "",
+        phase: stopPoint.phase || "",
+      };
+    } else {
+      this._clearCampInterruptedTravelAction();
+    }
+
+    const stoppedAt = stopTile?.name ? ` у участка "${stopTile.name}"` : "";
+    const phaseLabel = task.isReturnTrip
+      ? reachedHome
+        ? "Разгрузка прервана"
+        : "Возврат остановлен"
+      : stopPoint.phase === "gather"
+        ? task.isExplore
+          ? "Разведка остановлена"
+          : task.isMove
+            ? "Осмотр прерван"
+            : "Сбор прерван"
+        : "Переход остановлен";
+    this.game.addLog?.(`⏸ ${phaseLabel}: персонаж остановился${stoppedAt}.`);
+    this.render({ forcePanels: true });
+    return true;
+  },
+
   _startCampTileTravel(details, options = {}) {
     if (!details?.action || this._campTravelAction) return false;
     const gatherResourceId =
@@ -537,14 +2017,22 @@ Object.assign(UI.prototype, {
       details.resourceId ||
       null;
     const travelDetails = gatherResourceId
-      ? this._getCampGatherChoiceDetails(details, gatherResourceId)
+      ? this._getCampGatherChoiceDetails(
+          details,
+          gatherResourceId,
+          options.actionId || details.actionId || details.action?.id || "",
+        )
       : details;
-    if (!travelDetails.canGather) return false;
+    if (!travelDetails?.id || !travelDetails.canGather) return false;
 
-    const path = this._getCampTravelPathTo(travelDetails.id);
+    const routeId =
+      options.routeId || this.game.getCampRouteChoice?.(travelDetails.id) || "";
+    const path = this._getCampTravelPathTo(travelDetails.id, { routeId });
     const routeMetrics = this._getCampPathTravelMetrics(path);
     const travelPlan = this._getCampTravelPlan(travelDetails, routeMetrics);
     if (!travelPlan.totalMs) return false;
+
+    this._clearCampInterruptedTravelAction();
 
     this._clearCampRoutePreview();
 
@@ -568,6 +2056,7 @@ Object.assign(UI.prototype, {
       tileId: travelDetails.id,
       actionId: travelDetails.action.id,
       resourceId: gatherResourceId,
+      fromQueue: !!options.fromQueue,
       startAt,
       outboundMs: travelPlan.outboundMs,
       gatherMs: travelPlan.gatherMs,
@@ -576,6 +2065,7 @@ Object.assign(UI.prototype, {
       gatherEndsAt,
       endsAt: gatherEndsAt + travelPlan.returnMs,
       path,
+      routeId,
       pathTimings,
       returnPath: reversedPath,
       returnTimings,
@@ -610,8 +2100,10 @@ Object.assign(UI.prototype, {
     if (!tileId || this._campTravelAction) return null;
     const originTileId = this._getCampHomeTileIdForPath();
     if (!originTileId || originTileId === tileId) return null;
-    const path = this.game._findCampHexPath?.(originTileId, tileId, {
+    const routeId = this.game.getCampRouteChoice?.(tileId) || "";
+    const path = this._getCampTravelPathTo(tileId, {
       allowFallback: false,
+      routeId,
     });
     if (!Array.isArray(path) || path.length < 2) return null;
     return { tileId, kind, path };
@@ -726,6 +2218,10 @@ Object.assign(UI.prototype, {
     // Exploration travel: just reveal the tile, no gather
     if (task.isExplore) {
       revealTravelPath({ includeDestination: false });
+      this.game.recordCampPathUse?.(task.path, {
+        weight: 1,
+        source: "explore",
+      });
       const discovery =
         typeof this.game.discoverCampTile === "function"
           ? this.game.discoverCampTile(task.tileId, {
@@ -753,8 +2249,28 @@ Object.assign(UI.prototype, {
       return;
     }
 
+    if (task.isMove) {
+      revealTravelPath({ includeDestination: false });
+      this.game.recordCampPathUse?.(task.path, {
+        weight: 1,
+        source: "move",
+      });
+      this.game.arriveCharacterAtTile?.(task.tileId);
+      this.game.selectCampTile?.(task.tileId);
+      const tile = this.game._getCampMapTile?.(task.tileId) || null;
+      this.game.addLog?.(
+        `🚶 Персонаж дошёл до участка \"${tile?.name || task.tileId}\".`,
+      );
+      this.render({ forcePanels: true });
+      return;
+    }
+
     if (task.isReturnTrip) {
       revealTravelPath({ includeDestination: false });
+      this.game.recordCampPathUse?.(task.path, {
+        weight: 1,
+        source: "return",
+      });
       this.game.arriveCharacterAtTile?.(task.tileId);
       this.game.unloadTripInventory?.({ silent: false });
       this.game.selectCampTile?.(task.tileId);
@@ -763,6 +2279,10 @@ Object.assign(UI.prototype, {
     }
 
     revealTravelPath({ includeDestination: false });
+    this.game.recordCampPathUse?.(task.path, {
+      weight: 1,
+      source: "gather",
+    });
     this.game.arriveCharacterAtTile?.(task.tileId);
     const ok = this.game.performCampTileAction(task.tileId, {
       resourceId: task.resourceId || null,
@@ -775,6 +2295,9 @@ Object.assign(UI.prototype, {
       this.data.gatherActions?.[task.actionId]?.cooldown ||
       0;
     this._scheduleGatherCooldownRefresh(cooldownMs);
+    if (task.fromQueue) {
+      this._continueCampTaskQueue();
+    }
   },
 
   // Start an exploration trip to a silhouette/unknown tile.
@@ -791,7 +2314,10 @@ Object.assign(UI.prototype, {
     }
     const startAt = Date.now();
     const lookMs = 500;
-    const path = this._getCampTravelPathTo(tileId, { allowFallback: false });
+    const path = this._getCampTravelPathTo(tileId, {
+      allowFallback: false,
+      routeId: this.game.getCampRouteChoice?.(tileId) || "",
+    });
     if (!Array.isArray(path) || path.length < 2) return false;
     const routeMetrics = this._getCampPathTravelMetrics(path);
     const travelTimingOptions = {
@@ -806,6 +2332,8 @@ Object.assign(UI.prototype, {
     );
     const pathTimings = this._computePathTimings(path);
 
+    this._clearCampInterruptedTravelAction();
+
     this._clearCampRoutePreview();
 
     this._campTravelAction = {
@@ -819,6 +2347,57 @@ Object.assign(UI.prototype, {
       outboundEndsAt: startAt + outboundMs,
       gatherEndsAt: startAt + outboundMs + lookMs,
       endsAt: startAt + outboundMs + lookMs,
+      path,
+      pathTimings,
+      returnPath: [],
+      returnTimings: [],
+      routeMetrics,
+      travelTimingOptions,
+    };
+    this._scheduleCampTileTravelTick();
+    this.render({ forcePanels: true });
+    return true;
+  },
+
+  _startCampTileVisit(tileId) {
+    if (this._campTravelAction) return false;
+    const tile = this.game._getCampMapTile?.(tileId) || null;
+    if (!tile) return false;
+
+    const startAt = Date.now();
+    const inspectMs = 280;
+    const path = this._getCampTravelPathTo(tileId, {
+      allowFallback: false,
+      routeId: this.game.getCampRouteChoice?.(tileId) || "",
+    });
+    if (!Array.isArray(path) || path.length < 2) return false;
+    const routeMetrics = this._getCampPathTravelMetrics(path);
+    const travelTimingOptions = {
+      setupMs: 280,
+      minMs: 850,
+      maxMs: 180000,
+      extraCoef: 1.02,
+    };
+    const outboundMs = this._getCampRouteWalkDurationMs(
+      routeMetrics,
+      travelTimingOptions,
+    );
+    const pathTimings = this._computePathTimings(path);
+
+    this._clearCampInterruptedTravelAction();
+    this._clearCampRoutePreview();
+
+    this._campTravelAction = {
+      tileId,
+      actionId: "_move",
+      isMove: true,
+      startAt,
+      outboundMs,
+      gatherMs: inspectMs,
+      returnMs: 0,
+      outboundEndsAt: startAt + outboundMs,
+      gatherEndsAt: startAt + outboundMs + inspectMs,
+      endsAt: startAt + outboundMs + inspectMs,
       path,
       pathTimings,
       returnPath: [],
@@ -848,6 +2427,7 @@ Object.assign(UI.prototype, {
 
     const currentTileId = this.game.getCharacterTileId?.();
     if (!currentTileId || currentTileId === homeTileId) {
+      this._clearCampInterruptedTravelAction();
       this.game.arriveCharacterAtTile?.(homeTileId);
       this.game.unloadTripInventory?.({ silent: false });
       this.game.selectCampTile?.(homeTileId);
@@ -880,6 +2460,8 @@ Object.assign(UI.prototype, {
     );
     const unloadMs = load > 0 ? 420 : 180;
     const startAt = Date.now();
+
+    this._clearCampInterruptedTravelAction();
 
     this._campTravelAction = {
       tileId: homeTileId,
@@ -1185,6 +2767,10 @@ Object.assign(UI.prototype, {
       <path class="camp-map-route-preview" d="${routeD}" />
       ${nodes}
       <circle class="camp-map-route-preview-target" cx="${targetCoord.x.toFixed(1)}" cy="${targetCoord.y.toFixed(1)}" r="16" />
+      <circle class="camp-map-route-preview-core" cx="${targetCoord.x.toFixed(1)}" cy="${targetCoord.y.toFixed(1)}" r="4.4" />
+      <g class="camp-map-route-preview-label" transform="translate(${targetCoord.x.toFixed(1)} ${(targetCoord.y - 24).toFixed(1)})">
+        <text class="camp-map-route-preview-tag" x="0" y="0">Цель</text>
+      </g>
     </g>`;
   },
 
@@ -1205,8 +2791,11 @@ Object.assign(UI.prototype, {
       ? ` resource-${String(resourceId).replace(/[^a-z0-9_-]/gi, "")}`
       : "";
     const carryClass = carriedTripResourceId ? " has-carry" : "";
+    const showLocationLabel = !!this._campRoutePreview?.path?.length;
 
     return `<g class="camp-map-travel-layer is-idle" aria-hidden="true">
+      <circle class="camp-map-current-tile-ring" cx="${coord.x.toFixed(1)}" cy="${coord.y.toFixed(1)}" r="18" />
+      ${showLocationLabel ? `<g class="camp-map-current-tile-label" transform="translate(${coord.x.toFixed(1)} ${(coord.y + 24).toFixed(1)})"><text class="camp-map-current-tile-tag" x="0" y="0">Вы здесь</text></g>` : ""}
       ${this._buildCharacterMapMarkerSvg({
         x: coord.x,
         y: coord.y,
@@ -1446,6 +3035,10 @@ Object.assign(UI.prototype, {
     if (!container) return;
 
     const mapState = this._getCampMapStateSnapshot();
+    const activeMapLayer = this._getCampMapLayerMode();
+    const showResourceLayer = activeMapLayer === "resources";
+    const showPathLayer = activeMapLayer === "paths";
+    const showSurveyLayer = activeMapLayer === "survey";
 
     // ── Flicker guard: if the intro overlay is already showing the same step
     //    AND the selected tile hasn't changed, skip full DOM rebuild so CSS
@@ -1460,6 +3053,7 @@ Object.assign(UI.prototype, {
     const _prevSelectedTile = container.dataset.prevSelectedTile ?? null;
     const _prevCharacterTile = container.dataset.prevCharacterTile ?? null;
     const _prevOverlayState = container.dataset.prevOverlayState ?? null;
+    const _prevMapLayer = container.dataset.prevMapLayer ?? null;
     if (
       !mapState.campSetupDone &&
       mapState.introStep &&
@@ -1472,7 +3066,8 @@ Object.assign(UI.prototype, {
         currentOverlayStep === mapState.introStep.id &&
         _prevSelectedTile === _currentSelectedTile &&
         _prevCharacterTile === _currentCharacterTile &&
-        _prevOverlayState === _currentOverlayState
+        _prevOverlayState === _currentOverlayState &&
+        _prevMapLayer === activeMapLayer
       ) {
         // If travel or route preview is active, update only SVG overlays
         // so intro-card CSS animations don't restart on every small change.
@@ -1507,6 +3102,7 @@ Object.assign(UI.prototype, {
     container.dataset.prevSelectedTile = _currentSelectedTile;
     container.dataset.prevCharacterTile = _currentCharacterTile;
     container.dataset.prevOverlayState = _currentOverlayState;
+    container.dataset.prevMapLayer = activeMapLayer;
 
     const selected = this.game.getCampMapTileDetails(mapState.selectedTileId);
     if (!selected) {
@@ -1541,7 +3137,9 @@ Object.assign(UI.prototype, {
       ? `${selected.resourceRemaining}/${selected.resourceCapacity}`
       : "";
     const selectedActionCooldown = selected.action
-      ? this.game.getCooldownRemaining(selected.action.id)
+      ? this.game.getCooldownRemaining(selected.action.id, {
+          tileId: selected.id,
+        })
       : 0;
     const activeTravel = this._campTravelAction;
     const selectedTravel =
@@ -1549,15 +3147,46 @@ Object.assign(UI.prototype, {
     const selectedTravelState = selectedTravel
       ? this._getCampTravelPhaseState(selectedTravel)
       : null;
-    const selectedRoutePath = selected.action
-      ? this._getCampTravelPathTo(selected.id)
-      : [];
+    const selectedIsCharacterTile =
+      this.game.getCharacterTileId?.() === selected.id;
+    const selectedRouteOptions = this._getCampRouteOptions(selected.id);
+    const selectedRouteChoiceId = this._getActiveCampRouteChoiceId(
+      selected.id,
+      selectedRouteOptions,
+    );
+    const selectedRoutePath =
+      (selected.distanceFromCamp || 0) > 0
+        ? this._getCampTravelPathTo(selected.id, {
+            routeId: selectedRouteChoiceId,
+          })
+        : [];
     const selectedRouteMetrics =
       this._getCampPathTravelMetrics(selectedRoutePath);
     const selectedTravelPlan = selected.action
       ? this._getCampTravelPlan(selected, selectedRouteMetrics)
       : { outboundMs: 0, gatherMs: 0, totalMs: 0 };
     const selectedTravelDurationMs = selectedTravelPlan.totalMs;
+    const selectedLogisticsSummary = selected.action
+      ? this._getCampLogisticsSummary(
+          selected,
+          selectedRouteMetrics,
+          selectedTravelPlan,
+        )
+      : null;
+    const selectedLogisticsHtml = this._renderCampLogisticsBlock(
+      selectedLogisticsSummary,
+    );
+    const selectedRouteChoiceHtml = this._renderCampRouteChoiceBlock(
+      selected,
+      selectedRouteOptions,
+      selectedRouteChoiceId,
+    );
+    const selectedRouteChoicePanelHtml = selected.action
+      ? ""
+      : selectedRouteChoiceHtml;
+    const selectedRouteIntelHtml = selected.action
+      ? ""
+      : this._renderCampRouteIntelBlock(selected, selectedRouteMetrics);
     const selectedRouteLabel =
       this._formatCampRouteMetricLabel(selectedRouteMetrics);
     const selectedRoleMeta = this.getCampTileRoleMeta(selected);
@@ -1576,6 +3205,18 @@ Object.assign(UI.prototype, {
         ? `Общий запас участка: ${selectedResourceStock}`
         : `Запас участка: ${selectedResourceStock}`
       : "";
+    const taskQueueGate = this.game.getCampTaskQueueGate?.() || {
+      unlocked: true,
+      insightName: "Путевые метки",
+      reason: "",
+    };
+    const taskQueue = this.game.getCampTaskQueue?.() || [];
+    const taskQueueFull = taskQueue.length >= 6;
+    const taskQueueAddDisabledReason = !taskQueueGate.unlocked
+      ? taskQueueGate.reason
+      : taskQueueFull
+        ? "Путевой лист заполнен."
+        : "";
     const selectedPreviewResourcesHtml = selectedResourceInfoItems.length
       ? `<div class="camp-map-details-preview-resources" aria-label="Ресурсы участка">
           ${selectedResourceInfoItems
@@ -1592,6 +3233,60 @@ Object.assign(UI.prototype, {
           ${selectedResourceStockLabel ? `<span class="camp-map-preview-resource-stock">${selectedResourceStockLabel}</span>` : ""}
         </div>`
       : "";
+    const selectedResourceSummaryHtml = selectedResourceInfoItems.length
+      ? `<div class="camp-map-resource-summary" aria-label="Ресурсы участка">
+          <div class="camp-map-resource-summary-head">
+            <span>Ресурсы участка</span>
+            ${selectedResourceStock ? `<strong>${selectedResourceStock}</strong>` : ""}
+          </div>
+          <div class="camp-map-resource-summary-list">
+            ${selectedResourceInfoItems
+              .map((item) => {
+                const outputLabel = item.output
+                  ? this.formatResourcePairs(item.output, { plus: true })
+                  : "";
+                const stateLabel = selected.terrainSeen
+                  ? "осмотрено, сбор пока не открыт"
+                  : selected.isDepleted
+                    ? "участок исчерпан"
+                    : item.canGather === false
+                      ? "сбор сейчас недоступен"
+                      : outputLabel
+                        ? `за выход ${outputLabel}`
+                        : "есть на участке";
+                return `<span class="camp-map-resource-summary-item">
+                  <span class="camp-map-resource-summary-icon">${item.icon}</span>
+                  <span><b>${item.name}</b><em>${stateLabel}</em></span>
+                </span>`;
+              })
+              .join("")}
+          </div>
+          ${selectedResourceStockLabel ? `<div class="camp-map-resource-summary-note">${selectedResourceStockLabel}</div>` : ""}
+        </div>`
+      : "";
+    const selectedJournalHtml = this._renderCampTileJournalBlock(selected);
+    const selectedExpansionHtml = this._renderCampExpansionBlock(
+      selected,
+      mapState,
+    );
+    const selectedHasGatherAction = !!(selected.action && selectedActionCopy);
+    const selectedCanFoundBeforeCamp =
+      !mapState.campSetupDone && selectedCampSiteCheck.ok;
+    const selectedMoveDurationMs =
+      !selectedHasGatherAction && selectedRoutePath.length > 1
+        ? this._getCampRouteWalkDurationMs(selectedRouteMetrics, {
+            setupMs: 280,
+            minMs: 850,
+            maxMs: 180000,
+            extraCoef: 1.02,
+          })
+        : 0;
+    const selectedCanMoveHere =
+      !activeTravel &&
+      !selectedIsCharacterTile &&
+      !selectedHasGatherAction &&
+      !selected.terrainSeen &&
+      selectedRoutePath.length > 1;
 
     let detailsActionBlock = "";
     if (selected.construction) {
@@ -1610,41 +3305,52 @@ Object.assign(UI.prototype, {
           Участок учтён в устройстве лагеря, но на локальной карте остаётся природным гексом.
         </div>
       `;
-    } else if (!mapState.campSetupDone && selectedCampSiteCheck.ok) {
-      const foundCheck = this.game.canFoundCamp();
-      const foundCost = foundCheck.cost;
-      const foundEnergy = foundCheck.energyCost;
-      const foundCostStr = this.formatResourcePairs(foundCost);
-      const missingLines = [];
-      for (const [resId, amount] of Object.entries(
-        foundCheck.missingResources || {},
-      )) {
-        missingLines.push(
-          `Не хватает ${this.getResourceDisplayIcon(resId)} ${this.getResourceDisplayName(resId)}: ${amount}`,
-        );
-      }
-      if (foundCheck.lacksEnergy) missingLines.push("⚡ Недостаточно сил");
-      const disabled = !foundCheck.ok;
+    } else if (
+      selectedCanFoundBeforeCamp &&
+      !selectedHasGatherAction &&
+      !selected.terrainSeen
+    ) {
+      const moveDisabledReason = activeTravel
+        ? "Персонаж уже занят другим выходом."
+        : selectedIsCharacterTile
+          ? "Персонаж уже стоит на этом участке."
+          : selectedRoutePath.length > 1
+            ? ""
+            : "Сначала нужно наметить путь к этому месту.";
+      const moveDisabled = !!moveDisabledReason;
       detailsActionBlock = `
         <div class="camp-map-action-meta">
           <span>Тип места: ${selectedTerrainLabel}</span>
-          <span>${selected.campCandidateHint || "Здесь можно основать лагерь, если материалы уже готовы."}</span>
-          ${selectedCampSiteCheck.recommended ? `<span>Рекомендованное место, но не обязательный выбор.</span>` : `<span>Свободный выбор: лагерь можно поставить на любом открытом подходящем участке.</span>`}
+          <span>${selected.campCandidateHint || "Этот участок подходит для стоянки, но сначала к нему можно просто выйти и осмотреться на месте."}</span>
+          <span>Маршрут: ${selectedRouteLabel}</span>
+          <span>Переход: ${selectedMoveDurationMs ? this._formatCampRouteTimeLabel(selectedMoveDurationMs, selectedRouteMetrics) : "на месте"}</span>
+          ${(selected.distanceFromCamp || 0) > 0 ? `<span>Тропа: ${selected.pathData?.icon || "·"} ${selected.pathData?.label || "Без тропы"}</span>` : ""}
+          ${selectedCampSiteCheck.recommended ? `<span>Это удобное место для стоянки, но лагерь остаётся отдельным решением.</span>` : `<span>Лагерь можно поставить на любом открытом подходящем участке, не теряя остальных действий на карте.</span>`}
         </div>
-        ${
-          missingLines.length > 0
-            ? `<div class="camp-map-note is-empty">Не хватает материалов — соберите ресурсы и при перегрузе вернитесь к ночёвке, чтобы сгрузить рюкзак.</div>`
-            : `<div class="camp-map-note is-built">Материалы готовы — можно основать лагерь</div>`
-        }
         <button
           id="camp-map-primary-action"
-          class="camp-map-primary-btn${disabled ? " disabled" : ""}"
+          class="camp-map-primary-btn${moveDisabled ? " disabled" : ""}"
           type="button"
-          ${disabled ? "disabled" : ""}
-          aria-disabled="${disabled ? "true" : "false"}"
+          data-camp-move="true"
+          ${moveDisabled ? "disabled" : ""}
+          aria-disabled="${moveDisabled ? "true" : "false"}"
         >
-          🏕️ Основать лагерь здесь
+          ${selectedIsCharacterTile ? "🚶 Вы уже на участке" : "🚶 Идти сюда"}
         </button>
+        <button
+          id="camp-map-found-action"
+          class="camp-map-secondary-btn"
+          type="button"
+          aria-disabled="false"
+        >
+          🏕️ Поставить лагерь здесь
+        </button>
+        <div class="camp-map-note">Основание лагеря остаётся отдельной опцией и не заменяет обычный переход на участок.</div>
+        ${
+          moveDisabledReason
+            ? `<div class="camp-map-note is-waiting">${moveDisabledReason}</div>`
+            : ""
+        }
       `;
     } else if (selected.state === "camp") {
       const characterAtCamp = this.game.isCharacterAtCamp?.() ?? true;
@@ -1700,7 +3406,7 @@ Object.assign(UI.prototype, {
         </button>
         <div class="camp-map-note">${campRestProfile.blockedReason || campRestProfile.note}</div>
       `;
-    } else if (selected.action && selectedActionCopy) {
+    } else if (selectedHasGatherAction) {
       const travelingOtherTile = activeTravel && !selectedTravel;
       const gatherDisabled =
         selectedHasResourceChoice || !selected.canGather || !!activeTravel;
@@ -1710,7 +3416,9 @@ Object.assign(UI.prototype, {
           ? "🧍 Персонаж уже в выходе"
           : selectedHasResourceChoice
             ? "Выберите ресурс ниже"
-            : `${selectedActionCopy.icon} ${selectedActionCopy.name}`;
+            : selectedIsCharacterTile
+              ? `${selectedActionCopy.icon} Собрать здесь`
+              : `${selectedActionCopy.icon} ${selectedActionCopy.name}`;
       const gatherDisabledReason =
         gatherDisabled &&
         !selectedHasResourceChoice &&
@@ -1720,6 +3428,16 @@ Object.assign(UI.prototype, {
         !selectedActionProfile?.blockedReason
           ? this._getCampGatherDisabledReason(selected)
           : "";
+      const singleQueueDisabledReason = selectedHasResourceChoice
+        ? ""
+        : taskQueueAddDisabledReason ||
+          (!selected.canGather
+            ? this._getCampGatherDisabledReason(selected)
+            : "");
+      const singleQueueDisabled = !!singleQueueDisabledReason;
+      const singleQueueLabel = taskQueueGate.unlocked
+        ? "➕ В путевой лист"
+        : `🔒 ${taskQueueGate.insightName}`;
       const resourceChoiceHtml = selectedHasResourceChoice
         ? `<div class="camp-map-resource-choice" aria-label="Выбор ресурса для сбора">
             <div class="camp-map-resource-choice-title">Что собрать в этот ход</div>
@@ -1734,29 +3452,50 @@ Object.assign(UI.prototype, {
                         selectedRouteMetrics,
                       )
                     : { totalMs: 0 };
+                  const choiceCooldown =
+                    this.game.getCooldownRemaining?.(choice.actionId, {
+                      tileId: selected.id,
+                    }) || 0;
                   const choiceDisabled =
-                    !choice.canGather ||
-                    !!activeTravel ||
-                    selectedActionCooldown > 0;
+                    !choice.canGather || !!activeTravel || choiceCooldown > 0;
                   const choiceReason =
-                    selectedActionCooldown > 0
-                      ? `Нужно подождать ещё ${this.formatCooldownMs(selectedActionCooldown)}.`
+                    choiceCooldown > 0
+                      ? `Нужно подождать ещё ${this.formatCooldownMs(choiceCooldown)}.`
                       : choice.disabledReason || "";
+                  const choiceQueueDisabledReason =
+                    taskQueueAddDisabledReason ||
+                    (!choice.canGather ? choice.disabledReason : "");
+                  const choiceQueueDisabled = !!choiceQueueDisabledReason;
                   return `
-                    <button
-                      class="camp-map-resource-choice-btn${choiceDisabled ? " disabled" : ""}"
-                      type="button"
-                      data-resource-id="${choice.id}"
-                      ${choiceDisabled ? "disabled" : ""}
-                      aria-disabled="${choiceDisabled ? "true" : "false"}"
-                    >
-                      <span class="camp-map-resource-choice-icon">${choice.icon}</span>
-                      <span class="camp-map-resource-choice-copy">
-                        <strong>${choice.name}</strong>
-                        <small>${this.formatResourcePairs(choice.output, { plus: true })} · ⚡ -${this.formatNumber(choiceProfile?.energyCost ?? selected.action.energyCost, 2)} · ⏱ ${this._formatCampRouteTimeLabel(choicePlan.totalMs, selectedRouteMetrics)}</small>
-                        ${choiceReason ? `<em>${choiceReason}</em>` : ""}
-                      </span>
-                    </button>
+                    <div class="camp-map-resource-choice-row">
+                      <button
+                        class="camp-map-resource-choice-btn${choiceDisabled ? " disabled" : ""}"
+                        type="button"
+                        data-resource-id="${choice.id}"
+                        data-action-id="${choice.actionId}"
+                        ${choiceDisabled ? "disabled" : ""}
+                        aria-disabled="${choiceDisabled ? "true" : "false"}"
+                      >
+                        <span class="camp-map-resource-choice-icon">${choice.icon}</span>
+                        <span class="camp-map-resource-choice-copy">
+                          <strong>${choice.name}</strong>
+                          <small>${this.formatResourcePairs(choice.output, { plus: true })} · ⚡ -${this.formatNumber(choiceProfile?.energyCost ?? selected.action.energyCost, 2)} · ⏱ ${this._formatCampRouteTimeLabel(choicePlan.totalMs, selectedRouteMetrics)}</small>
+                          ${choiceReason ? `<em>${choiceReason}</em>` : ""}
+                        </span>
+                      </button>
+                      <button
+                        class="camp-map-resource-queue-btn${choiceQueueDisabled ? " disabled" : ""}"
+                        type="button"
+                        data-camp-queue-add="true"
+                        data-tile-id="${selected.id}"
+                        data-resource-id="${choice.id}"
+                        data-action-id="${choice.actionId}"
+                        data-route-id="${selectedRouteChoiceId}"
+                        ${choiceQueueDisabled ? "disabled" : ""}
+                        aria-disabled="${choiceQueueDisabled ? "true" : "false"}"
+                        title="${choiceQueueDisabledReason || "Добавить пункт в путевой лист"}"
+                      >${taskQueueGate.unlocked ? "В лист" : "Закрыто"}</button>
+                    </div>
                   `;
                 })
                 .join("")}
@@ -1765,6 +3504,8 @@ Object.assign(UI.prototype, {
         : "";
 
       detailsActionBlock = `
+        ${selectedLogisticsHtml}
+        ${selectedRouteChoiceHtml}
         <div class="camp-map-action-meta">
           <span>${selectedHasResourceChoice ? "На участке есть несколько видов добычи." : `Находка: ${selectedActionOutput}`}</span>
           <span>Энергия: -${selectedActionProfile?.energyCost ?? selected.action.energyCost}</span>
@@ -1797,7 +3538,7 @@ Object.assign(UI.prototype, {
             : ""
         }
         ${
-          selectedActionCooldown > 0
+          !selectedHasResourceChoice && selectedActionCooldown > 0
             ? `<div class="camp-map-note is-waiting">Нужно подождать ещё ${this.formatCooldownMs(selectedActionCooldown)}.</div>`
             : ""
         }
@@ -1821,6 +3562,38 @@ Object.assign(UI.prototype, {
         >
           ${gatherBtnLabel}
         </button>
+        ${
+          selectedCanFoundBeforeCamp
+            ? `<button
+                id="camp-map-found-action"
+                class="camp-map-secondary-btn"
+                type="button"
+                aria-disabled="false"
+              >
+                🏕️ Поставить лагерь здесь
+              </button>
+              <div class="camp-map-note">Этот ресурсный участок тоже подходит для лагеря. Если закрепиться здесь, сбор на месте останется доступен.</div>`
+            : ""
+        }
+        ${
+          !selectedHasResourceChoice
+            ? `<button
+                class="camp-map-secondary-btn${singleQueueDisabled ? " disabled" : ""}"
+                type="button"
+                data-camp-queue-add="true"
+                data-tile-id="${selected.id}"
+                data-action-id="${selected.action?.id || ""}"
+                data-route-id="${selectedRouteChoiceId}"
+                ${singleQueueDisabled ? "disabled" : ""}
+                aria-disabled="${singleQueueDisabled ? "true" : "false"}"
+              >${singleQueueLabel}</button>`
+            : ""
+        }
+        ${
+          !selectedHasResourceChoice && singleQueueDisabledReason
+            ? `<div class="camp-map-note is-waiting">${singleQueueDisabledReason}</div>`
+            : ""
+        }
       `;
       if (selectedResourceStock) {
         detailsActionBlock += `<div class="camp-map-note">${selectedResourceStockLabel}</div>`;
@@ -1918,6 +3691,19 @@ Object.assign(UI.prototype, {
         >
           ${selectedBuildingCopy.icon} ${selectedBuildingCopy.name}
         </button>
+        ${
+          selectedCanMoveHere
+            ? `<button
+                id="camp-map-move-action"
+                class="camp-map-secondary-btn"
+                type="button"
+                aria-disabled="false"
+              >
+                🚶 Идти сюда
+              </button>
+              <div class="camp-map-note">Переход на участок остаётся отдельным действием и не заменяется стройкой.</div>`
+            : ""
+        }
       `;
       if (selectedBuildProfile?.warnings?.length) {
         detailsActionBlock += selectedBuildProfile.warnings
@@ -1958,10 +3744,23 @@ Object.assign(UI.prototype, {
         detailsActionBlock += `<div class="camp-map-note is-built">🥾 ${selected.pathData.icon} ${selected.pathData.label}: путь к участку уже проложен.</div>`;
       } else if (selectedPathProject.canImprove) {
         const trailCostStr = this.formatResourcePairs(selectedPathProject.cost);
+        const pathUse = selectedPathProject.pathUseProgress || null;
+        const pathUseHtml =
+          pathUse && pathUse.threshold > 0
+            ? `<div class="camp-map-path-progress">
+                <div class="camp-map-path-progress-row">
+                  <span>След от проходов</span>
+                  <strong>${this.formatNumber(pathUse.uses, 1)}/${pathUse.threshold}</strong>
+                </div>
+                <div class="camp-map-path-progress-bar"><span style="width:${Math.round(pathUse.ratio * 100)}%"></span></div>
+              </div>`
+            : "";
         detailsActionBlock += `
           <div class="camp-map-note is-progress">
             Логистика пути: ${selectedPathProject.deliveryTrips > 1 ? `${selectedPathProject.deliveryTrips} ходки · Σ ${this.formatNumber(selectedPathProject.totalLoad || 0)}` : `${this.formatNumber(selectedPathProject.load || 0)} / ${this.formatNumber(selectedPathProject.carryCapacity || this.game.getCharacterCarryCapacity())}`}
+            ${pathUse?.uses > 0 ? `<br>Повторные выходы уже натоптали ${this.formatNumber(pathUse.uses, 1)} из ${pathUse.threshold}.` : ""}
           </div>
+          ${pathUseHtml}
           <button id="camp-map-trail-action" class="camp-map-secondary-btn" type="button">
             🥾 Натоптать тропу · ${trailCostStr} · ⚡-${selectedPathProject.energyCost} · 🍖-${this.formatNumber(selectedPathProject.satietyCost || 0, 2)} · 💧-${this.formatNumber(selectedPathProject.hydrationCost || 0, 2)}
           </button>
@@ -2059,63 +3858,116 @@ Object.assign(UI.prototype, {
           </div>`
         : "";
     const homeLegendLabel = mapState.campSetupDone ? "Лагерь" : "Ночёвка";
+    const layerControlsHtml = this._renderCampMapLayerControls(activeMapLayer);
+    const expansion = this.data.localCampMap?.expansion || {};
+    const expansionState = mapState.expansionState || {};
+    const preparedRadius = Number(
+      expansionState.preparedRadius ||
+        expansion.preparedRadius ||
+        mapState.radius ||
+        0,
+    );
+    const currentRadius = Number(expansionState.radius || mapState.radius || 0);
+    const preparedRingLabels = Object.entries(expansion.rings || {})
+      .map(([ring, plan]) => ({ ring: Number(ring), plan }))
+      .filter(
+        (entry) => entry.ring > currentRadius && entry.ring <= preparedRadius,
+      )
+      .sort((left, right) => left.ring - right.ring)
+      .map((entry) => `${entry.ring}: ${entry.plan.label}`);
+    const nextGate = expansionState.nextGate || null;
+    const expansionHint = nextGate?.missing?.length
+      ? `Нужно: ${nextGate.missing.slice(0, 3).join(" · ")}`
+      : preparedRingLabels.join(" · ");
+    const expansionStatusHtml = preparedRingLabels.length
+      ? `<div class="camp-map-expansion-status">
+          <span>Данные расширения</span>
+          <strong>${currentRadius}/${preparedRadius}</strong>
+          <em>${expansionHint}</em>
+        </div>`
+      : "";
+    const surveyStatusHtml =
+      activeMapLayer === "survey" ? this._renderCampSurveyStatus(mapState) : "";
+
+    const topLegendItems =
+      activeMapLayer === "survey"
+        ? [
+            `<span class="camp-map-top-legend-item"><span class="map-symbol map-symbol-camp"></span>${homeLegendLabel}</span>`,
+            `<span class="camp-map-top-legend-item"><span class="map-symbol map-symbol-here"></span>Вы здесь</span>`,
+            `<span class="camp-map-top-legend-item"><i class="survey-dot is-known"></i>Открыто</span>`,
+            `<span class="camp-map-top-legend-item"><i class="survey-dot is-seen"></i>Осмотрено</span>`,
+            `<span class="camp-map-top-legend-item"><i class="survey-dot is-frontier"></i>Рубеж</span>`,
+            `<span class="camp-map-top-legend-item"><i class="survey-dot is-unknown"></i>Неизвестно</span>`,
+          ]
+        : [
+            `<span class="camp-map-top-legend-item"><span class="map-symbol map-symbol-camp"></span>${homeLegendLabel}</span>`,
+            `<span class="camp-map-top-legend-item"><span class="map-symbol map-symbol-here"></span>Вы здесь</span>`,
+            `<span class="camp-map-top-legend-item"><span class="map-symbol map-symbol-target"></span>Цель</span>`,
+            `<span class="camp-map-top-legend-item"><span class="map-symbol map-symbol-trail"></span>Тропы</span>`,
+            `<span class="camp-map-top-legend-item"><span class="map-symbol map-symbol-open"></span>Доступно</span>`,
+            `<span class="camp-map-top-legend-item"><span class="map-symbol map-symbol-locked"></span>Неизвестно</span>`,
+          ];
+    const sideLegendItems =
+      activeMapLayer === "survey"
+        ? [
+            `<span><span class="map-symbol map-symbol-camp"></span>${homeLegendLabel}</span>`,
+            `<span><span class="map-symbol map-symbol-here"></span>Вы здесь</span>`,
+            `<span><i class="survey-dot is-known"></i>Открытые участки</span>`,
+            `<span><i class="survey-dot is-seen"></i>Осмотрено, но не раскрыто</span>`,
+            `<span><i class="survey-dot is-frontier"></i>Рубеж следующего кольца</span>`,
+            `<span><i class="survey-dot is-unknown"></i>Туман карты</span>`,
+          ]
+        : [
+            `<span><span class="map-symbol map-symbol-camp"></span>${homeLegendLabel}</span>`,
+            `<span><span class="map-symbol map-symbol-here"></span>Вы здесь</span>`,
+            `<span><span class="map-symbol map-symbol-target"></span>Цель маршрута</span>`,
+            `<span><span class="map-symbol map-symbol-trail"></span>Тропа</span>`,
+            `<span><span class="map-symbol map-symbol-open"></span>Природный участок</span>`,
+            `<span><span class="map-symbol map-symbol-locked"></span>Неизвестно</span>`,
+          ];
 
     const topLegendHtml = `
       <div class="camp-map-top-legend" aria-label="Легенда карты">
-        <span class="camp-map-top-legend-item"><span class="map-symbol map-symbol-camp"></span>${homeLegendLabel}</span>
-        <span class="camp-map-top-legend-item"><span class="map-symbol map-symbol-here"></span>Вы здесь</span>
-        <span class="camp-map-top-legend-item"><span class="map-symbol map-symbol-trail"></span>Тропы</span>
-        <span class="camp-map-top-legend-item"><span class="map-symbol map-symbol-open"></span>Доступно</span>
-        <span class="camp-map-top-legend-item"><span class="map-symbol map-symbol-locked"></span>Неизвестно</span>
+        ${topLegendItems.join("")}
       </div>
     `;
 
     const sideLegendHtml = `
       <aside class="camp-map-side-legend" aria-label="Типы участков карты">
-        <div class="camp-map-side-title">Легенда</div>
+        <div class="camp-map-side-title">${activeMapLayer === "survey" ? "Разведка" : "Легенда"}</div>
         <div class="camp-map-side-list">
-          <span><span class="map-symbol map-symbol-camp"></span>${homeLegendLabel}</span>
-          <span><span class="map-symbol map-symbol-here"></span>Вы здесь</span>
-          <span><span class="map-symbol map-symbol-trail"></span>Тропа</span>
-          <span><span class="map-symbol map-symbol-open"></span>Природный участок</span>
-          <span><span class="map-symbol map-symbol-locked"></span>Неизвестно</span>
+          ${sideLegendItems.join("")}
         </div>
+        ${expansionStatusHtml}
+        ${surveyStatusHtml}
         <div class="camp-map-tip-card">Серые клетки неизвестны. Клик показывает путь, двойной клик отправляет персонажа на разведку.</div>
       </aside>
     `;
 
-    const mapFooterHint = mapState.campSetupDone
+    const baseMapFooterHint = mapState.campSetupDone
       ? `${mapState.interactionHint} Клик по участку показывает маршрут; двойной клик отправляет персонажа.`
       : "Сначала выберите место стоянки. Открытые клетки показывают первые находки, а тёмные зоны станут понятнее после основания лагеря.";
+    const expeditionSummary = this._getCampExpeditionSummary();
+    const expeditionHtml = this._renderCampExpeditionBlock(expeditionSummary);
+    const taskQueueHtml = this._renderCampTaskQueueBlock();
 
-    const fallbackQuickTile = !selected.action
-      ? mapState.tiles
-          .map((tile) => this.game.getCampMapTileDetails(tile.id))
-          .find(
-            (tile) =>
-              tile?.action &&
-              tile.state !== "hidden" &&
-              tile.state !== "silhouette" &&
-              tile.state !== "visible_locked" &&
-              tile.state !== "camp_candidate" &&
-              !tile.isDepleted,
-          ) || null
-      : null;
-    const quickTile = selected.action ? selected : fallbackQuickTile;
+    const quickTile = selected.action ? selected : null;
     const routePreview = !activeTravel ? this._campRoutePreview || null : null;
     const routePreviewCanExplore =
       routePreview?.tileId &&
       routePreview.kind === "explore" &&
       (this.game.canExploreCampTile?.(routePreview.tileId) || false);
+    const routePreviewCanMove =
+      routePreview?.tileId && routePreview.kind === "inspect";
     let mapQuickActionHtml = "";
-    if (routePreviewCanExplore) {
+    if (routePreviewCanExplore || routePreviewCanMove) {
       const routeSteps = Math.max(1, (routePreview.path?.length || 1) - 1);
       const routeMetrics = this._getCampPathTravelMetrics(routePreview.path);
       const routeWalkMs = this._getCampRouteWalkDurationMs(routeMetrics, {
         setupMs: 280,
-        minMs: 900,
+        minMs: routePreviewCanExplore ? 900 : 850,
         maxMs: 180000,
-        extraCoef: 1.05,
+        extraCoef: routePreviewCanExplore ? 1.05 : 1.02,
       });
       const routeDistanceLabel = routeMetrics.distanceMeters
         ? ` · ${routeMetrics.distanceMeters} м`
@@ -2124,6 +3976,7 @@ Object.assign(UI.prototype, {
       const routeClarification = routeMetrics.isApproximate
         ? " Время уточнится по мере разведки."
         : "";
+      const routeInlineMeta = `${this._formatCampRouteTimeLabel(routeWalkMs, routeMetrics)} · ${routeApproxLabel}${routeSteps} ${routeSteps === 1 ? "переход" : "перехода"}${routeDistanceLabel}`;
       mapQuickActionHtml = `
         <div class="camp-map-quick-action is-route-preview">
           <button
@@ -2131,11 +3984,13 @@ Object.assign(UI.prototype, {
             class="camp-map-quick-action-btn"
             type="button"
             data-tile-id="${routePreview.tileId}"
+            data-route-kind="${routePreview.kind}"
             aria-disabled="false"
           >
-            🧭 Отправить на разведку
+            <span class="camp-map-quick-action-copy">${routePreviewCanExplore ? "🧭 Отправить на разведку" : "🚶 Идти сюда"}</span>
+            <span class="camp-map-quick-action-inline-meta">${routeInlineMeta}</span>
           </button>
-          <div class="camp-map-quick-action-meta">Маршрут: ${routeApproxLabel}${routeSteps} ${routeSteps === 1 ? "переход" : "перехода"}${routeDistanceLabel} · ${this._formatCampRouteTimeLabel(routeWalkMs, routeMetrics)}. ${routeMetrics.terrainSummary || "Местность без особых помех"}.${routeClarification} Персонаж останется на месте осмотра.</div>
+          <div class="camp-map-quick-action-meta">Маршрут: ${routeApproxLabel}${routeSteps} ${routeSteps === 1 ? "переход" : "перехода"}${routeDistanceLabel} · ${this._formatCampRouteTimeLabel(routeWalkMs, routeMetrics)}. ${routeMetrics.terrainSummary || "Местность без особых помех"}.${routeClarification} ${routePreviewCanExplore ? "Персонаж останется на месте осмотра." : "Персонаж просто перейдёт на участок и останется там."}</div>
         </div>
       `;
     } else if (quickTile?.action) {
@@ -2157,9 +4012,12 @@ Object.assign(UI.prototype, {
       const quickTravelState = quickTravel
         ? this._getCampTravelPhaseState(quickTravel)
         : null;
-      const quickDisabled =
-        quickNeedsResourceChoice || !quickTile.canGather || !!activeTravel;
-      const quickRoutePath = this._getCampTravelPathTo(quickTile.id);
+      const quickIsCharacterTile =
+        this.game.getCharacterTileId?.() === quickTile.id;
+      const quickDisabled = !quickTile.canGather || !!activeTravel;
+      const quickRoutePath = this._getCampTravelPathTo(quickTile.id, {
+        routeId: this.game.getCampRouteChoice?.(quickTile.id) || "",
+      });
       const quickRouteMetrics = this._getCampPathTravelMetrics(quickRoutePath);
       const quickTravelPlan = this._getCampTravelPlan(
         quickTile,
@@ -2169,21 +4027,59 @@ Object.assign(UI.prototype, {
         quickDisabled && !quickTravelState && !activeTravel
           ? this._getCampGatherDisabledReason(quickTile)
           : "";
+      const quickChoiceButtonsHtml = quickNeedsResourceChoice
+        ? `<div class="camp-map-quick-choice-grid">
+            ${quickResourceChoices
+              .map((choice) => {
+                const choiceDisabled = !choice.canGather || !!activeTravel;
+                const choicePlan = choice.profile
+                  ? this._getCampTravelPlan(choice.details, quickRouteMetrics)
+                  : { totalMs: quickTravelPlan.totalMs };
+                return `
+                  <button
+                    class="camp-map-quick-choice-btn${choiceDisabled ? " disabled" : ""}"
+                    type="button"
+                    data-camp-quick-choice="gather"
+                    data-tile-id="${quickTile.id}"
+                    data-resource-id="${choice.id}"
+                    data-action-id="${choice.actionId || quickTile.actionId || quickTile.action?.id || ""}"
+                    ${choiceDisabled ? "disabled" : ""}
+                    aria-disabled="${choiceDisabled ? "true" : "false"}"
+                  >
+                    <span class="camp-map-quick-choice-copy">
+                      <strong>${choice.icon} ${choice.name}</strong>
+                      <small>${this.formatResourcePairs(choice.output, { plus: true })} · ⏱ ${quickIsCharacterTile ? "на месте" : this._formatCampRouteTimeLabel(choicePlan.totalMs, quickRouteMetrics)}</small>
+                    </span>
+                  </button>
+                `;
+              })
+              .join("")}
+          </div>`
+        : "";
       const quickLabel = selectedTravelState
         ? `🧭 ${selectedTravelState.phaseLabel}`
         : quickTravelState
           ? `🧭 ${quickTravelState.phaseLabel}`
           : activeTravel
             ? "🧭 Персонаж уже занят"
-            : quickNeedsResourceChoice
-              ? "Выберите ресурс справа"
+            : quickIsCharacterTile
+              ? `${quickActionCopy.icon} Собрать здесь`
               : `${quickActionCopy.icon} Собрать ресурсы`;
+      const quickInlineMeta = selectedTravelState
+        ? `⏱ ${this.formatCooldownMs(selectedTravelState.totalRemainingMs)}`
+        : quickTravelState
+          ? `⏱ ${this.formatCooldownMs(quickTravelState.totalRemainingMs)}`
+          : activeTravel
+            ? "Действие недоступно"
+            : `⏱ ${this._formatCampRouteTimeLabel(quickTravelPlan.totalMs, quickRouteMetrics)} · ${Math.max(0, Number(quickRouteMetrics.hexCount || 0)) || "на месте"}${Number(quickRouteMetrics?.hexCount || 0) > 0 ? ` ${quickRouteMetrics.hexCount === 1 ? "гекс" : quickRouteMetrics.hexCount >= 2 && quickRouteMetrics.hexCount <= 4 ? "гекса" : "гексов"}` : ""}`;
       const quickMeta = quickActionProfile
         ? quickNeedsResourceChoice
           ? [
               selected.action ? "" : `Участок: ${quickTile.name}`,
               `Доступно: ${quickResourceChoices.map((choice) => choice.name).join(", ")}`,
-              "Сначала выберите конкретный ресурс в правой панели.",
+              quickIsCharacterTile
+                ? "Можно собирать прямо отсюда: выберите нужный ресурс кнопкой ниже или над гексом."
+                : "Выберите конкретный ресурс, чтобы сразу отправить выход на нужную добычу.",
               quickResourceStock ? `Запас: ${quickResourceStock}` : "",
             ]
               .filter(Boolean)
@@ -2208,19 +4104,81 @@ Object.assign(UI.prototype, {
         : "Выбранный участок можно собрать с карты.";
       mapQuickActionHtml = `
         <div class="camp-map-quick-action${quickDisabled ? " is-disabled" : ""}">
-          <button
-            id="camp-map-quick-gather-action"
-            class="camp-map-quick-action-btn"
-            type="button"
-            data-tile-id="${quickTile.id}"
-            ${quickDisabled ? "disabled" : ""}
-            aria-disabled="${quickDisabled ? "true" : "false"}"
-          >
-            ${quickLabel}
-          </button>
+          ${
+            quickNeedsResourceChoice
+              ? `<div class="camp-map-quick-action-head">${quickIsCharacterTile ? "Выберите ресурс и соберите здесь" : "Выберите ресурс для выхода"}</div>
+                 ${quickChoiceButtonsHtml}`
+              : `<button
+                   id="camp-map-quick-gather-action"
+                   class="camp-map-quick-action-btn"
+                   type="button"
+                   data-tile-id="${quickTile.id}"
+                   data-resource-id="${quickResourceChoices[0]?.id || ""}"
+                   data-action-id="${quickResourceChoices[0]?.actionId || quickTile.actionId || quickTile.action?.id || ""}"
+                   ${quickDisabled ? "disabled" : ""}
+                   aria-disabled="${quickDisabled ? "true" : "false"}"
+                 >
+                   <span class="camp-map-quick-action-copy">${quickLabel}</span>
+                   <span class="camp-map-quick-action-inline-meta">${quickInlineMeta}</span>
+                 </button>`
+          }
           <div class="camp-map-quick-action-meta">${quickMeta}</div>
         </div>
       `;
+    }
+
+    let mapFooterHint = baseMapFooterHint;
+    const selectedCanExploreNow =
+      activeMapLayer === "survey" &&
+      typeof this.game.canExploreCampTile === "function" &&
+      this.game.canExploreCampTile(selected.id);
+    if (routePreview?.path?.length > 1) {
+      const footerRouteTile =
+        mapState.tiles.find((tile) => tile.id === routePreview.tileId) ||
+        selected;
+      const footerRouteMetrics = this._getCampPathTravelMetrics(
+        routePreview.path,
+      );
+      const footerRouteWalkMs =
+        routePreview.kind === "explore"
+          ? this._getCampRouteWalkDurationMs(footerRouteMetrics, {
+              setupMs: 280,
+              minMs: 900,
+              maxMs: 180000,
+              extraCoef: 1.05,
+            })
+          : this._getCampTravelPlan(footerRouteTile, footerRouteMetrics)
+              .totalMs;
+      const footerActionLabel =
+        routePreview.kind === "explore"
+          ? "Разведка"
+          : footerRouteTile.action
+            ? "Сбор"
+            : "Путь";
+      mapFooterHint = `${baseMapFooterHint} Сейчас: ${footerActionLabel} до ${footerRouteTile.name || "участка"} · ⏱ ${this._formatCampRouteTimeLabel(footerRouteWalkMs, footerRouteMetrics)} · ${this._formatCampRouteMetricLabel(footerRouteMetrics)}.`;
+    } else if (quickTile?.action && !activeTravel) {
+      const footerQuickRoutePath = this._getCampTravelPathTo(quickTile.id, {
+        routeId: this.game.getCampRouteChoice?.(quickTile.id) || "",
+      });
+      const footerQuickRouteMetrics =
+        this._getCampPathTravelMetrics(footerQuickRoutePath);
+      const footerQuickPlan = this._getCampTravelPlan(
+        quickTile,
+        footerQuickRouteMetrics,
+      );
+      mapFooterHint = `${baseMapFooterHint} Выбранный участок можно собрать прямо с карты: ${quickTile.name} · ⏱ ${this._formatCampRouteTimeLabel(footerQuickPlan.totalMs, footerQuickRouteMetrics)} · ${this._formatCampRouteMetricLabel(footerQuickRouteMetrics)}.`;
+    } else if (activeMapLayer === "survey") {
+      const selectedUnlockHint =
+        this.game.getCampTileUnlockHint?.(selected.id) || "";
+      if (selectedCanExploreNow) {
+        mapFooterHint = `${baseMapFooterHint} Разведка доступна сейчас: ${selected.name} · клик покажет путь, двойной клик отправит персонажа.`;
+      } else if (selected.terrainSeen) {
+        mapFooterHint = `${baseMapFooterHint} ${selected.name} уже осмотрен, но ещё не раскрыт полностью. ${selectedUnlockHint || "Нужен более уверенный проход к следующему рубежу."}`;
+      } else if (this._isCampTileUnknownState(selected.state)) {
+        mapFooterHint = `${baseMapFooterHint} ${selected.name}: неизвестный участок. ${selectedUnlockHint || "Сначала раскройте соседний рубеж или подготовьте следующий проход."}`;
+      } else {
+        mapFooterHint = `${baseMapFooterHint} ${selected.name} уже раскрыт. Для дальнейшей разведки выбирайте рубеж или осмотренный гекс с подсветкой.`;
+      }
     }
 
     const selectedRoleHtml = selectedRoleMeta
@@ -2264,12 +4222,43 @@ Object.assign(UI.prototype, {
         `
       : "";
 
+    const selectedSecondaryDetailsHtml = [
+      selectedRouteIntelHtml,
+      selectedRouteChoicePanelHtml,
+      selectedJournalHtml,
+      selectedExpansionHtml,
+      selectedBuildUsageHtml,
+      selectedMarkersHtml,
+      selectedPotentialsHtml,
+      selectedRoleHtml,
+    ]
+      .filter(Boolean)
+      .join("");
+
     // ── Just-founded pulse: detect campSetupDone going false → true ──
     let justFoundedFlag = false;
     if (mapState.campSetupDone && this._prevCampSetupDone === false) {
       justFoundedFlag = true;
     }
     this._prevCampSetupDone = !!mapState.campSetupDone;
+
+    const foundingDockHtml = this._renderCampFoundingDockBlock(selected, {
+      selectedCanFoundBeforeCamp,
+    });
+    const commandDeckHtml = `
+      <div class="camp-map-command-deck${!mapState.campSetupDone ? " is-pre-camp" : ""}">
+        ${foundingDockHtml}
+        <div class="camp-map-command-grid">
+          <div class="camp-map-command-stack is-primary">
+            ${expeditionHtml}
+            ${mapQuickActionHtml}
+          </div>
+          <div class="camp-map-command-stack is-secondary">
+            ${taskQueueHtml}
+          </div>
+        </div>
+      </div>
+    `;
 
     container.innerHTML = `
       <div class="camp-map-header">
@@ -2278,6 +4267,7 @@ Object.assign(UI.prototype, {
           <div class="camp-map-description">${mapState.description}</div>
         </div>
         <div class="camp-map-header-right">
+          ${layerControlsHtml}
           ${topLegendHtml}
           ${
             mapState.campSetupDone
@@ -2293,19 +4283,22 @@ Object.assign(UI.prototype, {
         </div>
       </div>
       <div class="camp-map-body">
-        ${sideLegendHtml}
+        <div class="camp-map-left-rail">
+          ${commandDeckHtml}
+          ${sideLegendHtml}
+        </div>
         <div class="camp-map-scene-wrap${!mapState.campSetupDone ? " is-pre-camp" : ""}${justFoundedFlag ? " camp-just-founded" : ""}">
           <div class="camp-map-scene${!mapState.campSetupDone && mapState.introStep?.index === 0 ? " is-arriving" : ""}" id="camp-map-scene">
-            <svg id="camp-map-svg" class="camp-map-svg"
+              <svg id="camp-map-svg" class="camp-map-svg layer-${activeMapLayer}"
                  width="100%" height="100%"
                  viewBox="-288 -320 576 640"
                  preserveAspectRatio="xMidYMid meet"
                  xmlns="http://www.w3.org/2000/svg"></svg>
+            <div id="camp-map-inline-action-host" class="camp-map-inline-action-host"></div>
             <div id="camp-map-tooltip" class="camp-map-tooltip" hidden></div>
             ${introOverlayHtml}
           </div>
           <div class="camp-map-legend">${mapFooterHint}</div>
-          ${mapQuickActionHtml}
         </div>
         <aside class="camp-map-details">
           <div class="camp-map-details-preview terrain-${selected.terrainType || "plain"}">
@@ -2323,24 +4316,89 @@ Object.assign(UI.prototype, {
             </div>
           </div>
           <div class="camp-map-details-text">${selected.description}</div>
-          ${selectedBuildUsageHtml}
-          ${selectedMarkersHtml}
-          ${selectedPotentialsHtml}
-          ${selectedRoleHtml}
+          ${selectedResourceSummaryHtml}
           ${detailsActionBlock}
+          ${
+            selectedSecondaryDetailsHtml
+              ? `
+                <button
+                  class="camp-map-details-more"
+                  type="button"
+                  data-camp-details-toggle="true"
+                  aria-expanded="false"
+                >Детали участка</button>
+                <div class="camp-map-details-secondary" aria-label="Дополнительные сведения участка" aria-hidden="true">
+                  <div class="camp-map-details-secondary-head">
+                    <span>Детали участка</span>
+                    <button class="camp-map-details-secondary-close" type="button" data-camp-details-close="true" aria-label="Закрыть">×</button>
+                  </div>
+                  <div class="camp-map-details-secondary-grid">
+                    ${selectedSecondaryDetailsHtml}
+                  </div>
+                </div>
+              `
+              : ""
+          }
         </aside>
       </div>
     `;
 
+    const setCampDetailsDrawerOpen = (open) => {
+      document.body.classList.toggle("is-camp-details-open", open);
+      document
+        .querySelectorAll("[data-camp-details-toggle]")
+        .forEach((button) =>
+          button.setAttribute("aria-expanded", open ? "true" : "false"),
+        );
+      document
+        .querySelectorAll(".camp-map-details-secondary")
+        .forEach((panel) =>
+          panel.setAttribute("aria-hidden", open ? "false" : "true"),
+        );
+    };
+
+    setCampDetailsDrawerOpen(
+      document.body.classList.contains("is-camp-details-open") &&
+        !!selectedSecondaryDetailsHtml,
+    );
+
+    container.querySelectorAll("[data-camp-details-toggle]").forEach((button) => {
+      button.addEventListener("click", () => {
+        setCampDetailsDrawerOpen(
+          !document.body.classList.contains("is-camp-details-open"),
+        );
+      });
+    });
+
+    container.querySelectorAll("[data-camp-details-close]").forEach((button) => {
+      button.addEventListener("click", () => setCampDetailsDrawerOpen(false));
+    });
+
+    container.querySelectorAll("[data-camp-map-layer]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const changed = this._setCampMapLayerMode(button.dataset.campMapLayer);
+        if (changed) this.renderCampMap();
+      });
+    });
+
+    container.querySelectorAll("[data-camp-route-choice]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const routeId = button.getAttribute("data-camp-route-choice") || "";
+        this.game.setCampRouteChoice?.(selected.id, routeId);
+        const previewKind = selected.action
+          ? "action"
+          : selected.terrainSeen && this.game.canExploreCampTile?.(selected.id)
+            ? "explore"
+            : "inspect";
+        this._setCampRoutePreview(selected.id, previewKind);
+        container.dataset.prevSelectedTile = "__route_choice__";
+        this.render({ forcePanels: true });
+      });
+    });
+
     const primaryAction = document.getElementById("camp-map-primary-action");
     if (primaryAction) {
       primaryAction.addEventListener("click", () => {
-        // Camp site / camp tile: open modals even when disabled,
-        // so the player can see the missing-resources explanation.
-        if (!mapState.campSetupDone && selectedCampSiteCheck.ok) {
-          this.openCampFoundConfirm(selected.id);
-          return;
-        }
         if (selected.state === "camp") {
           if (!(this.game.isCharacterAtCamp?.() ?? true)) {
             if (!this._startCampReturnTrip()) {
@@ -2356,7 +4414,19 @@ Object.assign(UI.prototype, {
           return;
         }
         if (selected.action) {
+          if (this.game.getCharacterTileId?.() === selected.id) {
+            const ok = this.game.performCampTileAction(selected.id);
+            if (ok) this._clearCampInterruptedTravelAction();
+            this.render({ forcePanels: true });
+            return;
+          }
           if (!this._startCampTileTravel(selected)) {
+            this.render({ forcePanels: true });
+          }
+          return;
+        }
+        if (primaryAction.dataset.campMove === "true") {
+          if (!this._startCampTileVisit(selected.id)) {
             this.render({ forcePanels: true });
           }
           return;
@@ -2369,6 +4439,97 @@ Object.assign(UI.prototype, {
       });
     }
 
+    const foundAction = document.getElementById("camp-map-found-action");
+    if (foundAction) {
+      foundAction.addEventListener("click", () => {
+        this.openCampFoundConfirm(selected.id);
+      });
+    }
+
+    const moveAction = document.getElementById("camp-map-move-action");
+    if (moveAction) {
+      moveAction.addEventListener("click", () => {
+        if (!this._startCampTileVisit(selected.id)) {
+          this.render({ forcePanels: true });
+        }
+      });
+    }
+
+    const foundingGuideAction = document.getElementById(
+      "camp-map-founding-guide-action",
+    );
+    if (foundingGuideAction) {
+      foundingGuideAction.addEventListener("click", () => {
+        const tileId = foundingGuideAction.getAttribute("data-tile-id") || "";
+        if (!tileId) return;
+        const details = this.game.getCampMapTileDetails?.(tileId) || null;
+        this.game.selectCampTile?.(tileId);
+        if (details) {
+          const previewKind = details.action
+            ? "action"
+            : details.terrainSeen && this.game.canExploreCampTile?.(tileId)
+              ? "explore"
+              : "inspect";
+          this._setCampRoutePreview(tileId, previewKind);
+        }
+        container.dataset.prevSelectedTile = "__founding_dock__";
+        this.render({ forcePanels: true });
+      });
+    }
+
+    const foundingReadyAction = document.getElementById(
+      "camp-map-founding-ready-action",
+    );
+    if (foundingReadyAction) {
+      foundingReadyAction.addEventListener("click", () => {
+        this.openCampFoundConfirm(selected.id);
+      });
+    }
+
+    container
+      .querySelectorAll("[data-camp-quick-choice]")
+      .forEach((choiceButton) => {
+        choiceButton.addEventListener("click", () => {
+          if (choiceButton.getAttribute("aria-disabled") === "true") {
+            this.render({ forcePanels: true });
+            return;
+          }
+          const tileId =
+            choiceButton.getAttribute("data-tile-id") || selected.id;
+          const resourceId =
+            choiceButton.getAttribute("data-resource-id") || "";
+          const actionId = choiceButton.getAttribute("data-action-id") || "";
+          const tileDetails = this.game.getCampMapTileDetails?.(tileId) || null;
+          if (!tileDetails?.action) {
+            this.render({ forcePanels: true });
+            return;
+          }
+          const choiceDetails = this._getCampGatherChoiceDetails(
+            tileDetails,
+            resourceId,
+            actionId,
+          );
+          this.game.selectCampTile?.(tileId);
+          if (this.game.getCharacterTileId?.() === tileId) {
+            const ok = this.game.performCampTileAction(tileId, {
+              ...(actionId ? { actionId } : {}),
+              ...(resourceId ? { resourceId } : {}),
+            });
+            if (ok) this._clearCampInterruptedTravelAction();
+            this.render({ forcePanels: true });
+            return;
+          }
+          if (
+            !this._startCampTileTravel(choiceDetails, {
+              ...(actionId ? { actionId } : {}),
+              ...(resourceId ? { resourceId } : {}),
+            })
+          ) {
+            this.render({ forcePanels: true });
+          }
+        });
+      });
+
     document
       .querySelectorAll(".camp-map-resource-choice-btn")
       .forEach((choiceButton) => {
@@ -2378,15 +4539,98 @@ Object.assign(UI.prototype, {
             return;
           }
           const resourceId = choiceButton.getAttribute("data-resource-id");
+          const actionId = choiceButton.getAttribute("data-action-id") || "";
           const choiceDetails = this._getCampGatherChoiceDetails(
             selected,
             resourceId,
+            actionId,
           );
-          if (!this._startCampTileTravel(choiceDetails, { resourceId })) {
+          if (this.game.getCharacterTileId?.() === selected.id) {
+            const ok = this.game.performCampTileAction(selected.id, {
+              actionId,
+              resourceId,
+            });
+            if (ok) this._clearCampInterruptedTravelAction();
+            this.render({ forcePanels: true });
+            return;
+          }
+          if (
+            !this._startCampTileTravel(choiceDetails, { resourceId, actionId })
+          ) {
             this.render({ forcePanels: true });
           }
         });
       });
+
+    container.querySelectorAll("[data-camp-queue-add]").forEach((button) => {
+      button.addEventListener("click", () => {
+        if (button.getAttribute("aria-disabled") === "true") {
+          this.render({ forcePanels: true });
+          return;
+        }
+        const tileId = button.getAttribute("data-tile-id") || selected.id;
+        const tileDetails = this.game.getCampMapTileDetails?.(tileId) || null;
+        if (!tileDetails?.action) {
+          this.render({ forcePanels: true });
+          return;
+        }
+        const result = this.game.addCampTaskQueueEntry?.({
+          tileId,
+          actionId:
+            button.getAttribute("data-action-id") || tileDetails.action.id,
+          resourceId: button.getAttribute("data-resource-id") || "",
+          routeId:
+            button.getAttribute("data-route-id") ||
+            this.game.getCampRouteChoice?.(tileId) ||
+            "",
+        });
+        if (result?.ok) {
+          const resourceName = button.getAttribute("data-resource-id")
+            ? this.getResourceDisplayName(
+                button.getAttribute("data-resource-id"),
+              )
+            : tileDetails.name;
+          this.showToast?.(
+            `Добавлено в путевой лист: ${resourceName}.`,
+            "success",
+          );
+        } else if (result?.reason) {
+          this.game.addLog?.(result.reason);
+        }
+        this.render({ forcePanels: true });
+      });
+    });
+
+    const queueStart = document.getElementById("camp-map-queue-start");
+    if (queueStart) {
+      queueStart.addEventListener("click", () => {
+        if (queueStart.getAttribute("aria-disabled") === "true") {
+          this.render({ forcePanels: true });
+          return;
+        }
+        if (!this._startCampTaskQueue()) {
+          this.render({ forcePanels: true });
+        }
+      });
+    }
+
+    const queueClear = document.getElementById("camp-map-queue-clear");
+    if (queueClear) {
+      queueClear.addEventListener("click", () => {
+        if (queueClear.getAttribute("aria-disabled") !== "true") {
+          this.game.clearCampTaskQueue?.();
+        }
+        this.render({ forcePanels: true });
+      });
+    }
+
+    container.querySelectorAll("[data-camp-queue-remove]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const index = Number(button.getAttribute("data-camp-queue-remove"));
+        this.game.removeCampTaskQueueEntry?.(index);
+        this.render({ forcePanels: true });
+      });
+    });
 
     const quickGatherAction = document.getElementById(
       "camp-map-quick-gather-action",
@@ -2398,11 +4642,87 @@ Object.assign(UI.prototype, {
           return;
         }
         const quickTileId = quickGatherAction.getAttribute("data-tile-id");
+        const resourceId =
+          quickGatherAction.getAttribute("data-resource-id") || "";
+        const actionId = quickGatherAction.getAttribute("data-action-id") || "";
         const quickDetails = this.game.getCampMapTileDetails(quickTileId);
         if (quickDetails?.id) this.game.selectCampTile(quickDetails.id);
-        if (quickDetails?.action && !this._startCampTileTravel(quickDetails)) {
+        const quickChoices = quickDetails?.action
+          ? this._getCampGatherResourceChoices(quickDetails)
+          : [];
+        const quickChoice = quickChoices.length === 1 ? quickChoices[0] : null;
+        if (
+          quickDetails?.action &&
+          this.game.getCharacterTileId?.() === quickDetails.id
+        ) {
+          const ok = this.game.performCampTileAction(quickDetails.id, {
+            ...(actionId || quickChoice?.actionId
+              ? { actionId: actionId || quickChoice?.actionId }
+              : {}),
+            ...(resourceId || quickChoice?.id
+              ? { resourceId: resourceId || quickChoice?.id }
+              : {}),
+          });
+          if (ok) this._clearCampInterruptedTravelAction();
+          this.render({ forcePanels: true });
+          return;
+        }
+        const travelDetails = quickChoice?.details || quickDetails;
+        if (
+          quickDetails?.action &&
+          !this._startCampTileTravel(travelDetails, {
+            ...(actionId || quickChoice?.actionId
+              ? { actionId: actionId || quickChoice?.actionId }
+              : {}),
+            ...(resourceId || quickChoice?.id
+              ? { resourceId: resourceId || quickChoice?.id }
+              : {}),
+          })
+        ) {
           this.render({ forcePanels: true });
         }
+      });
+    }
+
+    const resumeTravelCommand = document.getElementById(
+      "camp-map-resume-travel-command",
+    );
+    if (resumeTravelCommand) {
+      resumeTravelCommand.addEventListener("click", () => {
+        if (!this._resumeCampInterruptedTravelAction()) {
+          this.render({ forcePanels: true });
+        }
+      });
+    }
+
+    const returnCommand = document.getElementById("camp-map-return-command");
+    if (returnCommand) {
+      returnCommand.addEventListener("click", () => {
+        if (!this._startCampReturnTrip()) {
+          this.render({ forcePanels: true });
+        }
+      });
+    }
+
+    const stopTravelCommand = document.getElementById(
+      "camp-map-stop-travel-command",
+    );
+    if (stopTravelCommand) {
+      stopTravelCommand.addEventListener("click", () => {
+        if (!this._cancelCampTravelAction()) {
+          this.render({ forcePanels: true });
+        }
+      });
+    }
+
+    const unloadCommand = document.getElementById("camp-map-unload-command");
+    if (unloadCommand) {
+      unloadCommand.addEventListener("click", () => {
+        if (this.game.unloadTripInventory?.()) {
+          this._clearCampInterruptedTravelAction();
+          this.showToast("Груз переложен в общий запас.", "success");
+        }
+        this.render({ forcePanels: true });
       });
     }
 
@@ -2416,7 +4736,13 @@ Object.assign(UI.prototype, {
           return;
         }
         const routeTileId = routeCommandAction.getAttribute("data-tile-id");
-        if (!this._startCampTileExplore(routeTileId)) {
+        const routeKind =
+          routeCommandAction.getAttribute("data-route-kind") || "explore";
+        const started =
+          routeKind === "inspect"
+            ? this._startCampTileVisit(routeTileId)
+            : this._startCampTileExplore(routeTileId);
+        if (!started) {
           this.render({ forcePanels: true });
         }
       });
@@ -2511,6 +4837,18 @@ Object.assign(UI.prototype, {
           .querySelector(".camp-map-scene-wrap.camp-just-founded")
           ?.classList.remove("camp-just-founded");
       }, 1800);
+    }
+
+    const shellInspectorHost = document.getElementById(
+      "shell-map-inspector-host",
+    );
+    const renderedInspector = container.querySelector(".camp-map-details");
+    if (shellInspectorHost && renderedInspector) {
+      shellInspectorHost.replaceChildren(renderedInspector);
+      shellInspectorHost.hidden = false;
+    } else if (shellInspectorHost) {
+      shellInspectorHost.replaceChildren();
+      shellInspectorHost.hidden = true;
     }
 
     // ── SVG tile rendering — viewBox coordinate system is fixed,
@@ -2609,7 +4947,33 @@ Object.assign(UI.prototype, {
         </g>`;
 
       const buildTileMarkers = (tile, cx, cy) => {
-        return "";
+        if (!showResourceLayer || this._isCampTileUnknownState(tile.state)) {
+          return "";
+        }
+        const resourceIds = new Set();
+        if (tile.resourceType) resourceIds.add(tile.resourceType);
+        const gatherActionIds =
+          this.game._getCampTileGatherActionIds?.(tile) ||
+          (tile.actionId ? [tile.actionId] : []);
+        gatherActionIds.forEach((actionId) => {
+          const action = this.data.gatherActions?.[actionId];
+          Object.keys(action?.output || {}).forEach((resourceId) =>
+            resourceIds.add(resourceId),
+          );
+        });
+        const resources = [...resourceIds].slice(0, 4);
+        if (!resources.length) return "";
+
+        const startX = cx - (resources.length - 1) * 5.5;
+        const y = cy - 22;
+        return `<g class="tile-resource-dots" aria-hidden="true">
+          ${resources
+            .map((resourceId, index) => {
+              const resource = this.data.resources?.[resourceId];
+              return `<circle class="tile-resource-dot resource-${resourceId}" cx="${(startX + index * 11).toFixed(1)}" cy="${y.toFixed(1)}" r="4.2"><title>${resource?.name || resourceId}</title></circle>`;
+            })
+            .join("")}
+        </g>`;
       };
 
       const buildCampTileArt = (tile, cx, cy, clipId) => {
@@ -2718,17 +5082,58 @@ Object.assign(UI.prototype, {
             `terrain-${tile.terrainType || "plain"}`,
             `zone-${tile.distanceFromCamp ?? 0}`,
           ];
+          const baseMapRadius =
+            mapState.expansionState?.baseRadius || mapState.radius;
+          const surveyState =
+            tile.state === "visible_locked"
+              ? "frontier"
+              : tile.state === "terrain_seen"
+                ? "seen"
+                : this._isCampTileUnknownState(tile.state)
+                  ? "unknown"
+                  : "known";
+          const canExploreNow =
+            typeof this.game.canExploreCampTile === "function" &&
+            this.game.canExploreCampTile(tile.id);
           if (tile.selected) classes.push("is-selected");
           if (tile.building || tile.placedBuildings?.length) {
             classes.push("has-building");
           }
           if (tile.construction) classes.push("is-constructing");
           if (tile.isDepleted) classes.push("is-depleted");
-          if (tile.pathLevel && tile.pathLevel !== "none") {
+          if (showPathLayer && tile.pathLevel && tile.pathLevel !== "none") {
             classes.push(`has-path-${tile.pathLevel}`);
+          }
+          if (
+            showPathLayer &&
+            (!tile.pathLevel || tile.pathLevel === "none") &&
+            (tile.pathUseProgress?.uses || 0) > 0
+          ) {
+            classes.push("has-path-trace");
+          }
+          if (showSurveyLayer) {
+            classes.push(`survey-${surveyState}`);
+            if ((tile.distanceFromCamp || 0) > baseMapRadius) {
+              classes.push("is-frontier-ring");
+            }
+            if (canExploreNow) {
+              classes.push("is-explorable");
+            }
           }
           if (tile.isCampCandidate || tile.state === "camp_candidate") {
             classes.push("is-candidate-flag");
+          }
+          if (
+            showResourceLayer &&
+            !isUnknownTile &&
+            tile.resourceType &&
+            Number.isFinite(tile.resourceRemaining)
+          ) {
+            const cap = tile.resourceCapacity || 1;
+            const pct = tile.resourceRemaining / cap;
+            if (pct >= 0.67) classes.push("res-rich");
+            else if (pct >= 0.34) classes.push("res-medium");
+            else classes.push("res-sparse");
           }
           if (
             tile.state === "camp" &&
@@ -2741,7 +5146,12 @@ Object.assign(UI.prototype, {
 
           const tileStateLabel = this.getCampTileStateLabel(tile.state);
 
-          const stockBadge = "";
+          const stockBadge =
+            showResourceLayer &&
+            !isUnknownTile &&
+            Number.isFinite(tile.resourceRemaining)
+              ? `<text class="tile-stock${tile.isDepleted ? " is-depleted" : ""}" x="${(cx + 22).toFixed(1)}" y="${(cy - 18).toFixed(1)}">${tile.resourceRemaining}</text>`
+              : "";
 
           const candidateLabel =
             tile.state === "camp_candidate" && tile.shortLabel
@@ -2749,16 +5159,38 @@ Object.assign(UI.prototype, {
               : "";
 
           const pathMark =
-            tile.pathLevel && tile.pathLevel !== "none" && !isUnknownTile
+            showPathLayer &&
+            tile.pathLevel &&
+            tile.pathLevel !== "none" &&
+            !isUnknownTile
               ? `<path class="tile-path-mark" d="M ${(cx - 24).toFixed(1)} ${(cy + 21).toFixed(1)} C ${(cx - 10).toFixed(1)} ${(cy + 11).toFixed(1)}, ${(cx + 7).toFixed(1)} ${(cy + 27).toFixed(1)}, ${(cx + 24).toFixed(1)} ${(cy + 14).toFixed(1)}" />`
+              : "";
+          const pathTraceMark =
+            showPathLayer &&
+            (!tile.pathLevel || tile.pathLevel === "none") &&
+            (tile.pathUseProgress?.uses || 0) > 0 &&
+            !isUnknownTile
+              ? `<path class="tile-path-trace-mark" d="M ${(cx - 22).toFixed(1)} ${(cy + 18).toFixed(1)} C ${(cx - 9).toFixed(1)} ${(cy + 10).toFixed(1)}, ${(cx + 6).toFixed(1)} ${(cy + 22).toFixed(1)}, ${(cx + 22).toFixed(1)} ${(cy + 12).toFixed(1)}" />`
+              : "";
+          const surveyBadge = showSurveyLayer
+            ? `<circle class="tile-survey-ring is-${surveyState}" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="31.5" />`
+            : "";
+          const surveyMarkText = !showSurveyLayer
+            ? ""
+            : surveyState === "unknown"
+              ? "?"
+              : surveyState === "frontier"
+                ? "!"
+                : surveyState === "seen"
+                  ? "◔"
+                  : "";
+          const surveyMarker =
+            showSurveyLayer && surveyMarkText
+              ? `<text class="tile-survey-mark is-${surveyState}" x="${cx.toFixed(1)}" y="${(cy + 4).toFixed(1)}">${surveyMarkText}</text>`
               : "";
           const campMarker =
             tile.state === "camp"
               ? `<circle class="tile-camp-marker" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="9.5" />`
-              : "";
-          const selectedMarker =
-            tile.selected && !isUnknownTile
-              ? `<circle class="tile-here-marker" cx="${cx.toFixed(1)}" cy="${(cy + 20).toFixed(1)}" r="6.5" />`
               : "";
 
           const animStyle =
@@ -2791,7 +5223,7 @@ Object.assign(UI.prototype, {
             ? "Неизвестный участок. Нажмите, чтобы исследовать."
             : `${tile.name} (${tileStateLabel})`;
 
-          return `<g class="${classes.join(" ")}" data-tile-id="${tile.id}" role="button" tabindex="${tileTabIndex}" aria-label="${tileAriaLabel}"${animStyle}><defs><clipPath id="${clipId}"><polygon points="${pts}"/></clipPath></defs><polygon points="${pts}"/>${tileVisual}${pathMark}${campMarker}${selectedMarker}${candidateLabel}${stockBadge}</g>`;
+          return `<g class="${classes.join(" ")}" data-tile-id="${tile.id}" role="button" tabindex="${tileTabIndex}" aria-label="${tileAriaLabel}"${animStyle}><defs><clipPath id="${clipId}"><polygon points="${pts}"/></clipPath></defs><polygon points="${pts}"/>${tileVisual}${surveyBadge}${surveyMarker}${pathTraceMark}${pathMark}${campMarker}${candidateLabel}${stockBadge}</g>`;
         })
         .join("\n");
 
@@ -2802,8 +5234,116 @@ Object.assign(UI.prototype, {
       const travelOverlay =
         activeTravelOverlay ||
         `${this._buildRoutePreviewOverlaySvg(tileCoordById, mapState)}${this._buildIdleCharacterOverlaySvg(tileCoordById, mapState)}`;
-
       svgEl.innerHTML = `${defsSvg}${backdropSvg}${tileGroups}${travelOverlay}`;
+
+      const inlineActionHost = document.getElementById(
+        "camp-map-inline-action-host",
+      );
+      if (inlineActionHost) {
+        const viewBox = svgEl.viewBox?.baseVal || {
+          x: -288,
+          y: -320,
+          width: 576,
+          height: 640,
+        };
+        inlineActionHost.innerHTML = this._buildCampInlineActionOverlayHtml(
+          {
+            tileCoordById,
+            sceneWidth: sceneEl.clientWidth || svgEl.clientWidth || 0,
+            sceneHeight: sceneEl.clientHeight || svgEl.clientHeight || 0,
+            viewBox: {
+              x: viewBox.x,
+              y: viewBox.y,
+              width: viewBox.width,
+              height: viewBox.height,
+            },
+          },
+          {
+            selected,
+            selectedCampSiteCheck,
+            selectedCanFoundBeforeCamp,
+            selectedCanMoveHere,
+            selectedHasGatherAction,
+            selectedIsCharacterTile,
+            selectedResourceChoices,
+          },
+        );
+      }
+
+      container
+        .querySelectorAll("[data-camp-inline-dismiss]")
+        .forEach((dismissButton) => {
+          dismissButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            this._campInlineActionDismissedTileId = selected.id;
+            if (inlineActionHost) inlineActionHost.innerHTML = "";
+          });
+        });
+
+      container
+        .querySelectorAll("[data-camp-inline-action]")
+        .forEach((actionButton) => {
+          actionButton.addEventListener("click", () => {
+            if (actionButton.getAttribute("aria-disabled") === "true") {
+              this.render({ forcePanels: true });
+              return;
+            }
+            this._campInlineActionDismissedTileId = selected.id;
+
+            const actionKind = actionButton.getAttribute(
+              "data-camp-inline-action",
+            );
+            if (actionKind === "found") {
+              this.openCampFoundConfirm(selected.id);
+              return;
+            }
+
+            if (actionKind === "visit") {
+              if (!this._startCampTileVisit(selected.id)) {
+                this.render({ forcePanels: true });
+              }
+              return;
+            }
+
+            if (actionKind === "gather") {
+              const resourceId =
+                actionButton.getAttribute("data-resource-id") || "";
+              const actionId =
+                actionButton.getAttribute("data-action-id") || "";
+              const choiceDetails = resourceId
+                ? this._getCampGatherChoiceDetails(
+                    selected,
+                    resourceId,
+                    actionId,
+                  )
+                : selected;
+              if (this.game.getCharacterTileId?.() === selected.id) {
+                const ok = this.game.performCampTileAction(selected.id, {
+                  ...(actionId ? { actionId } : {}),
+                  ...(resourceId ? { resourceId } : {}),
+                });
+                if (ok) this._clearCampInterruptedTravelAction();
+                this.render({ forcePanels: true });
+                return;
+              }
+              if (
+                !this._startCampTileTravel(choiceDetails, {
+                  ...(actionId ? { actionId } : {}),
+                  ...(resourceId ? { resourceId } : {}),
+                })
+              ) {
+                this.render({ forcePanels: true });
+              }
+            }
+          });
+        });
+
+      sceneEl.addEventListener("click", (event) => {
+        if (event.target !== sceneEl && event.target !== svgEl) return;
+        if (!inlineActionHost?.innerHTML) return;
+        this._campInlineActionDismissedTileId = selected.id;
+        inlineActionHost.innerHTML = "";
+      });
 
       for (const tile of mapState.tiles) {
         const group = svgEl.querySelector(`[data-tile-id="${tile.id}"]`);
@@ -2854,6 +5394,10 @@ Object.assign(UI.prototype, {
               }
               this._campRoutePreviewClickTimer = setTimeout(() => {
                 this._campRoutePreviewClickTimer = null;
+                this.game.selectCampTile?.(tile.id);
+                if (this._campInlineActionDismissedTileId !== tile.id) {
+                  this._campInlineActionDismissedTileId = "";
+                }
                 this._setCampRoutePreview(tile.id, "explore", {
                   render: true,
                 });
@@ -2868,6 +5412,8 @@ Object.assign(UI.prototype, {
             }
             group.blur?.();
             if (canExploreUnknown && !this._campTravelAction) {
+              this.game.selectCampTile?.(tile.id);
+              this._campInlineActionDismissedTileId = "";
               this._startCampTileExplore(tile.id);
             }
           });
@@ -2881,6 +5427,10 @@ Object.assign(UI.prototype, {
             "▶ Нажмите, чтобы выбрать это место",
           ]);
         } else {
+          const canExploreTooltipNow =
+            showSurveyLayer &&
+            typeof this.game.canExploreCampTile === "function" &&
+            this.game.canExploreCampTile(tile.id);
           const terrainLine = tile.terrainName || tile.terrainLabel || "";
           const lines = [
             tile.name,
@@ -2893,6 +5443,17 @@ Object.assign(UI.prototype, {
                 .map((marker) => this.getCampTileMarkerLabel(marker))
                 .join(", ")}`,
             );
+          }
+          if (canExploreTooltipNow) {
+            lines.push("Разведка доступна сейчас.");
+          }
+          if (tile.resourceType) {
+            const resourceName = this.getResourceDisplayName(tile.resourceType);
+            const resourceIcon = this.getResourceDisplayIcon(tile.resourceType);
+            const stockText = Number.isFinite(tile.resourceRemaining)
+              ? ` · запас ${tile.resourceRemaining}/${tile.resourceCapacity}`
+              : "";
+            lines.push(`Ресурс: ${resourceIcon} ${resourceName}${stockText}`);
           }
           if (tile.knownPotentials?.length) {
             lines.push(
@@ -3012,14 +5573,10 @@ Object.assign(UI.prototype, {
           }
           this._campRoutePreviewClickTimer = setTimeout(() => {
             this._campRoutePreviewClickTimer = null;
-            // Pre-camp: any open suitable non-resource tile can become camp.
-            if (this.game.canUseTileAsCampSite?.(tile.id)?.ok) {
-              this.openCampFoundConfirm(tile.id);
-              return;
-            }
             // Founded camp tile: open camp management screen.
             if (tile.state === "camp") {
               this.game.selectCampTile(tile.id);
+              this._campInlineActionDismissedTileId = "";
               if (!(this.game.isCharacterAtCamp?.() ?? true)) {
                 if (!this._startCampReturnTrip()) {
                   this.render({ forcePanels: true });
@@ -3031,7 +5588,11 @@ Object.assign(UI.prototype, {
             }
             // Other tiles: click only selects. Action is explicit via right panel
             // so gather spam/misclicks are less likely.
+            const previousSelectedId = selected?.id || "";
             this.game.selectCampTile(tile.id);
+            if (previousSelectedId !== tile.id) {
+              this._campInlineActionDismissedTileId = "";
+            }
             const previewKind =
               tile.terrainSeen && this.game.canExploreCampTile?.(tile.id)
                 ? "explore"
@@ -3051,6 +5612,7 @@ Object.assign(UI.prototype, {
           group.blur?.();
           if (this._campTravelAction) return;
           if (tile.terrainSeen && this.game.canExploreCampTile?.(tile.id)) {
+            this._campInlineActionDismissedTileId = "";
             if (!this._startCampTileExplore(tile.id)) {
               this.render({ forcePanels: true });
             }
@@ -3059,6 +5621,7 @@ Object.assign(UI.prototype, {
           const tileDetails = this.game.getCampMapTileDetails(tile.id);
           if (tileDetails?.action) {
             this.game.selectCampTile(tile.id);
+            this._campInlineActionDismissedTileId = "";
             if (!this._startCampTileTravel(tileDetails)) {
               this.render({ forcePanels: true });
             }

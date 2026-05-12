@@ -3,10 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SpaceGame — v0.1.18</title>
+    <title>SpaceGame — v0.1.19</title>
+    <link rel="icon" href="prototype/assets/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="prototype/manifest.webmanifest" />
     <!-- CSS modules (split from style.css, Phase 2 refactor) -->
     <link rel="stylesheet" href="prototype/css/base.css" />
     <link rel="stylesheet" href="prototype/css/map-local.css" />
+    <link rel="stylesheet" href="prototype/css/map-surroundings.css" />
     <link rel="stylesheet" href="prototype/css/prologue-onboarding.css" />
     <link rel="stylesheet" href="prototype/css/resources.css" />
     <link rel="stylesheet" href="prototype/css/day-cycle.css" />
@@ -23,6 +26,10 @@
     <link rel="stylesheet" href="prototype/css/camp-founding.css" />
     <link rel="stylesheet" href="prototype/css/camp-screen.css" />
     <link rel="stylesheet" href="prototype/css/character-modal.css" />
+    <link rel="stylesheet" href="prototype/css/ui-shell.css" />
+    <link rel="stylesheet" href="prototype/css/economic-core.css" />
+    <link rel="stylesheet" href="prototype/css/economic-shell-status.css" />
+    <link rel="stylesheet" href="prototype/css/economic-navigation.css" />
   </head>
   <body>
     <div id="app">
@@ -32,8 +39,15 @@
             <img id="game-logo-header" class="game-logo-header" src="assets/logo.png" alt="Начало пути" onerror="this.style.display='none';document.getElementById('game-title-fallback').style.display='block'">
             <h1 id="game-title-fallback" style="display:none">🌌 SpaceGame</h1>
           </div>
+          <div class="shell-header-context" aria-live="polite">
+            <div id="shell-era-chip" class="shell-era-chip"></div>
+            <div id="shell-time-chip" class="shell-time-chip"></div>
+          </div>
           <div class="header-actions">
-            <button id="changelog-btn" class="header-changelog-btn" type="button" title="История изменений">📋 v0.1.18</button>
+            <button id="changelog-btn" class="header-changelog-btn shell-header-icon-btn" type="button" title="История изменений" aria-label="История изменений v0.1.19">
+              <span aria-hidden="true">📋</span>
+              <span class="shell-header-action-label">v0.1.19</span>
+            </button>
             <div class="save-status-wrap">
               <button id="save-status" class="save-status" type="button" title="Нажмите для смены интервала автосохранения">Новая игра</button>
               <div id="save-interval-popup" class="save-interval-popup" hidden>
@@ -43,52 +57,118 @@
                 </label>
               </div>
             </div>
-            <button id="restart-onboarding-btn" class="header-service-btn" type="button" title="Начать пролог заново">🌄 Пролог</button>
-
-            <button id="reset-progress-btn" class="header-reset-btn" type="button">Сбросить прогресс</button>
+            <details id="shell-service-menu" class="shell-service-menu">
+              <summary class="shell-service-summary" aria-label="Сервисные действия" title="Сервисные действия">⚙</summary>
+              <div class="shell-service-popover">
+                <button id="restart-onboarding-btn" class="header-service-btn" type="button" title="Начать пролог заново">🌄 Пролог</button>
+                <button id="reset-progress-btn" class="header-reset-btn" type="button">Сбросить прогресс</button>
+              </div>
+            </details>
           </div>
         </div>
+        <div id="top-resource-bar" class="shell-resource-bar" aria-label="Ключевые ресурсы"></div>
       </header>
 
       <!-- Onboarding intro (first launch) -->
       <div id="onboarding-intro-panel" class="panel panel-onboarding-intro" style="display:none"></div>
 
       <!-- Onboarding step-by-step -->
-      <div id="onboarding-step-panel" class="panel panel-onboarding-step" style="display:none"></div>
+      <div id="onboarding-step-panel" class="panel panel-onboarding-step" style="display:none" data-economic-highlight-id="onboarding-step-panel"></div>
 
       <div id="game-layout">
+        <nav id="shell-command-rail" class="shell-command-rail" aria-label="Главное управление">
+          <button class="shell-command-btn is-active" type="button" data-shell-mode-target="map" data-shell-command="map" aria-pressed="true">
+            <span class="shell-command-icon">▦</span>
+            <span>Карта</span>
+          </button>
+          <button class="shell-command-btn" type="button" data-shell-mode-target="camp" data-shell-command="camp" aria-pressed="false">
+            <span class="shell-command-icon">⌂</span>
+            <span>Лагерь</span>
+          </button>
+          <button class="shell-command-btn" type="button" data-shell-mode-target="production" data-shell-command="production" aria-pressed="false">
+            <span class="shell-command-icon">⚒</span>
+            <span>Работы</span>
+          </button>
+          <button class="shell-command-btn" type="button" data-shell-mode-target="knowledge" data-shell-command="knowledge" aria-pressed="false">
+            <span class="shell-command-icon">✦</span>
+            <span>Знания</span>
+          </button>
+          <button class="shell-command-btn" type="button" data-shell-storage-toggle="true" data-shell-command="storage" aria-pressed="false">
+            <span class="shell-command-icon">▣</span>
+            <span>Склад</span>
+          </button>
+          <button class="shell-command-btn" type="button" data-shell-log-toggle="true" data-shell-command="log" aria-pressed="false">
+            <span class="shell-command-icon">☰</span>
+            <span>Журнал</span>
+          </button>
+        </nav>
+
         <!-- Left sidebar: always-visible info -->
         <aside id="game-sidebar">
           <div id="era-progress-panel" class="panel panel-era-progress"></div>
-          <section id="day-cycle-panel" class="panel panel-day-cycle"></section>
-          <section id="resources-panel" class="panel"></section>
+          <section
+            id="shell-economic-status"
+            class="panel shell-economic-status"
+            hidden
+            aria-live="polite"
+            aria-label="Экономический фокус"
+          ></section>
+          <section id="log-panel" class="panel"></section>
+          <section id="shell-summary-panel" class="panel shell-summary-panel"></section>
+          <section id="day-cycle-panel" class="panel panel-day-cycle shell-day-cycle-detail"></section>
         </aside>
 
         <!-- Main content: actions -->
         <main id="game-main">
-          <section id="character-panel" class="panel panel-character panel-compact"></section>
           <section id="camp-founding-quest" class="panel panel-camp-quest" hidden></section>
-          <section id="camp-map-panel" class="panel panel-camp-map"></section>
-
-          <div id="actions-row" class="panel-row">
-            <section id="gather-panel" class="panel"></section>
-            <section id="craft-panel" class="panel"></section>
+          <div class="shell-main-head">
+            <div id="shell-mode-copy" class="shell-mode-copy" aria-live="polite"></div>
+            <div class="shell-mode-tabs" role="group" aria-label="Навигация основного экрана">
+              <button class="shell-mode-tab is-active" type="button" data-shell-mode-target="map" aria-pressed="true">Карта</button>
+              <button class="shell-mode-tab" type="button" data-shell-mode-target="camp" aria-pressed="false">Лагерь</button>
+              <button class="shell-mode-tab" type="button" data-shell-mode-target="production" aria-pressed="false">Производство</button>
+              <button class="shell-mode-tab" type="button" data-shell-mode-target="knowledge" aria-pressed="false">Знания</button>
+            </div>
+          </div>
+          <section id="shell-production-brief" class="panel shell-production-brief" hidden aria-live="polite"></section>
+          <section id="shell-economic-core" class="panel shell-economic-core" hidden aria-label="Экономическое ядро лагеря" data-economic-highlight-id="shell-economic-core"></section>
+          <div id="shell-map-workspace" class="shell-map-workspace">
+            <section id="camp-map-panel" class="panel panel-camp-map"></section>
+            <aside id="shell-map-inspector-host" class="shell-map-inspector-host" aria-label="Инспектор выбранного участка" hidden></aside>
           </div>
 
-          <div id="systems-row" class="panel-row">
-            <section id="buildings-panel" class="panel"></section>
-            <section id="automation-panel" class="panel"></section>
+          <div id="shell-operational-row" class="panel-row shell-operational-row">
+            <section id="craft-panel" class="panel" data-economic-highlight-id="craft-panel"></section>
+            <section id="character-panel" class="panel panel-character panel-compact"></section>
           </div>
 
-          <!-- Science panel: research / insights / knowledge grouped together -->
-          <div id="science-panel" class="panel science-panel">
-            <div id="research-widget" class="science-slot"></div>
-            <div class="science-divider"></div>
-            <div id="knowledge-widget" class="science-slot"></div>
-          </div>
+          <details id="shell-extra-systems" class="panel shell-extra-systems">
+            <summary>Дополнительные панели</summary>
+            <div id="actions-row" class="panel-row shell-extra-grid">
+              <section id="gather-panel" class="panel" data-economic-highlight-id="gather-panel"></section>
 
-          <section id="log-panel" class="panel"></section>
+              <!-- Science panel: research / insights / knowledge grouped together -->
+              <div id="science-panel" class="panel science-panel">
+                <div id="research-widget" class="science-slot"></div>
+                <div class="science-divider"></div>
+                <div id="knowledge-widget" class="science-slot"></div>
+              </div>
+            </div>
+
+            <div id="systems-row" class="panel-row shell-extra-grid">
+              <section id="buildings-panel" class="panel" data-economic-highlight-id="buildings-panel"></section>
+              <section id="automation-panel" class="panel"></section>
+            </div>
+          </details>
         </main>
+      </div>
+
+      <div id="shell-storage-layer" class="shell-storage-layer" hidden>
+        <div class="shell-storage-backdrop" data-shell-storage-toggle="true"></div>
+        <aside class="shell-storage-drawer" aria-label="Подробный склад">
+          <button class="shell-storage-close" type="button" data-shell-storage-toggle="true" aria-label="Закрыть склад">✕</button>
+          <section id="resources-panel" class="panel shell-storage-panel"></section>
+        </aside>
       </div>
 
       <div id="story-event-layer" class="story-event-layer" aria-live="polite"></div>
@@ -211,6 +291,9 @@
       </div>
     </div>
 
+        <!-- Shared systems (loaded before game-state.js) -->
+    <script src="prototype/systems/travel-model.js"></script>
+
         <!-- Data (game-data.js declares GAME_DATA={}, modules extend it via Object.assign) -->
     <script src="prototype/data/game-data.js"></script>
     <script src="prototype/data/narrative.js"></script>
@@ -218,6 +301,8 @@
     <script src="prototype/data/world.js"></script>
     <script src="prototype/data/character.js"></script>
     <script src="prototype/data/production.js"></script>
+    <script src="prototype/data/economic-stages.js"></script>
+    <script src="prototype/data/work-actions.js"></script>
 
         <!-- Runtime ownership: game-state-overrides patches the live GameState and
           must stay immediately after game-state.js. ui.js is the coordinator
@@ -225,6 +310,8 @@
           owners for camp map, character panel, camp screen, research, etc. -->
     <script src="prototype/game-state.js"></script>
     <script src="prototype/game-state-overrides.js"></script>
+    <script src="prototype/game-state-economic-core.js"></script>
+    <script src="prototype/game-state-work-queue.js"></script>
 
         <!-- UI base class (coordinator + legacy fallbacks) -->
     <script src="prototype/ui.js"></script>
@@ -233,6 +320,7 @@
     <script src="prototype/ui/core/ui-utils.js"></script>
     <script src="prototype/ui/core/ui-tooltips.js"></script>
     <script src="prototype/ui/map/camp-map-ui.js"></script>
+    <script src="prototype/ui/map/surroundings-map-ui.js"></script>
     <script src="prototype/ui/camp/camp-founding-ui.js"></script>
     <script src="prototype/ui/camp/camp-screen-ui.js"></script>
     <script src="prototype/ui/panels/character-panel-ui.js"></script>
@@ -244,6 +332,9 @@
     <script src="prototype/ui/panels/buildings-ui.js"></script>
     <script src="prototype/ui/panels/log-ui.js"></script>
     <script src="prototype/ui/panels/era-progress-ui.js"></script>
+    <script src="prototype/ui/panels/economic-core-ui.js"></script>
+    <script src="prototype/ui/panels/economic-shell-status-ui.js"></script>
+    <script src="prototype/ui/panels/economic-navigation-ui.js"></script>
     <script src="prototype/ui/research/research-ui.js"></script>
     <script src="prototype/ui/knowledge/knowledge-ui.js"></script>
     <script src="prototype/ui/discovery/discovery-scenes-ui.js"></script>

@@ -29,6 +29,10 @@ Object.assign(UI.prototype, {
     }
 
     const queueState = this.game.getCraftQueueState();
+    const freeSlots = Math.max(
+      0,
+      queueState.capacity - queueState.items.length,
+    );
     const queueCard = document.createElement("div");
     queueCard.className = "craft-queue-card";
     queueCard.innerHTML = `
@@ -37,37 +41,42 @@ Object.assign(UI.prototype, {
         <span class="craft-queue-capacity">${queueState.items.length} / ${queueState.capacity}</span>
       </div>
       <div class="craft-queue-slots">
-        ${Array.from({ length: queueState.capacity }, (_, index) => {
-          const item = queueState.items[index];
-          if (!item) {
-            return `<div class="craft-queue-slot is-empty has-tooltip" data-tooltip="Свободный слот&#10;Добавьте рецепт, чтобы запланировать следующий шаг">Пусто</div>`;
-          }
+        ${
+          queueState.items.length === 0
+            ? `<div class="craft-queue-empty has-tooltip" data-tooltip="Очередь пуста&#10;Добавьте рецепт, чтобы сразу запустить следующий производственный шаг">
+              <span>Сейчас ничего не производится</span>
+              <small>Можно добавить до ${queueState.capacity} задач</small>
+            </div>`
+            : `${queueState.items
+                .map((item) => {
+                  const stateLabel = item.isActive
+                    ? `Сейчас · ${this.formatSeconds(item.remainingMs)}`
+                    : "Далее";
 
-          const stateLabel = item.isActive
-            ? `В работе · ${this.formatSeconds(item.remainingMs)}`
-            : "Ожидает";
-
-          return `
-            <div class="craft-queue-slot ${item.isActive ? "is-active" : "is-waiting"} has-tooltip" data-tooltip="${this.formatTooltipText(
-              [
-                item.name,
-                item.isActive
-                  ? "Статус: выполняется сейчас"
-                  : "Статус: ожидает в очереди",
-                `Осталось: ${this.formatSeconds(item.remainingMs)}`,
-              ],
-            )}">
-              <div class="craft-queue-slot-top">
-                <span class="craft-queue-icon">${item.icon}</span>
-                <span class="craft-queue-name">${item.name}</span>
-              </div>
-              <div class="craft-queue-state">${stateLabel}</div>
-              <div class="craft-queue-progress">
-                <div class="craft-queue-progress-fill" style="width:${item.isActive ? item.progress * 100 : 0}%"></div>
-              </div>
-            </div>
-          `;
-        }).join("")}
+                  return `
+                  <div class="craft-queue-slot ${item.isActive ? "is-active" : "is-waiting"} has-tooltip" data-tooltip="${this.formatTooltipText(
+                    [
+                      item.name,
+                      item.isActive
+                        ? "Статус: выполняется сейчас"
+                        : "Статус: ожидает в очереди",
+                      `Осталось: ${this.formatSeconds(item.remainingMs)}`,
+                    ],
+                  )}">
+                    <div class="craft-queue-slot-top">
+                      <span class="craft-queue-icon">${item.icon}</span>
+                      <span class="craft-queue-name">${item.name}</span>
+                    </div>
+                    <div class="craft-queue-state">${stateLabel}</div>
+                    <div class="craft-queue-progress">
+                      <div class="craft-queue-progress-fill" style="width:${item.isActive ? item.progress * 100 : 0}%"></div>
+                    </div>
+                  </div>
+                `;
+                })
+                .join("")}
+            ${freeSlots > 0 ? `<div class="craft-queue-free">Свободно ещё ${freeSlots} ${freeSlots === 1 ? "место" : freeSlots >= 2 && freeSlots <= 4 ? "места" : "мест"}</div>` : ""}`
+        }
       </div>
     `;
     if (!isEarlyProgression || queueState.items.length > 0) {
@@ -123,7 +132,6 @@ Object.assign(UI.prototype, {
         el.innerHTML = `
           <span class="btn-icon">🔒</span>
           <span class="btn-label">${copy.name}</span>
-          ${copy.description ? `<span class="btn-desc">${copy.description}</span>` : ""}
           ${reqName ? `<span class="btn-cooldown">${reqType}: ${reqName}</span>` : ""}
         `;
         container.appendChild(el);
@@ -131,7 +139,7 @@ Object.assign(UI.prototype, {
       }
 
       const btn = document.createElement("button");
-      btn.className = "action-btn";
+      btn.className = "action-btn action-btn--craft";
       btn.type = "button";
       this.setButtonAvailability(btn, canQueue);
 
@@ -140,21 +148,25 @@ Object.assign(UI.prototype, {
       const craftDuration = this.game.getCraftDuration
         ? this.game.getCraftDuration(id)
         : recipe.craftTimeMs || 3000;
-      let queueStateText = `⏱ ${this.formatSeconds(craftDuration)}`;
+      let queueStateText =
+        queueState.items.length === 0 ? "Стартует сразу" : "Встанет в очередь";
 
-      if (this.game.craftQueue.length >= this.game.maxCraftQueueSize) {
-        queueStateText = "Очередь заполнена";
+      if (queueState.items.length >= queueState.capacity) {
+        queueStateText = "Очередь полна";
       } else if (!this.game.hasResources(effectiveCost)) {
-        queueStateText = "Не хватает ресурсов";
+        queueStateText = "Нет материалов";
+      } else if (!canQueue) {
+        queueStateText = "Сейчас нельзя";
       }
 
       btn.innerHTML = `
         <span class="btn-icon">${copy.icon}</span>
         <span class="btn-label">${copy.name}</span>
         <span class="btn-flow">${costStr} → ${outStr}</span>
-        ${copy.description ? `<span class="btn-desc">${copy.description}</span>` : ""}
-        <span class="btn-efficiency">Время производства: ${this.formatSeconds(craftDuration)}</span>
-        <span class="btn-queue-status">${queueStateText}</span>
+        <div class="btn-meta-inline">
+          <span class="btn-efficiency">⏱ ${this.formatSeconds(craftDuration)}</span>
+          <span class="btn-queue-status">${queueStateText}</span>
+        </div>
       `;
       this.setTooltip(btn, [
         copy.name,

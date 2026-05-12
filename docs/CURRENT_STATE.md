@@ -2,8 +2,8 @@
 
 ## Snapshot
 
-- Live prototype version: `v0.1.17`
-- Stabilization target for the next safe pass: `v0.1.18`
+- Live prototype version: `v0.1.19`
+- Stabilization target for the next safe pass: `v0.1.19`
 - Main entry point: `web/prototype.html`
 - Runtime model: plain browser scripts, `GAME_DATA` bootstrap in `game-data.js` plus layered `Object.assign(...)` overrides from split data files.
 

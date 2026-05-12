@@ -559,9 +559,7 @@ Object.assign(UI.prototype, {
       .querySelectorAll("[data-focus-insight]")
       .forEach((button) => {
         button.addEventListener("click", () => {
-          const targetInsight = insightsById.get(
-            button.dataset.focusInsight || "",
-          );
+          const targetInsight = insightsById.get(button.dataset.focusInsight || "");
           this._selectedPrologueInsightId = targetInsight?.id || null;
           this._renderPrologueInsightsBody(container);
           if (targetInsight?.unlocked) {
@@ -601,24 +599,18 @@ Object.assign(UI.prototype, {
   },
 
   _getLatestUnlockedPrologueInsight(insights) {
-    return (
-      insights
-        .filter((insight) => insight.unlocked)
-        .sort((left, right) => {
-          const unlockDiff = (right.unlockedAt || 0) - (left.unlockedAt || 0);
-          if (unlockDiff !== 0) return unlockDiff;
-          return (right.order || 0) - (left.order || 0);
-        })[0] || null
-    );
+    return insights
+      .filter((insight) => insight.unlocked)
+      .sort((left, right) => {
+        const unlockDiff = (right.unlockedAt || 0) - (left.unlockedAt || 0);
+        if (unlockDiff !== 0) return unlockDiff;
+        return (right.order || 0) - (left.order || 0);
+      })[0] || null;
   },
 
   _renderPrologueInsightMediaMarkup(
     insight,
-    {
-      large = false,
-      revealImage = false,
-      variant = large ? "focus" : "node",
-    } = {},
+    { large = false, revealImage = false, variant = large ? "focus" : "node" } = {},
   ) {
     const imageCandidates = revealImage
       ? this._getInsightImageCandidates({

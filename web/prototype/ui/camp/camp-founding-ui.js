@@ -95,7 +95,7 @@ Object.assign(UI.prototype, {
   formatCampFoundingResourceMeta(item) {
     const places = [];
     if (item.stock > 0) places.push(`у ночёвки: ${item.stock}`);
-    if (item.carried > 0) places.push(`в рюкзаке: ${item.carried}`);
+    if (item.carried > 0) places.push(`с собой: ${item.carried}`);
     const placeText = places.length > 0 ? places.join(" · ") : "пока нет";
     return item.done
       ? `Готово · ${placeText}`
@@ -312,7 +312,11 @@ Object.assign(UI.prototype, {
     const container = document.getElementById("camp-founding-quest");
     if (!container) return;
 
-    if (this.game.isCampSetupDone()) {
+    const embeddedDock = document.querySelector(
+      "#camp-map-panel .camp-map-founding-dock",
+    );
+
+    if (this.game.isCampSetupDone() || embeddedDock) {
       container.hidden = true;
       container.innerHTML = "";
       return;

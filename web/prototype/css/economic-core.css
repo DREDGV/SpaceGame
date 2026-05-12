@@ -1,0 +1,449 @@
+/* Stage 1A + 1D — economic core: compact hierarchy, stable cards, muted locks */
+
+.shell-economic-core {
+  display: grid;
+  gap: 0.42rem;
+  padding: 0.44rem 0.5rem;
+  border: 1px solid rgba(128, 145, 134, 0.26);
+  border-radius: 10px;
+  background: rgba(12, 18, 22, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  min-width: 0;
+}
+
+.shell-economic-core[hidden] {
+  display: none !important;
+}
+
+.ecore-root {
+  display: flex;
+  flex-direction: column;
+  gap: 0.42rem;
+  min-width: 0;
+}
+
+.ecore-priority {
+  padding: 0.38rem 0.44rem;
+  border-radius: 8px;
+  border: 1px solid rgba(143, 176, 128, 0.38);
+  background: rgba(14, 26, 20, 0.72);
+}
+
+.ecore-priority-kicker {
+  margin: 0 0 0.12rem;
+  color: #9eb0a5;
+  font-size: 0.58rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ecore-priority-title {
+  margin: 0;
+  color: #f2f8ee;
+  font-size: 0.8rem;
+  font-weight: 900;
+  line-height: 1.28;
+  letter-spacing: 0.01em;
+}
+
+.ecore-priority-detail {
+  margin: 0.22rem 0 0;
+  color: #b8c9b2;
+  font-size: 0.64rem;
+  line-height: 1.35;
+}
+
+.ecore-block {
+  min-width: 0;
+}
+
+.ecore-block-muted {
+  opacity: 0.97;
+}
+
+.ecore-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.28rem 0.6rem;
+}
+
+.ecore-stage-title {
+  margin: 0;
+  color: #dfe8d9;
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.ecore-stage-id {
+  padding: 0.1rem 0.36rem;
+  border: 1px solid rgba(196, 168, 93, 0.28);
+  border-radius: 999px;
+  background: rgba(40, 34, 22, 0.35);
+  color: #d8c89a;
+  font-size: 0.54rem;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.ecore-stage-desc {
+  margin: 0.22rem 0 0;
+  color: #9aa89f;
+  font-size: 0.64rem;
+  line-height: 1.35;
+}
+
+.ecore-line-clamp-1 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  overflow: hidden;
+}
+
+.ecore-next {
+  margin: 0.22rem 0 0;
+  padding: 0.22rem 0.3rem;
+  border-radius: 6px;
+  background: rgba(14, 20, 22, 0.55);
+  color: #a8b5ae;
+  font-size: 0.6rem;
+  line-height: 1.32;
+}
+
+.ecore-next--compact {
+  margin-top: 0.18rem;
+}
+
+.ecore-section-title {
+  margin: 0 0 0.18rem;
+  color: #b9c9a8;
+  font-size: 0.6rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ecore-section-title--strong {
+  color: #d2e6c4;
+}
+
+.ecore-section-title--muted {
+  color: #7d8f84;
+}
+
+.ecore-empty,
+.ecore-locked-empty {
+  margin: 0;
+  color: #8fa39a;
+  font-size: 0.62rem;
+  line-height: 1.35;
+}
+
+.ecore-works {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+  gap: 0.32rem;
+  align-items: stretch;
+}
+
+.ecore-work-card {
+  display: grid;
+  grid-template-rows: auto auto minmax(2.7em, 2.7em) auto;
+  gap: 0.16rem;
+  align-content: start;
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+  padding: 0.34rem 0.38rem;
+  border: 1px solid rgba(117, 137, 126, 0.28);
+  border-radius: 8px;
+  background: rgba(8, 14, 16, 0.72);
+  text-align: left;
+}
+
+.ecore-work-card.is-available {
+  border-color: rgba(143, 176, 128, 0.45);
+}
+
+.ecore-work-title {
+  color: #e8f0e9;
+  font-size: 0.68rem;
+  font-weight: 850;
+  line-height: 1.22;
+}
+
+.ecore-work-kind {
+  color: #8fa39a;
+  font-size: 0.56rem;
+  font-weight: 800;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ecore-work-kind--empty {
+  visibility: hidden;
+  min-height: 0.72rem;
+  padding: 0;
+  margin: 0;
+  font-size: 0.56rem;
+  line-height: 1;
+}
+
+.ecore-work-desc {
+  margin: 0;
+  color: #9eb0a5;
+  font-size: 0.58rem;
+  line-height: 1.28;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  align-self: stretch;
+}
+
+.ecore-work-desc--empty {
+  visibility: hidden;
+}
+
+.ecore-work-btn {
+  margin-top: auto;
+  min-height: 26px;
+  padding: 0.18rem 0.36rem;
+  border: 1px solid rgba(143, 176, 128, 0.42);
+  border-radius: 6px;
+  background: rgba(38, 54, 39, 0.55);
+  color: #eef3df;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.58rem;
+  font-weight: 850;
+}
+
+.ecore-work-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.ecore-locked-list {
+  display: grid;
+  gap: 0.2rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ecore-locked-item {
+  display: grid;
+  gap: 0.06rem;
+  padding: 0.24rem 0.32rem;
+  border-radius: 6px;
+  border: 1px solid rgba(88, 102, 96, 0.35);
+  background: rgba(8, 12, 14, 0.45);
+  color: #b4c0b8;
+  font-size: 0.6rem;
+  line-height: 1.3;
+}
+
+.ecore-locked-title {
+  font-weight: 800;
+  color: #c5d2ca;
+}
+
+.ecore-locked-reason {
+  color: #8b9d93;
+  font-size: 0.56rem;
+}
+
+.ecore-locked-hint {
+  margin-top: 0.06rem;
+  color: #7a8f82;
+  font-size: 0.54rem;
+  font-style: italic;
+}
+
+.ecore-problems {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.ecore-problem {
+  margin: 0;
+  padding: 0.22rem 0.32rem;
+  border-radius: 6px;
+  border: 1px solid rgba(109, 126, 116, 0.22);
+  font-size: 0.6rem;
+  line-height: 1.3;
+  min-width: 0;
+}
+
+.ecore-problem.is-ok {
+  border-color: rgba(111, 191, 82, 0.22);
+  background: rgba(12, 22, 16, 0.4);
+  color: #9cb894;
+  font-size: 0.56rem;
+}
+
+.ecore-problems:has(> .ecore-problem.is-ok:only-child) .ecore-problem.is-ok {
+  padding: 0.16rem 0.28rem;
+  border-style: dashed;
+}
+
+.ecore-problem.is-warn {
+  border-color: rgba(212, 168, 75, 0.35);
+  background: rgba(40, 32, 18, 0.45);
+  color: #f0dfc4;
+}
+
+.ecore-problem.is-bad {
+  border-color: rgba(220, 120, 90, 0.38);
+  background: rgba(48, 22, 18, 0.42);
+  color: #ffd8cf;
+}
+
+/* Stage 2A — gather work lane (active + queue) */
+.ecore-work-lane-meta {
+  margin: 0 0 0.28rem;
+  color: #8fa39a;
+  font-size: 0.58rem;
+  line-height: 1.32;
+}
+
+.ecore-work-lane-empty {
+  margin: 0;
+  color: #8fa39a;
+  font-size: 0.62rem;
+  line-height: 1.35;
+}
+
+.ecore-work-lane-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.32rem;
+}
+
+.ecore-work-lane-item {
+  padding: 0.3rem 0.36rem;
+  border-radius: 8px;
+  border: 1px solid rgba(117, 137, 126, 0.28);
+  background: rgba(8, 14, 16, 0.55);
+}
+
+.ecore-work-lane-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.ecore-work-lane-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.28rem;
+  justify-content: flex-end;
+}
+
+.ecore-work-lane-warn {
+  margin: 0 0 0.32rem;
+  padding: 0.28rem 0.36rem;
+  border-radius: 6px;
+  border: 1px solid rgba(212, 168, 75, 0.35);
+  background: rgba(40, 32, 18, 0.4);
+  color: #f0dfc4;
+  font-size: 0.58rem;
+  line-height: 1.32;
+}
+
+.ecore-work-lane-item.is-blocked {
+  border-color: rgba(212, 168, 75, 0.32);
+}
+
+.ecore-work-lane-badge.is-blocked {
+  color: #f0dfc4;
+  border-color: rgba(212, 168, 75, 0.42);
+}
+
+.ecore-work-lane-block-msg {
+  margin: 0.22rem 0 0;
+  color: #d7cab5;
+  font-size: 0.58rem;
+  line-height: 1.35;
+}
+
+.ecore-work-lane-retry {
+  min-height: 24px;
+  padding: 0.12rem 0.36rem;
+  border: 1px solid rgba(143, 176, 128, 0.42);
+  border-radius: 6px;
+  background: rgba(28, 44, 30, 0.55);
+  color: #e8f4df;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.56rem;
+  font-weight: 850;
+}
+
+.ecore-work-lane-name {
+  color: #e2ebe4;
+  font-size: 0.66rem;
+  font-weight: 800;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ecore-work-lane-badge {
+  display: inline-block;
+  margin-bottom: 0.18rem;
+  padding: 0.08rem 0.32rem;
+  border-radius: 999px;
+  font-size: 0.52rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #9eb0a5;
+  border: 1px solid rgba(109, 126, 116, 0.28);
+}
+
+.ecore-work-lane-badge.is-active {
+  color: #d2e6c4;
+  border-color: rgba(143, 176, 128, 0.42);
+}
+
+.ecore-work-lane-bar {
+  margin-top: 0.28rem;
+  height: 6px;
+  border-radius: 4px;
+  background: rgba(20, 28, 30, 0.9);
+  overflow: hidden;
+}
+
+.ecore-work-lane-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #6b9a5e, #a3d28a);
+  transition: width 0.18s ease-out;
+}
+
+.ecore-work-lane-cancel {
+  flex-shrink: 0;
+  min-height: 24px;
+  padding: 0.12rem 0.36rem;
+  border: 1px solid rgba(196, 120, 90, 0.35);
+  border-radius: 6px;
+  background: rgba(40, 22, 18, 0.45);
+  color: #f0d4c8;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.56rem;
+  font-weight: 850;
+}

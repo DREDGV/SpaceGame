@@ -18,7 +18,7 @@ body {
 }
 
 #app {
-  max-width: 1200px;
+  max-width: 1440px;
   margin: 0 auto;
   padding: 1rem;
 }
@@ -50,8 +50,8 @@ body {
 
 .game-logo-header {
   display: block;
-  width: 150px;
-  height: 150px;
+  width: 118px;
+  height: 118px;
   object-fit: contain;
   opacity: 0.92;
   mix-blend-mode: lighten;
@@ -366,6 +366,27 @@ body {
   border: 3px solid #77c66a;
   border-radius: 999px;
   box-shadow: 0 0 10px rgba(119, 198, 106, 0.38);
+}
+
+.map-symbol-target::before {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border: 2px dashed rgba(125, 211, 252, 0.92);
+  border-radius: 999px;
+  box-shadow: 0 0 10px rgba(14, 165, 233, 0.24);
+}
+
+.map-symbol-target::after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 7px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(186, 230, 253, 0.96);
+  box-shadow: 0 0 6px rgba(125, 211, 252, 0.3);
 }
 
 .map-symbol-trail::before {

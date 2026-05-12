@@ -76,11 +76,11 @@ Object.assign(UI.prototype, {
 
     // delegated — widget is re-rendered dynamically
     document.addEventListener("click", (e) => {
-      if (e.target.closest(".js-knowledge-open")) open();
+      if (e.target?.closest?.(".js-knowledge-open")) open();
     });
     document.addEventListener("keydown", (e) => {
       if (e.key !== "Enter" && e.key !== " ") return;
-      if (!e.target.closest(".js-knowledge-open")) return;
+      if (!e.target?.closest?.(".js-knowledge-open")) return;
       e.preventDefault();
       open();
     });
@@ -108,6 +108,18 @@ Object.assign(UI.prototype, {
     const insightsTotal = this.game.getPrologueInsights?.().length || 0;
     const insightsUnlocked = this.game.getUnlockedInsightsCount?.() || 0;
     const researchedCount = Object.keys(this.game.researched || {}).length;
+    const renderKey = [
+      this.game.isPrologueActive() ? "prologue" : "era",
+      count,
+      latestEntry?.id || "",
+      latestEntry?.unlockedIndex || "",
+      insightsUnlocked,
+      insightsTotal,
+      researchedCount,
+    ].join("§");
+
+    if (container.dataset.renderKey === renderKey) return;
+    container.dataset.renderKey = renderKey;
 
     container.innerHTML = `
       <div class="science-card science-card--knowledge${hasEntries ? " has-entries" : ""} js-knowledge-open" role="button" tabindex="0">

@@ -1,0 +1,16 @@
+{
+  "name": "SpaceGame Prototype",
+  "short_name": "SpaceGame",
+  "start_url": "../prototype.html",
+  "display": "standalone",
+  "background_color": "#0b1014",
+  "theme_color": "#0b1014",
+  "icons": [
+    {
+      "src": "assets/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

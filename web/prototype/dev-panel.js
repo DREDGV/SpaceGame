@@ -38,6 +38,7 @@
     "sturdy_branch",
     "fiber_bindings",
     "materials_work_together",
+    "route_marks",
     "dry_tinder",
     "hearth_circle",
     "hearth_needs_reserve",

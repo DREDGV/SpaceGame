@@ -2,8 +2,8 @@
 .building-card,
 .tech-card,
 .recipe-card {
-  padding: 0.5rem;
-  margin-bottom: 0.5rem;
+  padding: 0.42rem;
+  margin-bottom: 0.42rem;
   background: #141620;
   border-radius: 6px;
 }
@@ -307,8 +307,8 @@
 }
 
 .craft-queue-card {
-  margin-bottom: 0.75rem;
-  padding: 0.75rem;
+  margin-bottom: 0.55rem;
+  padding: 0.62rem 0.68rem;
   background: #141620;
   border: 1px solid #2d3341;
   border-radius: 6px;
@@ -335,14 +335,39 @@
 
 .craft-queue-slots {
   display: grid;
-  gap: 0.45rem;
+  gap: 0.32rem;
 }
 
 .craft-queue-slot {
-  padding: 0.55rem 0.6rem;
+  padding: 0.45rem 0.55rem;
   background: #1a1d27;
   border: 1px solid #2f3442;
   border-radius: 6px;
+}
+
+.craft-queue-empty {
+  display: grid;
+  gap: 0.08rem;
+  padding: 0.5rem 0.58rem;
+  border-radius: 7px;
+  border: 1px dashed rgba(129, 140, 248, 0.24);
+  background: rgba(129, 140, 248, 0.05);
+  color: #d5d9e6;
+}
+
+.craft-queue-empty span {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.craft-queue-empty small,
+.craft-queue-free {
+  font-size: 0.68rem;
+  color: #8f97ab;
+}
+
+.craft-queue-free {
+  padding: 0.08rem 0.15rem 0;
 }
 
 .craft-queue-slot.is-empty {
@@ -379,15 +404,15 @@
 }
 
 .craft-queue-state {
-  margin-top: 0.25rem;
-  font-size: 0.72rem;
+  margin-top: 0.18rem;
+  font-size: 0.68rem;
   color: #9ca3af;
 }
 
 .craft-queue-progress {
   width: 100%;
-  height: 5px;
-  margin-top: 0.35rem;
+  height: 4px;
+  margin-top: 0.24rem;
   background: #0f1117;
   border-radius: 999px;
   overflow: hidden;

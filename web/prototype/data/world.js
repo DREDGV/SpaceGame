@@ -88,12 +88,14 @@ Object.assign(GAME_DATA, {
     raw: {
       id: "raw",
       label: "Сырьё",
+      flowLabel: "Вход цепочки",
       description: "Базовые ресурсы для первых цепочек и строительства.",
       order: 1,
     },
     materials: {
       id: "materials",
       label: "Материалы",
+      flowLabel: "Обработка сырья",
       description:
         "Обработанные ресурсы для зданий и производственных рецептов.",
       order: 2,
@@ -101,6 +103,7 @@ Object.assign(GAME_DATA, {
     components: {
       id: "components",
       label: "Компоненты",
+      flowLabel: "Сборочные узлы",
       description:
         "Промежуточные детали для более сложных производственных узлов.",
       order: 3,
@@ -108,6 +111,7 @@ Object.assign(GAME_DATA, {
     tools: {
       id: "tools",
       label: "Инструменты",
+      flowLabel: "Усиление труда",
       description:
         "Оснастка, которая ускоряет ручной труд и усиливает экономику.",
       order: 4,
@@ -115,6 +119,7 @@ Object.assign(GAME_DATA, {
     supplies: {
       id: "supplies",
       label: "Пища и вода",
+      flowLabel: "Поддержка рабочих сил",
       description:
         "То, что поддерживает человека в выходах: еда, вода и короткие запасы для отдыха.",
       order: 5,
@@ -247,9 +252,11 @@ Object.assign(GAME_DATA, {
       icon: `<img src="prototype/assets/icons/water.png" class="game-icon-img" alt="" draggable="false">`,
       color: "#1E90FF",
       description:
-        "Чистая вода из ручья. Восстанавливает водный запас и немного сил при отдыхе.",
+        "Чистая вода из ручья. Базовый набор без ёмкостей считается как 1 л и идёт на водный запас и короткий отдых.",
       storageCategory: "supplies",
       storageSize: 1,
+      amountUnit: "л",
+      amountDisplayDecimals: 1,
       carryWeight: 1.5,
     },
   },

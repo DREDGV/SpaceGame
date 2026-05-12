@@ -40,6 +40,7 @@
 
     if (timestamp - lastWorkTick >= WORK_TICK) {
       game.tickCraftQueue();
+      if (typeof game.tickWorkQueue === "function") game.tickWorkQueue();
       game.tickConstruction();
       game.tickResearch();
       lastWorkTick = timestamp;

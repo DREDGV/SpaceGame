@@ -59,7 +59,7 @@ Object.assign(UI.prototype, {
     };
   },
 
-  _cpBuildRenderKey(state, status, chips, expanded) {
+  _cpBuildRenderKey(state, status, chips, expanded, carriedSignature = "") {
     const trip = state.tripProfile || null;
     const rest = state.restProfile || null;
     const round = (value, digits = 1) =>
@@ -87,6 +87,7 @@ Object.assign(UI.prototype, {
         load: round(state.carry.carriedLoad, 1),
         available: round(state.carry.availableCapacity, 1),
       },
+      carried: carriedSignature,
       restrictionText: state.restrictionText,
       recoverySummary: state.recovery?.summary || "",
       restNote: rest?.note || "",
@@ -527,9 +528,6 @@ Object.assign(UI.prototype, {
       enduranceNote,
       mobilityNote,
     });
-    const visibleOverviewCards = expanded
-      ? overviewCards
-      : overviewCards.slice(0, 2);
     const cargoNote = [carryNote, strengthNote].filter(Boolean).join(". ");
     const capabilityCards = [
       {
@@ -558,32 +556,97 @@ Object.assign(UI.prototype, {
       },
     ];
 
-    const renderKey = this._cpBuildRenderKey(state, status, chips, expanded);
+    const tripInventory = this.game.getTripInventory?.() || {};
+    const carriedEntries = Object.entries(tripInventory)
+      .filter(([, amount]) => Number.isFinite(amount) && amount > 0)
+      .sort(([leftId], [rightId]) => leftId.localeCompare(rightId));
+    const formatCompactAmount = (amount) =>
+      this.formatNumber(amount, Number.isInteger(amount) ? 0 : 1);
+    const carriedSignature = carriedEntries
+      .map(([id, amount]) => `${id}:${formatCompactAmount(amount)}`)
+      .join("|");
+
+    const renderKey = this._cpBuildRenderKey(
+      state,
+      status,
+      chips,
+      expanded,
+      carriedSignature,
+    );
     if (container.dataset.renderKey === renderKey) {
       return;
     }
     container.dataset.renderKey = renderKey;
 
-    const compactRestHtml = !expanded
-      ? rest.canRest
-        ? `<button id="character-rest-compact-btn" class="character-rest-compact-btn" type="button">🛌 ${rest.label}</button>`
-        : rest.remainingMs > 0
-          ? `<span class="character-chip character-chip-cooldown">🛌 ⌛ ${this.formatCooldownMs(rest.remainingMs)}</span>`
-          : ""
+    const carriedPreview = carriedEntries.length
+      ? `${carriedEntries
+          .slice(0, 4)
+          .map(([id, amount]) => {
+            const resource = this.game.data.resources?.[id];
+            return `${resource?.icon || "•"}${formatCompactAmount(amount)}`;
+          })
+          .join(
+            " ",
+          )}${carriedEntries.length > 4 ? ` +${carriedEntries.length - 4}` : ""}`
+      : "Рюкзак пуст";
+    const carriedTooltip = carriedEntries.length
+      ? carriedEntries
+          .map(([id, amount]) => {
+            const resource = this.game.data.resources?.[id];
+            return `${resource?.icon || "•"} ${resource?.name || id}: ${formatCompactAmount(amount)}`;
+          })
+          .join("\n")
+          .replace(/"/g, "&quot;")
+      : "Рюкзак пуст";
+    const modalButtonHtml =
+      '<button id="character-open-modal-btn" class="character-panel-open-btn" type="button">Путевой лист</button>';
+    const compactCargoHtml = !expanded
+      ? `
+        <div class="character-compact-footer">
+          <div class="character-compact-pack" title="${carriedTooltip}">
+            <span class="character-compact-label">Несёт с собой</span>
+            <span class="character-compact-pack-items">${carriedPreview}</span>
+          </div>
+          ${modalButtonHtml}
+        </div>
+      `
       : "";
-
-    const compactTripHtml =
-      !expanded && trip
-        ? `<div class="character-trip-compact">
-          <span class="character-trip-compact-kind">${tripKind}</span>
-          <span>🗺 ${trip.zoneLabel}</span>
-          ${Number.isFinite(trip.load) ? `<span>🎒 ${this.formatNumber(trip.load)} / ${this.formatNumber(trip.carryCapacity)}</span>` : ""}
-          ${Number.isFinite(trip.tripsRequired) && trip.tripsRequired > 1 ? `<span>📦 ${trip.tripsRequired} ходки</span>` : ""}
-          ${trip.pathLabel ? `<span>${trip.pathIcon || "·"} ${trip.pathLabel}</span>` : ""}
-          ${trip.effortLabel ? `<span>${trip.effortLabel}</span>` : ""}
-          ${trip.blockedReason ? `<span class="character-trip-warning">${trip.blockedReason}</span>` : ""}
-        </div>`
+    const stateChipsHtml =
+      expanded && chips.length
+        ? `<div class="character-state-chips">${chips
+            .map(
+              (c) =>
+                `<span class="character-state-chip is-${c.tone}">${c.icon} ${c.label}</span>`,
+            )
+            .join("")}</div>`
         : "";
+    const focusGridHtml = expanded
+      ? `
+        <div class="character-focus-grid">
+          ${overviewCards
+            .map(
+              (card) => `
+            <div class="character-focus-card is-${card.tone}">
+              <div class="character-focus-label">${card.title}</div>
+              <div class="character-focus-value">${card.value}</div>
+              <div class="character-focus-note">${card.note}</div>
+            </div>`,
+            )
+            .join("")}
+        </div>
+      `
+      : "";
+    const chipRowHtml = expanded
+      ? `
+        <div class="character-chip-row">
+          <span class="character-chip chip-secondary">${energyTrendText}</span>
+          <span class="character-chip chip-secondary">${satietyTrendText}</span>
+          <span class="character-chip chip-secondary">${hydrationTrendText}</span>
+          ${recoverySourcesHtml}
+        </div>
+      `
+      : "";
+    const expandedModalButtonHtml = expanded ? modalButtonHtml : "";
 
     container.classList.remove("is-low", "is-critical");
     if (state.condition.id === "exhausted") {
@@ -685,21 +748,13 @@ Object.assign(UI.prototype, {
         </div>
         <div class="character-topline-right">
           ${this._cpBuildReturnButtonHtml()}
-          <span class="character-carry">🎒 ${this.formatNumber(state.carry.capacity)} ед.${carryBonusText}</span>
+          <span class="character-carry" title="Нагрузка ${this.formatNumber(state.carry.carriedLoad)} из ${this.formatNumber(state.carry.capacity)}${carryBonusText}">🎒 ${this.formatNumber(state.carry.carriedLoad)} / ${this.formatNumber(state.carry.capacity)}</span>
           <button id="character-toggle-btn" class="character-toggle-btn" type="button" aria-expanded="${expanded}" title="${expanded ? "Свернуть" : "Развернуть"}">
             ${expanded ? "▾" : "▸"}
           </button>
         </div>
       </div>
-      ${(() => {
-        if (!chips.length) return "";
-        return `<div class="character-state-chips">${chips
-          .map(
-            (c) =>
-              `<span class="character-state-chip is-${c.tone}">${c.icon} ${c.label}</span>`,
-          )
-          .join("")}</div>`;
-      })()}
+      ${stateChipsHtml}
       <div class="character-hud-grid">
         <div class="character-meter">
           <div class="character-meter-top">
@@ -729,26 +784,9 @@ Object.assign(UI.prototype, {
           </div>
         </div>
       </div>
-      <div class="character-focus-grid">
-        ${visibleOverviewCards
-          .map(
-            (card) => `
-          <div class="character-focus-card is-${card.tone}">
-            <div class="character-focus-label">${card.title}</div>
-            <div class="character-focus-value">${card.value}</div>
-            <div class="character-focus-note">${card.note}</div>
-          </div>`,
-          )
-          .join("")}
-      </div>
-      <div class="character-chip-row${expanded ? "" : " is-compact"}">
-        <span class="character-chip chip-secondary">${energyTrendText}</span>
-        <span class="character-chip chip-secondary">${satietyTrendText}</span>
-        <span class="character-chip chip-secondary">${hydrationTrendText}</span>
-        ${recoverySourcesHtml}
-        ${compactRestHtml}
-      </div>
-      ${compactTripHtml}
+      ${compactCargoHtml}
+      ${focusGridHtml}
+      ${chipRowHtml}
       <div class="character-expandable${expanded ? "" : " is-collapsed"}">
         <div class="character-detail-grid">
           <div class="character-detail-main">
@@ -763,8 +801,8 @@ Object.assign(UI.prototype, {
             ${tripHtml}
           </div>
         </div>
+        ${expandedModalButtonHtml}
       </div>
-      <button id="character-open-modal-btn" class="character-panel-open-btn" type="button">👤 Открыть лист персонажа</button>
     `;
 
     if (!container._charModalBound) {

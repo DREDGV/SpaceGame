@@ -60,6 +60,61 @@ Object.assign(UI.prototype, {
     let goalHtml = "";
     const goal = this.game.getCurrentGoal();
     const goalProgress = this.game.getGoalProgress();
+    const currentFocus = this.game.getCurrentFocus?.();
+    const goalChain = this.game.getCurrentGoalChain?.();
+
+    const focusHtml =
+      currentFocus &&
+      !this.game.isOnboardingActive() &&
+      !this.game.shouldShowOnboardingIntro()
+        ? `
+        <div class="era-focus-block is-${currentFocus.tone || "info"}">
+          <div class="era-focus-label">Сейчас главное</div>
+          <div class="era-focus-title">${currentFocus.value || currentFocus.title}</div>
+          <div class="era-focus-note">${currentFocus.note || "Главное узкое место лагеря."}</div>
+        </div>
+      `
+        : "";
+
+    const chainIcon = {
+      done: "✓",
+      active: "↻",
+      current: "→",
+      waiting: "·",
+    };
+    const chainHtml =
+      goalChain?.steps?.length &&
+      !this.game.isOnboardingActive() &&
+      !this.game.shouldShowOnboardingIntro()
+        ? `
+        <div class="era-chain-block">
+          <div class="era-chain-head">
+            <span class="era-chain-label">Цепочка вехи</span>
+            <span class="era-chain-count">${goalChain.progress.done}/${goalChain.progress.total}</span>
+          </div>
+          <div class="era-chain-title">${goalChain.title}</div>
+          ${goalChain.note ? `<div class="era-chain-note">${goalChain.note}</div>` : ""}
+          <div class="era-chain-list">
+            ${goalChain.steps
+              .map(
+                (step) => `
+                  <div class="era-chain-step is-${step.status || "waiting"}">
+                    <span class="era-chain-step-mark">${chainIcon[step.status] || "·"}</span>
+                    <div class="era-chain-step-body">
+                      <div class="era-chain-step-line">
+                        <span class="era-chain-step-title">${step.title}</span>
+                        ${step.meta ? `<span class="era-chain-step-meta">${step.meta}</span>` : ""}
+                      </div>
+                      <div class="era-chain-step-note">${step.note}</div>
+                    </div>
+                  </div>
+                `,
+              )
+              .join("")}
+          </div>
+        </div>
+      `
+        : "";
 
     if (
       this.game.isOnboardingActive() ||
@@ -74,7 +129,7 @@ Object.assign(UI.prototype, {
       goalHtml = `
         <div class="era-goal-block">
           <div class="era-goal-header">
-            <span class="era-goal-label">Цель ${goalProgress.done + 1}/${goalProgress.total}:</span>
+            <span class="era-goal-label">Веха ${goalProgress.done + 1}/${goalProgress.total}:</span>
             <span class="era-goal-text">${goal.text}</span>
           </div>
           ${goal.hint ? `<div class="era-goal-hint">💡 ${goal.hint}</div>` : ""}
@@ -95,6 +150,8 @@ Object.assign(UI.prototype, {
       <div class="era-milestones">
         ${milestonesHtml}
       </div>
+      ${focusHtml}
+      ${chainHtml}
       ${goalHtml}
     `;
   },

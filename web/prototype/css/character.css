@@ -279,6 +279,24 @@
   margin-bottom: 0.28rem;
 }
 
+.panel-character.is-compact-view .character-quick-actions {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.3rem;
+  margin: 0.26rem 0 0.28rem;
+}
+
+.panel-character.is-compact-view .character-quick-action {
+  padding: 0.34rem 0.42rem;
+}
+
+.panel-character.is-compact-view .character-quick-action-title {
+  font-size: 0.66rem;
+}
+
+.panel-character.is-compact-view .character-quick-action-meta {
+  font-size: 0.6rem;
+}
+
 .panel-character.is-compact-view .character-panel-open-btn {
   width: auto;
   margin-top: 0;
@@ -521,6 +539,74 @@
   color: #94a3b8;
 }
 
+.character-quick-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 0.36rem;
+  margin: 0.3rem 0 0.28rem;
+}
+
+.character-quick-action {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.08rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 10px;
+  border: 1px solid rgba(71, 85, 105, 0.35);
+  background: linear-gradient(180deg, rgba(18, 24, 37, 0.6), rgba(12, 18, 28, 0.78));
+  color: #f3f4f6;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    background 0.16s ease;
+}
+
+.character-quick-action:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.18);
+}
+
+.character-quick-action.is-water {
+  border-color: rgba(56, 189, 248, 0.28);
+  background: linear-gradient(180deg, rgba(12, 43, 60, 0.72), rgba(10, 24, 36, 0.82));
+}
+
+.character-quick-action.is-food {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: linear-gradient(180deg, rgba(59, 35, 13, 0.72), rgba(29, 19, 10, 0.84));
+}
+
+.character-quick-action.is-rest {
+  border-color: rgba(251, 191, 36, 0.3);
+  background: linear-gradient(180deg, rgba(56, 43, 16, 0.72), rgba(27, 20, 9, 0.84));
+}
+
+.character-quick-action.is-disabled,
+.character-quick-action:disabled {
+  opacity: 0.58;
+  cursor: default;
+  transform: none;
+  box-shadow: none;
+}
+
+.character-quick-action-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: inherit;
+}
+
+.character-quick-action-meta {
+  font-size: 0.63rem;
+  line-height: 1.2;
+  color: #cbd5e1;
+}
+
 .character-expandable {
   overflow: hidden;
   max-height: 920px;
@@ -705,7 +791,7 @@
   text-align: center;
 }
 
-/* Кнопка "Вернуться в лагерь" / "Выгрузить рюкзак" в topline */
+/* Кнопка "Вернуться в лагерь" / "Выгрузить ношу" в topline */
 .character-return-btn {
   flex-shrink: 0;
   padding: 0.32rem 0.62rem;
@@ -803,6 +889,10 @@
 }
 
 @media (max-width: 540px) {
+  .panel-character.is-compact-view .character-quick-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .panel-character.is-compact-view .character-focus-grid {
     grid-template-columns: 1fr;
   }

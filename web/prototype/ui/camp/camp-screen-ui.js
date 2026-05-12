@@ -111,11 +111,230 @@ Object.assign(UI.prototype, {
 
   /** Calculate camp development stage based on what's built */
 
+  _getCampCorePresentation() {
+    const b = this.game.buildings || {};
+    const hasShelter = !!b.rest_tent;
+    const hasCampfire = !!b.campfire;
+
+    if (hasCampfire) {
+      return {
+        corePhase: "hearth",
+        coreTitle: "Очаг лагеря",
+        coreLabel: "Центр",
+        coreMeta: "удержанный огонь",
+        coreSidebar: "Сердце поселения. Здесь держится общий огонь.",
+        coreDescription:
+          "Центр уже держится на первом очаге: сюда возвращаются за теплом, светом и общим ритмом стоянки.",
+      };
+    }
+
+    if (hasShelter) {
+      return {
+        corePhase: "prepared",
+        coreTitle: "Освоенный центр",
+        coreLabel: "Центр",
+        coreMeta: "место под очаг",
+        coreSidebar: "Жильё поставлено; центр готовят под очаг.",
+        coreDescription:
+          "Жильё уже стоит рядом, а в центре остаётся расчищенное место с колышками и жердями: здесь готовят будущий очаг.",
+      };
+    }
+
+    return {
+      corePhase: "claimed",
+      coreTitle: "Начало лагеря",
+      coreLabel: "Центр",
+      coreMeta: "знак освоения",
+      coreSidebar: "Расчищенная площадка, жерди и первые брёвна.",
+      coreDescription:
+        "Пока это не постройка, а первый знак освоения: несколько жердей, брёвна и расчищенная земля, откуда начнётся планировка лагеря.",
+    };
+  },
+
+  _renderCampCoreIcon(className = "", presentation = null) {
+    const core = presentation || this._getCampCorePresentation();
+    const phase = core.corePhase || "claimed";
+    return `<span class="${className} cs-core-marker cs-core-marker--${phase}" aria-hidden="true">
+      <span class="cs-core-marker-ground"></span>
+      <span class="cs-core-marker-log cs-core-marker-log--a"></span>
+      <span class="cs-core-marker-log cs-core-marker-log--b"></span>
+      <span class="cs-core-marker-stake cs-core-marker-stake--a"></span>
+      <span class="cs-core-marker-stake cs-core-marker-stake--b"></span>
+      <span class="cs-core-marker-flag"></span>
+    </span>`;
+  },
+
+  _getCampBuildPlan() {
+    const built = this.game.buildings || {};
+    const active = this.game.getConstructionState?.() || null;
+    const steps = [
+      {
+        id: "camp_core",
+        icon: "🪵",
+        title: "Отметить центр",
+        note: "Место занято и расчищено",
+        done: true,
+      },
+      {
+        id: "rest_tent",
+        buildingId: "rest_tent",
+        fallbackIcon: "⛺",
+        title: "Поставить жильё",
+        note: "Люди могут оставаться дольше",
+        blockedBy: [],
+      },
+      {
+        id: "campfire",
+        buildingId: "campfire",
+        fallbackIcon: "🔥",
+        title: "Закрепить костёр",
+        note: "Центр становится очагом",
+        blockedBy: ["rest_tent"],
+      },
+      {
+        id: "storage",
+        buildingId: "storage",
+        fallbackIcon: "📦",
+        title: "Собрать хранилище",
+        note: "Запас перестаёт расползаться",
+        blockedBy: ["campfire"],
+      },
+      {
+        id: "workshop",
+        buildingId: "workshop",
+        fallbackIcon: "🔧",
+        title: "Выделить рабочее место",
+        note: "Дальше начинается ремесленная цепочка",
+        blockedBy: ["storage"],
+        techId: "labor_division",
+      },
+    ];
+
+    return steps.map((step) => {
+      const building = step.buildingId
+        ? this.data.buildings?.[step.buildingId]
+        : null;
+      const copy = building ? this.getBuildingCopy(building) : null;
+      const isDone = step.done || !!built[step.buildingId];
+      const isActive = active?.buildingId === step.buildingId;
+      const missing = (step.blockedBy || []).filter((id) => !built[id]);
+      const missingBuildingLabels = missing.map((id) => {
+        const def = this.data.buildings?.[id];
+        const buildingCopy = def ? this.getBuildingCopy(def) : null;
+        return (
+          buildingCopy?.prologueName || buildingCopy?.name || def?.name || id
+        );
+      });
+      const missingTech =
+        step.techId && !this.game.researched?.[step.techId]
+          ? [step.techId]
+          : [];
+      const missingTechLabels = missingTech.map(
+        (id) =>
+          this.data.tech?.[id]?.name || this.data.research?.[id]?.name || id,
+      );
+      const isLocked =
+        !isDone && !isActive && (missing.length > 0 || missingTech.length > 0);
+      const status = isDone
+        ? "done"
+        : isActive
+          ? "active"
+          : isLocked
+            ? "locked"
+            : "next";
+      const statusLabel = {
+        done: "готово",
+        active: "строится",
+        locked: "ждёт",
+        next: "можно начать",
+      }[status];
+      const reason = isDone
+        ? `Закреплено: ${step.note}`
+        : isActive
+          ? `Идёт строительство: ${step.note}`
+          : missingBuildingLabels.length
+            ? `После: ${missingBuildingLabels.join(", ")}`
+            : missingTechLabels.length
+              ? `Нужна идея: ${missingTechLabels.join(", ")}`
+              : step.note;
+      return {
+        ...step,
+        icon: copy?.icon || step.icon || step.fallbackIcon || "◇",
+        title: copy?.prologueName || copy?.name || step.title,
+        done: isDone,
+        active: isActive,
+        locked: isLocked,
+        missing,
+        missingTech,
+        status,
+        statusLabel,
+        reason,
+      };
+    });
+  },
+
+  _renderCampBuildPlan() {
+    const plan = this._getCampBuildPlan();
+    const doneCount = plan.filter((step) => step.done).length;
+    const allDone = doneCount >= plan.length;
+    const nextStep =
+      plan.find((step) => !step.done && !step.locked) ||
+      plan.find((step) => !step.done) ||
+      plan[plan.length - 1];
+    const currentKicker = allDone
+      ? "База закреплена"
+      : nextStep.active
+        ? "Идёт строительство"
+        : nextStep.locked
+          ? "Ожидает условие"
+          : "Следующий шаг";
+    const currentTitle = allDone ? "База закреплена" : nextStep.title;
+    const currentNote = allDone
+      ? "Жильё, огонь, запас и рабочее место собраны в устойчивую основу лагеря."
+      : nextStep.reason || nextStep.note;
+    const currentClass = allDone ? "is-complete" : `is-${nextStep.status}`;
+    return `
+      <div class="cs-build-plan" aria-label="Порядок развития лагеря">
+        <div class="cs-build-plan-head">
+          <span>Основание лагеря</span>
+          <strong>${doneCount}/${plan.length}</strong>
+        </div>
+        <div class="cs-build-plan-current ${currentClass}" data-plan-step-id="${allDone ? "" : nextStep.id}" data-plan-building-id="${allDone ? "" : nextStep.buildingId || ""}" role="button" tabindex="0">
+          <span class="cs-build-plan-current-icon">${allDone ? "✓" : nextStep.icon}</span>
+          <span class="cs-build-plan-current-body">
+            <span class="cs-build-plan-current-kicker">${currentKicker}</span>
+            <strong>${currentTitle}</strong>
+            <em>${currentNote}</em>
+          </span>
+          <span class="cs-build-plan-current-badge">${allDone ? "готово" : nextStep.statusLabel}</span>
+        </div>
+        <div class="cs-build-plan-steps">
+          ${plan
+            .map((step, index) => {
+              const stateClass = `is-${step.status}`;
+              return `
+                <div class="cs-build-plan-step ${stateClass}" title="${step.reason || step.note}" data-plan-step-id="${step.id}" data-plan-building-id="${step.buildingId || ""}" role="button" tabindex="0">
+                  <span class="cs-build-plan-index">${index + 1}</span>
+                  <span class="cs-build-plan-icon">${step.icon}</span>
+                  <span class="cs-build-plan-body">
+                    <span class="cs-build-plan-title">${step.title}</span>
+                    <span class="cs-build-plan-note">${step.statusLabel} · ${step.reason}</span>
+                  </span>
+                </div>
+              `;
+            })
+            .join("")}
+        </div>
+      </div>
+    `;
+  },
+
   _getCampStage() {
     const b = this.game.buildings;
     const builtCount = Object.keys(b).length;
     const hasShelter = !!b.rest_tent;
     const hasCampfire = !!b.campfire;
+    const hasStorage = !!b.storage;
 
     // Sum building levels (cap 5 per building) for the "mature" stage.
     let totalLevels = 0;
@@ -126,10 +345,12 @@ Object.assign(UI.prototype, {
     if (hasCampfire && builtCount >= 4 && totalLevels >= 10)
       return { id: 5, label: "Зрелый лагерь", icon: "🏘️" };
     if (hasCampfire && builtCount >= 4)
-      return { id: 4, label: "Производственный лагерь", icon: "🏘️" };
+      return { id: 5, label: "Производственный лагерь", icon: "🏘️" };
+    if (hasCampfire && hasStorage)
+      return { id: 4, label: "Лагерь с запасами", icon: "📦" };
     if (hasCampfire) return { id: 3, label: "Лагерь с очагом", icon: "🔥" };
-    if (hasShelter) return { id: 2, label: "Жилой лагерь", icon: "⛺" };
-    return { id: 1, label: "Основанная стоянка", icon: "🏕️" };
+    if (hasShelter) return { id: 2, label: "Жилая стоянка", icon: "⛺" };
+    return { id: 1, label: "Освоенная стоянка", icon: "🪵" };
   },
 
   renderCampScreen({ force = false } = {}) {
@@ -204,17 +425,28 @@ Object.assign(UI.prototype, {
     if (nameEl) {
       const settings = this.game.getCampSettings();
       const stage = this._getCampStage();
+      const core = this._getCampCorePresentation();
       const name = settings.name ? settings.name : "Лагерь";
 
-      // Stage dots (4 stages)
+      // Stage dots (5 stages)
       let dots = "";
-      for (let i = 1; i <= 4; i++) {
+      for (let i = 1; i <= 5; i++) {
         const cls =
           i < stage.id ? "is-done" : i === stage.id ? "is-active" : "";
         dots += `<span class="cs-topbar-stage-dot ${cls}"></span>`;
       }
 
       nameEl.innerHTML = `${stage.icon} ${name} <span class="cs-topbar-stage">${dots} ${stage.label}</span>`;
+
+      const sidebarIcon = document.querySelector(".cs-sidebar-icon");
+      if (sidebarIcon) {
+        sidebarIcon.innerHTML =
+          stage.id <= 2
+            ? this._renderCampCoreIcon("cs-sidebar-core-icon", core)
+            : stage.icon;
+      }
+      const sidebarSubtitle = document.querySelector(".cs-sidebar-subtitle");
+      if (sidebarSubtitle) sidebarSubtitle.textContent = core.coreSidebar;
 
       const plots = this._getCampPlots?.() || [];
       const usage = plots.reduce(
@@ -433,6 +665,7 @@ Object.assign(UI.prototype, {
 
   _getCampPlots() {
     const mapState = this.game.getCampMapState?.();
+    const core = this._getCampCorePresentation();
     const visibleStates = new Set(["camp", "developed", "discovered"]);
     // Скрываем «костёр» как опцию строительства на любых клетках, кроме самой
     // клетки лагеря — иначе после основания на windbreak/cache_site остаётся
@@ -581,9 +814,12 @@ Object.assign(UI.prototype, {
           kind,
           roleLabel,
           visibleBuildOptions,
+          corePresentation: tile.state === "camp" ? core : null,
+          description:
+            tile.state === "camp" ? core.coreDescription : tile.description,
           title:
             tile.state === "camp"
-              ? "Центр лагеря"
+              ? core.coreTitle
               : tile.shortLabel || tile.name || tile.id,
         };
       })
@@ -713,13 +949,17 @@ Object.assign(UI.prototype, {
     if (scene.dataset.renderKey === renderKey) return;
     scene.dataset.renderKey = renderKey;
 
+    const gridCellsHtml = Array.from(
+      { length: 24 },
+      () => `<span class="cs-scene-cell"></span>`,
+    ).join("");
+
     scene.innerHTML = `
       <div class="cs-scene-atmosphere" aria-hidden="true"></div>
-      <div class="cs-scene-path cs-scene-path--a" aria-hidden="true"></div>
-      <div class="cs-scene-path cs-scene-path--b" aria-hidden="true"></div>
+      <div class="cs-scene-grid" aria-hidden="true">${gridCellsHtml}</div>
       <div class="cs-scene-label">
         <span>${stage.icon} ${stage.label}</span>
-        <strong>${plots.reduce((sum, plot) => sum + (plot.buildUsage?.used || 0), 0)}/${plots.reduce((sum, plot) => sum + (plot.buildUsage?.capacity || 0), 0)}</strong>
+        <strong>место ${plots.reduce((sum, plot) => sum + (plot.buildUsage?.used || 0), 0)}/${plots.reduce((sum, plot) => sum + (plot.buildUsage?.capacity || 0), 0)}</strong>
       </div>
     `;
     for (const plot of plots) {
@@ -777,17 +1017,24 @@ Object.assign(UI.prototype, {
           `cs-plot-icon${first.constructing ? " is-constructing" : ""}`,
         );
       } else {
-        // Show ghost icon for first buildable option, else generic "+"
-        const ghostId = plot.visibleBuildOptions[0];
-        const ghostBuilding = ghostId ? this.data.buildings[ghostId] : null;
-        const ghostCopy = ghostBuilding
-          ? this.getBuildingCopy(ghostBuilding)
-          : null;
-        mainIconHtml = this._renderCampBuildingIcon(
-          ghostId || "",
-          ghostCopy?.icon || "+",
-          "cs-plot-icon is-ghost",
-        );
+        if (plot.kind === "center" && plot.corePresentation) {
+          mainIconHtml = this._renderCampCoreIcon(
+            "cs-plot-icon",
+            plot.corePresentation,
+          );
+        } else {
+          // Show ghost icon for first buildable option, else generic "+"
+          const ghostId = plot.visibleBuildOptions[0];
+          const ghostBuilding = ghostId ? this.data.buildings[ghostId] : null;
+          const ghostCopy = ghostBuilding
+            ? this.getBuildingCopy(ghostBuilding)
+            : null;
+          mainIconHtml = this._renderCampBuildingIcon(
+            ghostId || "",
+            ghostCopy?.icon || "+",
+            "cs-plot-icon is-ghost",
+          );
+        }
       }
 
       // Stacked extra icon count badge (if > 1 building)
@@ -799,7 +1046,11 @@ Object.assign(UI.prototype, {
           : "";
 
       // Bottom label: name of first building, or role for empty plot
-      const labelText = !isEmpty ? buildingEntries[0].name : plot.roleLabel;
+      const labelText = !isEmpty
+        ? buildingEntries[0].name
+        : plot.kind === "center" && plot.corePresentation
+          ? plot.corePresentation.coreLabel
+          : plot.roleLabel;
 
       // Capacity bar strip (compact, below icon)
       const capPct = Math.round(Math.min(1, usage.ratio || 0) * 100);
@@ -807,6 +1058,8 @@ Object.assign(UI.prototype, {
       // Native tooltip with role / building / capacity / hint
       const tipParts = [plot.roleLabel];
       if (!isEmpty) tipParts.push(buildingEntries[0].name);
+      else if (plot.kind === "center" && plot.corePresentation)
+        tipParts.push(plot.corePresentation.coreDescription);
       else if (plot.visibleBuildOptions.length)
         tipParts.push(
           "Можно построить: " +
@@ -890,32 +1143,48 @@ Object.assign(UI.prototype, {
       if (plot.construction) item.classList.add("is-constructing");
       if (!buildingCount) item.classList.add("is-empty");
 
-      const icon =
-        plot.state === "camp"
-          ? "🏕️"
-          : plot.placedBuildings?.[0]
-            ? this.getBuildingCopy(plot.placedBuildings[0].def).icon
-            : plot.visibleBuildOptions?.[0] &&
-                this.data.buildings[plot.visibleBuildOptions[0]]
-              ? this.getBuildingCopy(
-                  this.data.buildings[plot.visibleBuildOptions[0]],
-                ).icon
-              : "◇";
-      const iconBuildingId =
-        plot.placedBuildings?.[0]?.buildingId ||
-        plot.visibleBuildOptions?.[0] ||
-        "";
-      const iconMarkup =
-        plot.state === "camp"
-          ? `<span class="cs-dock-icon">🏕️</span>`
-          : this._renderCampBuildingIcon(iconBuildingId, icon, "cs-dock-icon");
+      const placedEntry = plot.placedBuildings?.[0] || null;
+      const constructionEntry = plot.construction || null;
+      let iconMarkup = "";
+      if (placedEntry) {
+        const copy = this.getBuildingCopy(placedEntry.def);
+        iconMarkup = this._renderCampBuildingIcon(
+          placedEntry.buildingId,
+          copy.icon,
+          "cs-dock-icon",
+        );
+      } else if (constructionEntry) {
+        iconMarkup = this._renderCampBuildingIcon(
+          constructionEntry.buildingId,
+          constructionEntry.icon,
+          "cs-dock-icon is-constructing",
+        );
+      } else if (plot.kind === "center" && plot.corePresentation) {
+        iconMarkup = this._renderCampCoreIcon(
+          "cs-dock-icon",
+          plot.corePresentation,
+        );
+      } else {
+        const iconBuildingId = plot.visibleBuildOptions?.[0] || "";
+        const building = iconBuildingId
+          ? this.data.buildings[iconBuildingId]
+          : null;
+        const copy = building ? this.getBuildingCopy(building) : null;
+        iconMarkup = this._renderCampBuildingIcon(
+          iconBuildingId,
+          copy?.icon || "◇",
+          "cs-dock-icon",
+        );
+      }
       const meta = buildingCount
         ? `${plot.roleLabel} · ${buildingCount} постр.`
-        : `${plot.roleLabel} · свободно ${usage.free ?? usage.capacity}`;
+        : plot.kind === "center" && plot.corePresentation
+          ? `${plot.roleLabel} · ${plot.corePresentation.coreMeta}`
+          : `${plot.roleLabel} · свободно ${usage.free ?? usage.capacity}`;
 
-      const dockTitle = plot.placedBuildings?.[0]
-        ? this.getBuildingCopy(plot.placedBuildings[0].def).name
-        : plot.construction?.name || plot.title;
+      const dockTitle = placedEntry
+        ? this.getBuildingCopy(placedEntry.def).name
+        : constructionEntry?.name || plot.title;
       item.innerHTML = `
         ${iconMarkup}
         <span class="cs-dock-text">
@@ -923,7 +1192,7 @@ Object.assign(UI.prototype, {
           <span class="cs-dock-meta">${meta}</span>
           <span class="cs-dock-capacity-bar"><span style="width:${Math.round(Math.min(1, usage.ratio || 0) * 100)}%"></span></span>
         </span>
-        <span class="cs-dock-status is-empty">${usage.used}/${usage.capacity}</span>
+        <span class="cs-dock-status is-empty" title="Занято места на участке">место ${usage.used}/${usage.capacity}</span>
       `;
       item.addEventListener("click", () => {
         this._playCampClickSound();
@@ -974,7 +1243,8 @@ Object.assign(UI.prototype, {
         <div class="cs-detail-intro">
           <div class="cs-detail-intro-stage">${this._getCampStage().icon} ${this._getCampStage().label}</div>
           <h3 class="cs-detail-intro-title">Планировка лагеря</h3>
-          <p class="cs-detail-intro-text">Каждый гекс теперь является участком с вместимостью. Постройки занимают место внутри участка, но не требуют отдельной внутренней сетки.</p>
+          <p class="cs-detail-intro-text">Сетка на сцене показывает планировочные зоны лагеря: где уже занято место, где остаётся запас и какую роль выполняет участок.</p>
+          ${this._renderCampBuildPlan()}
           <div class="cs-detail-intro-hint"><span class="cs-detail-intro-hint-icon">◇</span><span>Занято: <strong>${usage.used}/${usage.capacity}</strong>. Выберите участок слева или в сцене.</span></div>
         </div>`;
       content.classList.remove("cs-detail-content--visible");
@@ -993,7 +1263,6 @@ Object.assign(UI.prototype, {
     // ── Resolve header: building name/icon OR terrain name when empty ──────
     const firstEntry = plot.placedBuildings?.[0] || null;
     const roleIcons = {
-      center: "🏕️",
       shelter: "🏠",
       hearth: "🔥",
       storage: "🪨",
@@ -1026,6 +1295,13 @@ Object.assign(UI.prototype, {
         : icon || "◇";
       detHeaderTitle = name;
       detHeaderDesc = plot.description || "";
+    } else if (plot.kind === "center" && plot.corePresentation) {
+      detHeaderIconHtml = this._renderCampCoreIcon(
+        "cs-core-marker--detail",
+        plot.corePresentation,
+      );
+      detHeaderTitle = plot.corePresentation.coreTitle;
+      detHeaderDesc = plot.corePresentation.coreDescription;
     } else {
       detHeaderIconHtml = roleIcons[plot.kind] || "◇";
       detHeaderTitle = plot.title;
@@ -1105,6 +1381,7 @@ Object.assign(UI.prototype, {
       builtSig,
       constructionBucket,
       plot.visibleBuildOptions.join(","),
+      plot.corePresentation?.corePhase || "",
       `${usage.used}/${usage.capacity}`,
       affordSig.join("|"),
     ].join("§");
@@ -1120,6 +1397,7 @@ Object.assign(UI.prototype, {
         </div>
       </div>
       <div class="cs-det-desc">${detHeaderDesc}</div>
+      ${plot.kind === "center" ? this._renderCampBuildPlan() : ""}
       <div class="cs-det-section">
         <div class="cs-det-section-title">Вместимость участка</div>
         <div class="cs-plot-detail-capacity">
@@ -1132,7 +1410,7 @@ Object.assign(UI.prototype, {
       ${
         buildingRows
           ? `<div class="cs-det-section"><div class="cs-det-section-title">Постройки</div>${buildingRows}</div>`
-          : `<div class="cs-det-section"><div class="cs-det-section-title">Постройки</div><div class="cs-det-blocker">Участок пока свободен.</div></div>`
+          : `<div class="cs-det-section"><div class="cs-det-section-title">Постройки</div><div class="cs-det-blocker">${plot.kind === "center" && plot.corePresentation ? "Здесь пока только знак освоения; постоянная постройка появится, когда вы закрепите очаг." : "Участок пока свободен."}</div></div>`
       }
       ${
         buildOptionsHtml
@@ -1201,7 +1479,67 @@ Object.assign(UI.prototype, {
     `;
   },
 
+  _focusCampPlanStep(stepId = "", buildingId = "") {
+    const plots = this._getCampPlots?.() || [];
+    const isCoreStep = stepId === "camp_core" || !buildingId;
+    let targetPlot = null;
+
+    if (isCoreStep) {
+      targetPlot = plots.find((plot) => plot.kind === "center") || null;
+    }
+
+    if (!targetPlot && buildingId) {
+      targetPlot =
+        plots.find((plot) =>
+          plot.placedBuildings?.some(
+            (entry) => entry.buildingId === buildingId,
+          ),
+        ) ||
+        plots.find((plot) => plot.construction?.buildingId === buildingId) ||
+        plots.find((plot) => plot.visibleBuildOptions?.includes(buildingId)) ||
+        null;
+    }
+
+    if (!targetPlot && buildingId) {
+      const fallbackKind = {
+        campfire: "center",
+        rest_tent: "shelter",
+        storage: "storage",
+        workshop: "workshop",
+      }[buildingId];
+      targetPlot =
+        (fallbackKind && plots.find((plot) => plot.kind === fallbackKind)) ||
+        null;
+    }
+
+    if (!targetPlot?.id) return false;
+    this._selectedCampSlot = targetPlot.id;
+    this.game.selectCampTile?.(targetPlot.id);
+    this._renderCampScene();
+    this._renderCampDock();
+    this._renderCampDetail();
+    return true;
+  },
+
   _bindCampDetailActions(container, slot = null) {
+    container.querySelectorAll("[data-plan-step-id]").forEach((planStep) => {
+      const focusStep = () => {
+        this._focusCampPlanStep(
+          planStep.dataset.planStepId || "",
+          planStep.dataset.planBuildingId || "",
+        );
+      };
+      planStep.addEventListener("click", (e) => {
+        e.stopPropagation();
+        focusStep();
+      });
+      planStep.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        focusStep();
+      });
+    });
+
     container.querySelectorAll("[data-build-id]").forEach((buildBtn) => {
       buildBtn.addEventListener("click", () => {
         const tileId = buildBtn.dataset.tileId;

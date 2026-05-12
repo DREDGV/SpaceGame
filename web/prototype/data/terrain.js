@@ -117,6 +117,102 @@ Object.assign(GAME_DATA, {
       "Небольшая зона вокруг стоянки. Это не карта мира, а первое пространство, где лагерь рождается из случайных находок.",
     interactionHint:
       "Клетки различаются по запасу, тяжести пути и наличию троп. Ближние выходы проще, а дальние стоит связывать с лагерем удобным проходом.",
+    expansion: {
+      currentRadius: 4,
+      preparedRadius: 6,
+      metersPerHex: 20,
+      rings: {
+        5: {
+          id: "outer_woodland",
+          label: "Дальняя опушка",
+          biome: "woodland_edge",
+          unlockHint:
+            "Станет полноценной зоной после устойчивого костра, запаса воды и первых троп.",
+          dominantTerrains: ["grove", "brush", "grass"],
+          resourceBias: {
+            wood: 1.25,
+            fiber: 1.1,
+            food: 1.05,
+            stone: 0.85,
+            water: 0.75,
+          },
+          futureResourceHints: ["смола", "лыко", "орехи", "сухостой"],
+          wildlifeHints: ["следы зайца", "птичьи гнёзда", "оленья тропа"],
+          eventSeeds: ["звериная тропа", "потерянная связка", "ночной шорох"],
+          surveySignals: [
+            "сломанные ветки",
+            "лёгкие следы",
+            "просветы между деревьями",
+          ],
+          landmarkSlots: [
+            "windfall_grove",
+            "animal_trail",
+            "old_watch_stone",
+            "dry_shelter_hollow",
+          ],
+          hazardTags: ["fatigue", "lost_path", "late_return"],
+          notes:
+            "Кольцо для первых дальних решений: больше древесины и пищи, но цена выхода должна заметно расти.",
+        },
+        6: {
+          id: "far_lowland_ridge",
+          label: "Предел знакомой земли",
+          biome: "mixed_lowland_ridge",
+          unlockHint:
+            "Открывать после появления устойчивой логистики: тропы, хранение и распределение труда.",
+          dominantTerrains: ["water", "ridge", "clay", "grove"],
+          resourceBias: {
+            water: 1.2,
+            clay: 1.2,
+            stone: 1.15,
+            food: 0.9,
+            wood: 0.9,
+          },
+          futureResourceHints: [
+            "глина",
+            "кремень",
+            "чистая вода",
+            "смолистая древесина",
+          ],
+          wildlifeHints: ["копытные у воды", "следы хищника", "рыбьи всплески"],
+          eventSeeds: [
+            "гроза на гребне",
+            "размытый берег",
+            "чужой кострищный круг",
+          ],
+          surveySignals: ["холодный ключ", "красная земля", "дальний дым"],
+          landmarkSlots: [
+            "cold_spring_chain",
+            "flint_scatter",
+            "red_clay_cut",
+            "storm_felled_trees",
+          ],
+          hazardTags: ["exhaustion", "wet_ground", "route_commitment"],
+          notes:
+            "Кольцо для следующей эпохи карты: специализированные ресурсы, длинные маршруты и обязательная подготовка пути.",
+        },
+      },
+      frontierGates: [
+        {
+          id: "stable_camp_core",
+          opensRadius: 5,
+          requiresAll: ["campfire"],
+          requiresAny: ["storage", "rest_tent", "communal_memory"],
+          requiresPathLevel: "footpath",
+          requiresPathCount: 1,
+          label: "Устойчивое ядро лагеря",
+        },
+        {
+          id: "organized_logistics",
+          opensRadius: 6,
+          requiresAll: ["storage"],
+          requiresAny: ["labor_division", "kiln", "mining"],
+          requiresPathLevel: "stable_footpath",
+          requiresPathCount: 2,
+          label: "Организованная логистика",
+        },
+      ],
+    },
     tiles: {
       camp_clearing: {
         id: "camp_clearing",
@@ -757,6 +853,8 @@ Object.assign(GAME_DATA, {
         water: { wood: 1, fiber: 1 },
       },
       energyCost: 1,
+      useProgressThreshold: 4,
+      autoTrailRequiresCampfire: true,
     },
   },
 
