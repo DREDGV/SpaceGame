@@ -7,6 +7,22 @@
 - Main entry point: `web/prototype.html`
 - Runtime model: plain browser scripts, `GAME_DATA` bootstrap in `game-data.js` plus layered `Object.assign(...)` overrides from split data files.
 
+## Design Spine / общий костяк SpaceGame
+
+В проектировочной рамке **SpaceGame** трактуется как **экономическая стратегия развития цивилизации** (от выживания до космоса), с одной сквозной экономической осью, а не как набор несвязанных мини-игр.
+
+- **Текущий браузерный прототип** в основном покрывает **слой эпох A–B** (раннее выживание и стоянка / ранняя община) по карте эпох; это **не** вся задуманная игра, а ранний слой костяка.
+- **Дальнейшие задачи** следует сверять с **картой эпох A–G** и **матрицей ключевых систем**, чтобы не углублять primitive без моста к следующему масштабу управления.
+- **Новые фичи** без явного места в матрице эпох **A–G** (и без опоры в документах ниже) **не следует** включать в ближайшие спринты, пока рамка не согласована с костяком.
+
+Документы рамки (корень репозитория):
+
+- [`SPACEGAME_DESIGN_SPINE.md`](../SPACEGAME_DESIGN_SPINE.md)
+- [`ERA_PROGRESSION_MAP.md`](../ERA_PROGRESSION_MAP.md)
+- [`CORE_SYSTEMS_MATRIX.md`](../CORE_SYSTEMS_MATRIX.md)
+- [`GAME_LOOP_EVOLUTION.md`](../GAME_LOOP_EVOLUTION.md)
+- [`CURRENT_PROTOTYPE_GAP_ANALYSIS.md`](../CURRENT_PROTOTYPE_GAP_ANALYSIS.md)
+
 ## How The Prototype Runs
 
 1. Open `web/prototype.html` in a browser.
@@ -60,6 +76,11 @@ Notes:
 
 ### ACTUAL
 
+- `SPACEGAME_DESIGN_SPINE.md` (repo root — design spine)
+- `ERA_PROGRESSION_MAP.md`
+- `CORE_SYSTEMS_MATRIX.md`
+- `GAME_LOOP_EVOLUTION.md`
+- `CURRENT_PROTOTYPE_GAP_ANALYSIS.md`
 - `CHANGELOG.md`
 - `AI_CONTEXT.md`
 - `LOCAL_CAMP_MAP_SYSTEM.md`
