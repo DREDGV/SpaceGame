@@ -87,6 +87,8 @@
     if (tileId) out.tileId = tileId;
     const rid = options.resourceId;
     if (typeof rid === "string" && rid.length) out.resourceId = rid;
+    if (typeof options.source === "string" && options.source.length)
+      out.source = options.source;
     return out;
   };
 
@@ -258,7 +260,9 @@
     if (elapsed < dur) return;
 
     const gatherId = aw.gatherId;
-    const opts = aw.options || {};
+    const optsRaw = aw.options || {};
+    const opts = { ...optsRaw };
+    delete opts.source;
     const workId = aw.workId;
     const blockedProgressMs = Math.max(0, dur - elapsed);
 
@@ -459,12 +463,16 @@
 
   GameState.prototype._serializeWorkLane = function () {
     const now = Date.now();
-    const queue = (this.workQueue || []).map((j) => ({
-      workId: j.workId,
-      gatherId: j.gatherId,
-      durationMs: j.durationMs,
-      options: j.options || {},
-    }));
+    const queue = (this.workQueue || []).map((j) => {
+      const o = { ...(j.options || {}) };
+      delete o.source;
+      return {
+        workId: j.workId,
+        gatherId: j.gatherId,
+        durationMs: j.durationMs,
+        options: o,
+      };
+    });
 
     if (!this.activeWork) {
       return { active: null, queue };
@@ -472,6 +480,8 @@
 
     const aw = this.activeWork;
     const dur = aw.durationMs || DEFAULT_GATHER_WORK_MS;
+    const activeOpts = { ...(aw.options || {}) };
+    delete activeOpts.source;
 
     if (this._isGatherWorkBlocked(aw)) {
       const rem = Number.isFinite(aw.blockedProgressMs)
@@ -482,7 +492,7 @@
           workId: aw.workId,
           gatherId: aw.gatherId,
           durationMs: dur,
-          options: aw.options || {},
+          options: activeOpts,
           state: "blocked",
           blockedReason: String(aw.blockedReason || "Сбор недоступен."),
           blockedProgressMs: rem,
@@ -500,7 +510,7 @@
         gatherId: aw.gatherId,
         durationMs: dur,
         remainingMs,
-        options: aw.options || {},
+        options: activeOpts,
         state: "running",
       },
       queue,

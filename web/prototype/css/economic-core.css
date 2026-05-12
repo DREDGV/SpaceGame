@@ -15,6 +15,17 @@
   display: none !important;
 }
 
+/* Режим «Работы»: сайдбар (≥1181px) уже показывает следующий шаг — не дублировать. */
+@media (min-width: 1181px) {
+  body[data-shell-mode="production"] #shell-economic-core .ecore-priority {
+    display: none;
+  }
+}
+
+body[data-shell-mode="production"] #shell-economic-core .ecore-root {
+  gap: 0.32rem;
+}
+
 .ecore-root {
   display: flex;
   flex-direction: column;
@@ -446,4 +457,147 @@
   font: inherit;
   font-size: 0.56rem;
   font-weight: 850;
+}
+
+/* Stage 2C — распорядок стоянки */
+.ecore-camp-routine {
+  padding: 0.36rem 0.42rem;
+  border-radius: 8px;
+  border: 1px solid rgba(100, 130, 150, 0.28);
+  background: rgba(14, 20, 28, 0.72);
+}
+
+.ecore-cr-lead {
+  margin: 0 0 0.32rem;
+  color: #9eb0a5;
+  font-size: 0.6rem;
+  line-height: 1.35;
+}
+
+.ecore-cr-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.28rem;
+  margin-bottom: 0.36rem;
+}
+
+.ecore-cr-master,
+.ecore-cr-now {
+  min-height: 26px;
+  padding: 0.14rem 0.42rem;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.58rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.ecore-cr-master {
+  border: 1px solid rgba(109, 126, 116, 0.35);
+  background: rgba(22, 30, 26, 0.85);
+  color: #c5d4c0;
+}
+
+.ecore-cr-master.is-on {
+  border-color: rgba(143, 176, 128, 0.5);
+  color: #e2f0d8;
+  background: rgba(26, 44, 32, 0.75);
+}
+
+.ecore-cr-now {
+  border: 1px solid rgba(120, 150, 190, 0.4);
+  background: rgba(24, 34, 48, 0.75);
+  color: #d4e4f8;
+}
+
+.ecore-cr-pri-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+  margin-bottom: 0.28rem;
+}
+
+.ecore-cr-pri {
+  text-align: left;
+  padding: 0.22rem 0.34rem;
+  border-radius: 6px;
+  border: 1px solid rgba(100, 120, 130, 0.28);
+  background: rgba(18, 24, 28, 0.65);
+  color: #c8d4dc;
+  font: inherit;
+  font-size: 0.58rem;
+  font-weight: 750;
+  line-height: 1.25;
+  cursor: pointer;
+}
+
+.ecore-cr-pri.is-selected {
+  border-color: rgba(143, 176, 200, 0.55);
+  background: rgba(28, 40, 52, 0.88);
+  color: #eef6ff;
+}
+
+.ecore-cr-targets {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+}
+
+.ecore-cr-target {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.24rem 0.32rem;
+  font-size: 0.58rem;
+  color: #b8c9c4;
+}
+
+.ecore-cr-target-name {
+  min-width: 5.2rem;
+  font-weight: 800;
+}
+
+.ecore-cr-target-val {
+  flex: 1;
+  color: #9eb0a5;
+}
+
+.ecore-cr-step {
+  min-width: 28px;
+  min-height: 26px;
+  padding: 0;
+  border-radius: 5px;
+  border: 1px solid rgba(109, 126, 116, 0.32);
+  background: rgba(22, 28, 26, 0.8);
+  color: #dfe8e0;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ecore-cr-idle {
+  margin: 0 0 0.2rem;
+  color: #8a9a94;
+  font-size: 0.56rem;
+}
+
+.ecore-cr-hint {
+  margin: 0.28rem 0 0;
+  color: #c9b89a;
+  font-size: 0.56rem;
+  line-height: 1.35;
+}
+
+.ecore-camp-routine--gated {
+  border-style: dashed;
+  opacity: 0.92;
+}
+
+.ecore-cr-gated-note {
+  margin: 0.12rem 0 0;
+  color: #8a9a94;
+  font-size: 0.58rem;
+  line-height: 1.38;
 }

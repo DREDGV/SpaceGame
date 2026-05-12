@@ -110,6 +110,13 @@ class GameState {
     this.workQueue = [];
     this.activeWork = null;
     this.maxWorkQueueSize = 3;
+    /** Stage 2C — авто-постановка сборов (распорядок стоянки). */
+    this.campRoutine = {
+      enabled: false,
+      activePriorityId: null,
+      targetStocks: {},
+    };
+    this._campRoutineTickHint = "";
     this.activeConstruction = null;
     this.activeResearch = null;
     this.researchQueue = []; // max 1 queued item
@@ -5733,6 +5740,14 @@ class GameState {
         surroundingsHexMap: this._serializeSurroundingsHexMap(),
         craftQueue: this._serializeCraftQueue(),
         workLane: this._serializeWorkLane?.() ?? { active: null, queue: [] },
+        campRoutine:
+          typeof this._serializeCampRoutine === "function"
+            ? this._serializeCampRoutine()
+            : {
+                enabled: !!this.campRoutine?.enabled,
+                activePriorityId: this.campRoutine?.activePriorityId ?? null,
+                targetStocks: { ...(this.campRoutine?.targetStocks || {}) },
+              },
         construction: this._serializeConstruction(),
         researchTask: this._serializeResearchTask(),
         researchQueue: this._serializeResearchQueue(),
@@ -5881,6 +5896,9 @@ class GameState {
 
     this._restoreCraftQueue(state.craftQueue);
     this._restoreWorkLane?.(state.workLane);
+    if (typeof this._restoreCampRoutine === "function") {
+      this._restoreCampRoutine(state.campRoutine);
+    }
     this._restoreConstruction(state.construction);
     this._restoreResearchTask(state.researchTask);
     this._restoreResearchQueue(state.researchQueue);

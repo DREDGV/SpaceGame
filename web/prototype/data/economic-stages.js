@@ -268,12 +268,24 @@ Object.assign(GAME_DATA, {
     }
 
     const stageUi = this.economicStageNavigatorDefaults?.[stageId] || {};
+    let rawDetail = nav?.detail || def?.summary || "";
+    if (
+      (stageId === "campfire_camp" || stageId === "early_workshop") &&
+      typeof game.isOnboardingActive === "function" &&
+      !game.isOnboardingActive() &&
+      game.campRoutine &&
+      !game.campRoutine.enabled
+    ) {
+      rawDetail =
+        (rawDetail ? `${rawDetail} ` : "") +
+        "На экране производства можно включить «Распорядок стоянки» — автопостановка базовых сборов по приоритету.";
+    }
     return mergeNav(
       {
         id: `stage_${stageId}`,
         stageId,
         headline: nav?.headline || def?.requirements?.[0] || def?.summary || "",
-        detail: truncate(nav?.detail || def?.summary || "", 160),
+        detail: truncate(rawDetail, 220),
         source: "stage",
         goalId: null,
         goalText: null,

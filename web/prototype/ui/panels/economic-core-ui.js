@@ -1,5 +1,18 @@
 // Economic core UI (Stage 1A) — stage, work cards, locked list, camp problems.
 
+const ECORE_CAMP_ROUTINE_PRI_LABELS = {
+  keep_fuel_stock: "Поддерживать топливо (древесина)",
+  keep_stone_stock: "Поддерживать запас камня",
+  keep_fiber_stock: "Поддерживать волокно",
+  prepare_basic_materials: "Готовить базовые материалы",
+};
+
+const ECORE_CAMP_RES_LABELS = {
+  wood: "Древесина",
+  stone: "Камень",
+  fiber: "Волокно",
+};
+
 Object.assign(UI.prototype, {
   _ecoreEscapeHtml(text) {
     return String(text ?? "")
@@ -215,9 +228,76 @@ Object.assign(UI.prototype, {
       </section>`;
     }
 
+    const campRoutineGatedByPrologue =
+      typeof this.game.isOnboardingActive === "function" &&
+      this.game.isOnboardingActive();
+
+    let campRoutineHtml = "";
+    if (campRoutineGatedByPrologue) {
+      campRoutineHtml = `
+      <section class="ecore-block ecore-camp-routine ecore-camp-routine--gated" aria-label="Распорядок стоянки" data-economic-highlight-id="camp-routine">
+        <div class="ecore-section-title">Распорядок стоянки</div>
+        <p class="ecore-cr-gated-note">Откроется после первых устойчивых действий у стоянки.</p>
+      </section>`;
+    } else {
+      const crm =
+        typeof this.game.getCampRoutinePanelModel === "function"
+          ? this.game.getCampRoutinePanelModel()
+          : null;
+      if (crm) {
+        const priButtons = crm.priorityIds
+        .map((pid) => {
+          const lab = this._ecoreEscapeHtml(
+            ECORE_CAMP_ROUTINE_PRI_LABELS[pid] || pid,
+          );
+          const hid = this._ecoreEscapeHtml(pid);
+          const sel =
+            crm.activePriorityId === pid ? " is-selected" : "";
+          return `<button type="button" class="ecore-cr-pri${sel}" data-camp-routine-priority="${hid}">${lab}</button>`;
+        })
+        .join("");
+      const targets = crm.targetRows
+        .map((row) => {
+          const rl = this._ecoreEscapeHtml(
+            ECORE_CAMP_RES_LABELS[row.resourceId] || row.resourceId,
+          );
+          const rid = this._ecoreEscapeHtml(row.resourceId);
+          const val = String(Math.floor(row.value));
+          return `<div class="ecore-cr-target">
+            <span class="ecore-cr-target-name">${rl}</span>
+            <span class="ecore-cr-target-val">до ${val}</span>
+            <button type="button" class="ecore-cr-step" data-camp-routine-target-delta="${rid}|-1" aria-label="Меньше">−</button>
+            <button type="button" class="ecore-cr-step" data-camp-routine-target-delta="${rid}|1" aria-label="Больше">+</button>
+          </div>`;
+        })
+        .join("");
+      const hint = crm.hintText
+        ? `<p class="ecore-cr-hint">${this._ecoreEscapeHtml(crm.hintText)}</p>`
+        : "";
+      const onClass = crm.enabled ? " is-on" : "";
+      campRoutineHtml = `
+      <section class="ecore-block ecore-camp-routine" aria-label="Распорядок стоянки" data-economic-highlight-id="camp-routine">
+        <div class="ecore-section-title">Распорядок стоянки</div>
+        <p class="ecore-cr-lead">Не чаще одного сбора за такт — только в свободный слот очереди работ.</p>
+        <div class="ecore-cr-toolbar">
+          <button type="button" class="ecore-cr-master${onClass}" data-camp-routine-toggle="1">${crm.enabled ? "Включено" : "Выключено"}</button>
+          <button type="button" class="ecore-cr-now" data-camp-routine-now="1">Поставить сейчас</button>
+        </div>
+        <div class="ecore-cr-pri-list" role="group" aria-label="Задача">${priButtons}</div>
+        ${
+          crm.activePriorityId
+            ? `<div class="ecore-cr-targets">${targets}</div>`
+            : `<p class="ecore-cr-idle">Выберите задачу, чтобы задать целевые запасы.</p>`
+        }
+        ${hint}
+      </section>`;
+      }
+    }
+
     container.innerHTML = `
       <div class="ecore-root" data-economic-highlight-id="economic-core">
       ${workLaneHtml}
+      ${campRoutineHtml}
       <section class="ecore-priority" aria-label="Следующий шаг">
         <div class="ecore-priority-kicker">Следующий шаг</div>
         <div class="ecore-priority-title">${this._ecoreEscapeHtml(nextHeadline)}</div>
@@ -287,6 +367,42 @@ Object.assign(UI.prototype, {
     container.querySelectorAll("[data-work-lane-retry]").forEach((btn) => {
       btn.addEventListener("click", () => {
         this.game.retryBlockedGatherWork?.();
+        this.render({ forcePanels: true });
+      });
+    });
+
+    container.querySelectorAll("[data-camp-routine-toggle]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const cr = this.game.campRoutine;
+        if (!cr) return;
+        this.game.setCampRoutineEnabled?.(!cr.enabled);
+        this.render({ forcePanels: true });
+      });
+    });
+    container.querySelectorAll("[data-camp-routine-priority]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = btn.getAttribute("data-camp-routine-priority");
+        if (!id) return;
+        this.game.setCampRoutinePriority?.(id);
+        this.render({ forcePanels: true });
+      });
+    });
+    container.querySelectorAll("[data-camp-routine-target-delta]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const raw = btn.getAttribute("data-camp-routine-target-delta");
+        if (!raw || !raw.includes("|")) return;
+        const pipe = raw.indexOf("|");
+        const rid = raw.slice(0, pipe);
+        const d = raw.slice(pipe + 1);
+        const delta = parseInt(d, 10);
+        if (!rid || !Number.isFinite(delta)) return;
+        this.game.adjustCampRoutineTarget?.(rid, delta);
+        this.render({ forcePanels: true });
+      });
+    });
+    container.querySelectorAll("[data-camp-routine-now]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        this.game.tryCampRoutineEnqueueNow?.();
         this.render({ forcePanels: true });
       });
     });
