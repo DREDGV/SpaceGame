@@ -601,3 +601,95 @@ body[data-shell-mode="production"] #shell-economic-core .ecore-root {
   font-size: 0.58rem;
   line-height: 1.38;
 }
+
+/* Stage 2D — ремесленное место */
+.ecore-ew-node {
+  padding: 0.36rem 0.42rem;
+  border-radius: 8px;
+  border: 1px solid rgba(140, 160, 120, 0.32);
+  background: rgba(16, 22, 18, 0.78);
+}
+
+.ecore-ew-lead {
+  margin: 0.12rem 0 0.28rem;
+  color: #9eb0a5;
+  font-size: 0.58rem;
+  line-height: 1.35;
+}
+
+.ecore-ew-status {
+  margin: 0 0 0.32rem;
+}
+
+.ecore-ew-status-pill {
+  display: inline-block;
+  padding: 0.1rem 0.36rem;
+  border-radius: 999px;
+  font-size: 0.52rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #d2e6c4;
+  border: 1px solid rgba(143, 176, 128, 0.4);
+  background: rgba(26, 40, 30, 0.65);
+}
+
+.ecore-ew-recipes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.36rem;
+}
+
+.ecore-ew-recipe {
+  padding: 0.32rem 0.36rem;
+  border-radius: 6px;
+  border: 1px solid rgba(100, 120, 110, 0.28);
+  background: rgba(12, 18, 16, 0.55);
+}
+
+.ecore-ew-recipe-head {
+  display: flex;
+  align-items: center;
+  gap: 0.28rem;
+  margin-bottom: 0.18rem;
+}
+
+.ecore-ew-ico {
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.ecore-ew-recipe-name {
+  font-size: 0.66rem;
+  font-weight: 850;
+  color: #e8f0e9;
+}
+
+.ecore-ew-miss {
+  margin: 0.12rem 0 0.22rem;
+  padding-left: 1rem;
+  color: #c9b89a;
+  font-size: 0.56rem;
+  line-height: 1.35;
+}
+
+.ecore-ew-queue {
+  margin-top: 0.12rem;
+  padding: 0.16rem 0.44rem;
+  border-radius: 6px;
+  border: 1px solid rgba(120, 150, 190, 0.42);
+  background: rgba(24, 34, 48, 0.75);
+  color: #d4e4f8;
+  font: inherit;
+  font-size: 0.58rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.ecore-ew-blocked {
+  display: inline-block;
+  margin-top: 0.12rem;
+  color: #b0a090;
+  font-size: 0.56rem;
+  line-height: 1.35;
+}

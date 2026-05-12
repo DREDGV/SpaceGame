@@ -294,10 +294,55 @@ Object.assign(UI.prototype, {
       }
     }
 
+    let earlyWorkshopHtml = "";
+    const ewm =
+      typeof this.game.getEarlyWorkshopNodePanelModel === "function"
+        ? this.game.getEarlyWorkshopNodePanelModel()
+        : null;
+    if (ewm && ewm.visible) {
+      const statusLab =
+        ewm.status === "ready"
+          ? "Готово к работе"
+          : ewm.status === "needs_materials"
+            ? "Нужно сырьё"
+            : ewm.status === "blocked"
+              ? "Занято или закрыто"
+              : "Ремесло";
+      const recipesHtml = ewm.recipes
+        .map((r) => {
+          const miss =
+            r.missing?.length > 0
+              ? `<ul class="ecore-ew-miss">${r.missing
+                  .map(
+                    (m) =>
+                      `<li>${this._ecoreEscapeHtml(m.label)}: нужно ${m.need}, есть ${m.have}</li>`,
+                  )
+                  .join("")}</ul>`
+              : "";
+          const qBtn = r.canQueue
+            ? `<button type="button" class="ecore-ew-queue" data-ew-node-queue="${this._ecoreEscapeHtml(r.id)}">Поставить в очередь</button>`
+            : `<span class="ecore-ew-blocked">${this._ecoreEscapeHtml(r.blockedReason || "Нельзя поставить.")}</span>`;
+          return `<div class="ecore-ew-recipe" data-economic-highlight-id="${this._ecoreEscapeHtml(r.id)}">
+            <div class="ecore-ew-recipe-head"><span class="ecore-ew-ico">${r.icon}</span><span class="ecore-ew-recipe-name">${this._ecoreEscapeHtml(r.name)}</span></div>
+            ${miss}
+            ${qBtn}
+          </div>`;
+        })
+        .join("");
+      earlyWorkshopHtml = `
+      <section class="ecore-block ecore-ew-node" aria-label="${this._ecoreEscapeHtml(ewm.title)}" data-economic-highlight-id="early_workshop_node">
+        <div class="ecore-section-title ecore-section-title--strong">${this._ecoreEscapeHtml(ewm.title)}</div>
+        <p class="ecore-ew-lead">${this._ecoreEscapeHtml(ewm.lead)}</p>
+        <p class="ecore-ew-status"><span class="ecore-ew-status-pill">${this._ecoreEscapeHtml(statusLab)}</span></p>
+        <div class="ecore-ew-recipes">${recipesHtml}</div>
+      </section>`;
+    }
+
     container.innerHTML = `
       <div class="ecore-root" data-economic-highlight-id="economic-core">
       ${workLaneHtml}
       ${campRoutineHtml}
+      ${earlyWorkshopHtml}
       <section class="ecore-priority" aria-label="Следующий шаг">
         <div class="ecore-priority-kicker">Следующий шаг</div>
         <div class="ecore-priority-title">${this._ecoreEscapeHtml(nextHeadline)}</div>
@@ -404,6 +449,16 @@ Object.assign(UI.prototype, {
       btn.addEventListener("click", () => {
         this.game.tryCampRoutineEnqueueNow?.();
         this.render({ forcePanels: true });
+      });
+    });
+
+    container.querySelectorAll("[data-ew-node-queue]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = btn.getAttribute("data-ew-node-queue");
+        if (!id) return;
+        if (this.game.queueCraftFromEarlyWorkshopNode?.(id)) {
+          this.render({ forcePanels: true });
+        }
       });
     });
   },

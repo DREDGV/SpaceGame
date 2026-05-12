@@ -1568,20 +1568,26 @@ body[data-shell-mode="production"] #game-main {
   gap: 0.42rem;
   height: 100%;
   min-height: 0;
-  overflow: hidden;
+  /* Одна вертикальная прокрутка на весь стол «Работы», без вложенных скроллов в ядре. */
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(143, 176, 128, 0.45) rgba(4, 9, 12, 0.35);
 }
 
 body[data-shell-mode="production"] #shell-economic-core {
   flex: 0 1 auto;
   min-height: 0;
-  max-height: min(46vh, 480px);
-  overflow: auto;
-  overscroll-behavior: contain;
+  max-height: none;
+  overflow: visible;
 }
 
 body[data-shell-mode="production"] #shell-operational-row {
+  flex: 1 1 0;
   min-height: 0;
   overflow: hidden;
+  align-items: stretch;
 }
 
 body[data-shell-mode="production"] #systems-row {
@@ -1591,11 +1597,6 @@ body[data-shell-mode="production"] #systems-row {
 body[data-shell-mode="knowledge"] #actions-row {
   min-height: 0;
   overflow: hidden;
-}
-
-body[data-shell-mode="production"] #shell-operational-row {
-  flex: 1 1 0;
-  align-items: stretch;
 }
 
 body[data-shell-mode="production"] #shell-operational-row > .panel,
@@ -1626,20 +1627,15 @@ body[data-shell-mode="knowledge"] #shell-extra-systems {
 }
 
 body[data-shell-mode="production"] #shell-extra-systems {
-  flex: 0 1 34%;
-  max-height: min(36vh, 340px);
+  flex: 0 1 auto;
+  max-height: none;
   min-height: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
+  overflow: visible;
 }
 
 @media (max-width: 900px) {
   body[data-shell-mode="production"] #shell-operational-row {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  body[data-shell-mode="production"] #shell-economic-core {
-    max-height: min(52vh, 520px);
   }
 }
 
@@ -1689,7 +1685,7 @@ body[data-shell-mode="production"] #shell-extra-systems {
 }
 
 /* Repair pass: keep the page fixed, but never clip controls inside panels. */
-#game-main {
+body:not([data-shell-mode="production"]) #game-main {
   overflow: hidden;
 }
 
