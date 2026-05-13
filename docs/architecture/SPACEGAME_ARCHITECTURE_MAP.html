@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SpaceGame — архитектурная карта</title>
+  <link rel="stylesheet" href="spacegame-architecture-map.css" />
+</head>
+<body>
+  <main class="page">
+    <header class="header">
+      <div>
+        <h1 id="map-title">SpaceGame — архитектурная карта</h1>
+        <div class="subtitle" id="map-description"></div>
+      </div>
+      <div class="version" id="map-version"></div>
+    </header>
+
+    <section class="toolbar" aria-label="Фильтры карты">
+      <input id="search-input" type="search" placeholder="Поиск по эпохам, системам, зависимостям..." autocomplete="off" />
+      <select id="status-filter" aria-label="Фильтр по статусу">
+        <option value="all">Все статусы</option>
+      </select>
+      <button id="show-ac" type="button">Показать A–C</button>
+      <button id="show-all" type="button">Показать все эпохи</button>
+      <button id="toggle-periods" type="button">Свернуть периоды</button>
+    </section>
+
+    <section class="legend" aria-label="Легенда статусов" id="status-legend"></section>
+
+    <div class="board">
+      <section class="card" aria-labelledby="timeline-title">
+        <div class="card-head">
+          <h2 class="card-title" id="timeline-title">1. Временная шкала эпох A–K</h2>
+          <p class="card-note">Главная ось карты: время → эпохи → периоды → системы → переходы. Карточки строятся из data-файла.</p>
+        </div>
+        <div class="timeline">
+          <div class="timeline-grid" id="timeline-grid"></div>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="pace-title">
+        <div class="card-head">
+          <h2 class="card-title" id="pace-title">2. Закон темпа времени</h2>
+          <p class="card-note">Историческая шкала задает последовательность и масштаб, а игровой темп определяется плотностью решений.</p>
+        </div>
+        <div class="principles">
+          <div class="principle-card">
+            <h3>Быстрый старт</h3>
+            <p>Первые эпохи должны быстро дать ощущение прогресса: от ручного выживания к стоянке, запасу и общему труду.</p>
+          </div>
+          <div class="principle-card">
+            <h3>Нарастающая сложность</h3>
+            <p>Каждый исторический слой добавляет системы: людей, знания, инфраструктуру, энергию, логистику и управление.</p>
+          </div>
+          <div class="principle-card">
+            <h3>Долгий финал</h3>
+            <p>Поздняя игра не обязана иметь жесткий конец: космос и дальние колонии дают длительные проекты и открытое развитие.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="systems-title">
+        <div class="card-head">
+          <h2 class="card-title" id="systems-title">3. Матрица систем по эпохам</h2>
+          <p class="card-note">Системы появляются и становятся центральными в разные эпохи. Матрица строится из массива systems.</p>
+        </div>
+        <div class="systems-wrap">
+          <div class="systems-matrix" id="systems-matrix"></div>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="dependencies-title">
+        <div class="card-head">
+          <h2 class="card-title" id="dependencies-title">4. Слой зависимостей</h2>
+          <p class="card-note">Первые связи между системами. Этот слой нужен для проектирования условий, блокировок и переходов.</p>
+        </div>
+        <div class="dependencies" id="dependencies-list"></div>
+      </section>
+
+      <section class="card" aria-labelledby="roadmap-title">
+        <div class="card-head">
+          <h2 class="card-title" id="roadmap-title">5. Дорожная карта карты</h2>
+          <p class="card-note">Верхнеуровневые шаги развития самой архитектурной карты.</p>
+        </div>
+        <div class="roadmap" id="roadmap-list"></div>
+      </section>
+
+      <section class="card" aria-labelledby="screens-title">
+        <div class="card-head">
+          <h2 class="card-title" id="screens-title">6. UI-экраны</h2>
+          <p class="card-note">Начальный индекс экранов, которые должны расти вместе с масштабом игры.</p>
+        </div>
+        <div class="screens" id="screens-list"></div>
+      </section>
+    </div>
+
+    <p class="footer-note">
+      Редактируйте данные в <code>spacegame-architecture-data.js</code>. HTML остается просмотрщиком, CSS — визуальным слоем.
+    </p>
+  </main>
+
+  <script src="spacegame-architecture-data.js"></script>
+  <script>
+    const architecture = window.SPACEGAME_ARCHITECTURE;
+
+    const statusLabels = {
+      prototype: "Прототип",
+      designing: "Проектируется",
+      planned: "Запланировано",
+      later: "Позже"
+    };
+
+    const statusColors = {
+      prototype: "var(--blue)",
+      designing: "var(--yellow)",
+      planned: "var(--green)",
+      later: "var(--gray)"
+    };
+
+    const systemRowLabels = {
+      people: "Люди",
+      labor: "Труд",
+      buildings: "Постройки",
+      resources: "Ресурсы",
+      knowledge: "Знания",
+      economy: "Экономика",
+      logistics: "Логистика",
+      trade: "Торговля",
+      goals: "Цели",
+      events: "События",
+      limits: "Ограничения"
+    };
+
+    const eraColors = {
+      A: "var(--a)",
+      B: "var(--b)",
+      C: "var(--c)",
+      D: "var(--d)",
+      E: "var(--e)",
+      F: "var(--f)",
+      G: "var(--g)",
+      H: "var(--h)",
+      I: "var(--i)",
+      J: "var(--j)",
+      K: "var(--k)"
+    };
+
+    const state = {
+      search: "",
+      status: "all",
+      visibleEraIds: null,
+      periodsCollapsed: false
+    };
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function includesText(item, query) {
+      if (!query) return true;
+      return JSON.stringify(item).toLowerCase().includes(query.toLowerCase());
+    }
+
+    function isEraVisible(era) {
+      const byEraGroup = !state.visibleEraIds || state.visibleEraIds.includes(era.id);
+      const byStatus = state.status === "all" || era.status === state.status;
+      const bySearch = includesText(era, state.search);
+      return byEraGroup && byStatus && bySearch;
+    }
+
+    function systemPhase(system, eraId) {
+      if (eraId < system.appearsIn) {
+        return { level: "lvl0", label: "—", note: "еще не появляется" };
+      }
+
+      if (eraId === system.appearsIn && eraId === system.becomesCoreIn) {
+        return { level: "lvl3", label: "ядро", note: system.status };
+      }
+
+      if (eraId === system.appearsIn) {
+        return { level: "lvl1", label: "появляется", note: system.status };
+      }
+
+      if (eraId < system.becomesCoreIn) {
+        return { level: "lvl2", label: "развивается", note: system.status };
+      }
+
+      return { level: "lvl3", label: "ключевая", note: system.status };
+    }
+
+    function createStatusPill(status) {
+      return `<span class="status-pill">${escapeHtml(statusLabels[status] || status)}</span>`;
+    }
+
+    function renderMeta() {
+      document.title = architecture.meta.title;
+      document.getElementById("map-title").textContent = architecture.meta.title;
+      document.getElementById("map-description").textContent = architecture.meta.description;
+      document.getElementById("map-version").textContent = `v${architecture.meta.version} · обновлено ${architecture.meta.updatedAt}`;
+    }
+
+    function renderStatusFilter() {
+      const select = document.getElementById("status-filter");
+      const statuses = [...new Set([
+        ...architecture.eras.map((era) => era.status),
+        ...architecture.systems.map((system) => system.status),
+        ...architecture.roadmap.map((item) => item.status)
+      ])];
+
+      statuses.forEach((status) => {
+        const option = document.createElement("option");
+        option.value = status;
+        option.textContent = statusLabels[status] || status;
+        select.append(option);
+      });
+    }
+
+    function renderLegend() {
+      const legend = document.getElementById("status-legend");
+      legend.innerHTML = Object.entries(statusLabels)
+        .map(([status, label]) => `<span><i class="dot" style="background: ${statusColors[status]}"></i>${escapeHtml(label)}</span>`)
+        .join("");
+    }
+
+    function renderTimeline() {
+      const timeline = document.getElementById("timeline-grid");
+      const visibleEras = architecture.eras.filter(isEraVisible);
+      timeline.style.setProperty("--era-count", Math.max(visibleEras.length, 1));
+
+      if (!visibleEras.length) {
+        timeline.innerHTML = '<div class="empty-state">По текущим фильтрам эпохи не найдены.</div>';
+        return;
+      }
+
+      timeline.innerHTML = visibleEras.map((era) => {
+        const periods = era.periods.map((period) => `
+          <div><strong>${escapeHtml(period.id)}:</strong> ${escapeHtml(period.title)} · ${escapeHtml(period.summary)}</div>
+        `).join("");
+
+        const systemRows = Object.entries(systemRowLabels)
+          .map(([key, label]) => `
+            <div class="era-row">
+              <b>${escapeHtml(label)}</b>
+              <span>${escapeHtml(era.systems[key] || "—")}</span>
+            </div>
+          `).join("");
+
+        const unlocks = (era.transition.unlocks || []).map((unlock) => escapeHtml(unlock)).join(", ");
+
+        return `
+          <article class="era-card searchable" data-status="${escapeHtml(era.status)}" style="--era-color: ${eraColors[era.id] || "var(--blue)"}">
+            <div class="era-dot"></div>
+            <h3 class="era-title"><span class="era-code">${escapeHtml(era.id)}</span>${escapeHtml(era.title)}</h3>
+            <p class="era-dates">${escapeHtml(era.dates)}</p>
+            ${createStatusPill(era.status)}
+            <p class="summary">${escapeHtml(era.summary)}</p>
+            <div class="periods ${state.periodsCollapsed ? "is-collapsed" : ""}">
+              <b>Периоды</b>
+              <div class="period-list">${periods}</div>
+            </div>
+            <div class="era-list">${systemRows}</div>
+            <div class="transition">
+              <b>Переход к ${escapeHtml(era.transition.to || "открытому финалу")}</b>
+              <div>${escapeHtml(era.transition.condition)}</div>
+              <div><strong>Открывает:</strong> ${unlocks || "—"}</div>
+            </div>
+            <div class="pace"><strong>Темп:</strong> ${escapeHtml(era.timePace)}</div>
+          </article>
+        `;
+      }).join("");
+    }
+
+    function renderSystemsMatrix() {
+      const matrix = document.getElementById("systems-matrix");
+      const eras = architecture.eras.filter((era) => !state.visibleEraIds || state.visibleEraIds.includes(era.id));
+      const systems = architecture.systems.filter((system) => {
+        const byStatus = state.status === "all" || system.status === state.status;
+        const bySearch = includesText(system, state.search);
+        return byStatus && bySearch;
+      });
+
+      matrix.style.setProperty("--era-count", Math.max(eras.length, 1));
+
+      const header = [
+        '<div class="cell head">Система</div>',
+        ...eras.map((era) => `<div class="cell head">${escapeHtml(era.id)}<small>${escapeHtml(era.title)}</small></div>`)
+      ].join("");
+
+      const rows = systems.map((system) => {
+        const cells = eras.map((era) => {
+          const phase = systemPhase(system, era.id);
+          return `<div class="cell ${phase.level}">${escapeHtml(phase.label)}<small>${escapeHtml(phase.note)}</small></div>`;
+        }).join("");
+
+        return `
+          <div class="cell system">${escapeHtml(system.title)}<small>${escapeHtml(system.description)}</small></div>
+          ${cells}
+        `;
+      }).join("");
+
+      matrix.innerHTML = systems.length ? header + rows : '<div class="empty-state">По текущим фильтрам системы не найдены.</div>';
+    }
+
+    function renderDependencies() {
+      const list = document.getElementById("dependencies-list");
+      const dependencies = architecture.dependencies.filter((dependency) => includesText(dependency, state.search));
+      list.innerHTML = dependencies.length ? dependencies.map((dependency) => `
+        <article class="dependency-card">
+          <h3 class="dependency-title">
+            ${escapeHtml(dependency.from)} → ${escapeHtml(dependency.to)}
+            <span class="dependency-type">${escapeHtml(dependency.type)}</span>
+          </h3>
+          <p>${escapeHtml(dependency.description)}</p>
+        </article>
+      `).join("") : '<div class="empty-state">По текущему поиску зависимости не найдены.</div>';
+    }
+
+    function renderRoadmap() {
+      const list = document.getElementById("roadmap-list");
+      const items = architecture.roadmap.filter((item) => {
+        const byStatus = state.status === "all" || item.status === state.status;
+        return byStatus && includesText(item, state.search);
+      });
+
+      list.innerHTML = items.length ? items.map((item) => `
+        <article class="roadmap-item">
+          <h3>${escapeHtml(item.title)}</h3>
+          ${createStatusPill(item.status)}
+          <p>${escapeHtml(item.summary)}</p>
+        </article>
+      `).join("") : '<div class="empty-state">По текущим фильтрам этапы не найдены.</div>';
+    }
+
+    function renderScreens() {
+      const list = document.getElementById("screens-list");
+      const items = architecture.uiScreens.filter((screen) => {
+        const byStatus = state.status === "all" || screen.status === state.status;
+        return byStatus && includesText(screen, state.search);
+      });
+
+      list.innerHTML = items.length ? items.map((screen) => `
+        <article class="screen-card">
+          <h3>${escapeHtml(screen.title)}</h3>
+          ${createStatusPill(screen.status)}
+          <p><strong>Эпоха ${escapeHtml(screen.appearsIn)}.</strong> ${escapeHtml(screen.summary)}</p>
+        </article>
+      `).join("") : '<div class="empty-state">По текущим фильтрам экраны не найдены.</div>';
+    }
+
+    function renderAll() {
+      renderTimeline();
+      renderSystemsMatrix();
+      renderDependencies();
+      renderRoadmap();
+      renderScreens();
+    }
+
+    function bindControls() {
+      document.getElementById("search-input").addEventListener("input", (event) => {
+        state.search = event.target.value.trim();
+        renderAll();
+      });
+
+      document.getElementById("status-filter").addEventListener("change", (event) => {
+        state.status = event.target.value;
+        renderAll();
+      });
+
+      document.getElementById("show-ac").addEventListener("click", () => {
+        state.visibleEraIds = ["A", "B", "C"];
+        renderAll();
+      });
+
+      document.getElementById("show-all").addEventListener("click", () => {
+        state.visibleEraIds = null;
+        renderAll();
+      });
+
+      document.getElementById("toggle-periods").addEventListener("click", (event) => {
+        state.periodsCollapsed = !state.periodsCollapsed;
+        event.target.textContent = state.periodsCollapsed ? "Развернуть периоды" : "Свернуть периоды";
+        renderTimeline();
+      });
+    }
+
+    renderMeta();
+    renderStatusFilter();
+    renderLegend();
+    bindControls();
+    renderAll();
+  </script>
+</body>
+</html>

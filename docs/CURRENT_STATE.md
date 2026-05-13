@@ -23,6 +23,8 @@
 - [`CORE_SYSTEMS_MATRIX.md`](../CORE_SYSTEMS_MATRIX.md)
 - [`GAME_LOOP_EVOLUTION.md`](../GAME_LOOP_EVOLUTION.md)
 - [`CURRENT_PROTOTYPE_GAP_ANALYSIS.md`](../CURRENT_PROTOTYPE_GAP_ANALYSIS.md)
+- [`docs/architecture/SPACEGAME_ARCHITECTURE_MAP.html`](architecture/SPACEGAME_ARCHITECTURE_MAP.html) — визуальная карта архитектуры игры.
+- [`docs/architecture/SPACEGAME_ARCHITECTURE_MAP.md`](architecture/SPACEGAME_ARCHITECTURE_MAP.md) — текстовый индекс карты.
 
 ## How The Prototype Runs
 
@@ -83,6 +85,8 @@ Notes:
 - `CORE_SYSTEMS_MATRIX.md`
 - `GAME_LOOP_EVOLUTION.md`
 - `CURRENT_PROTOTYPE_GAP_ANALYSIS.md`
+- `docs/architecture/SPACEGAME_ARCHITECTURE_MAP.html`
+- `docs/architecture/SPACEGAME_ARCHITECTURE_MAP.md`
 - `CHANGELOG.md`
 - `AI_CONTEXT.md`
 - `LOCAL_CAMP_MAP_SYSTEM.md`
