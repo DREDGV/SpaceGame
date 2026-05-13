@@ -4,6 +4,8 @@
 
 HTML-версия карты находится рядом: [`SPACEGAME_ARCHITECTURE_MAP.html`](SPACEGAME_ARCHITECTURE_MAP.html). Источник данных: [`spacegame-architecture-data.js`](spacegame-architecture-data.js).
 
+**Правила работы с картой, статусы и стратегия развития:** [`ARCHITECTURE_MAP_RULES.md`](ARCHITECTURE_MAP_RULES.md).
+
 ## Интерактивный просмотрщик
 
 Страница `SPACEGAME_ARCHITECTURE_MAP.html` — это лёгкий **data-driven** просмотрщик (vanilla JS, без сборщика и внешних CDN):
