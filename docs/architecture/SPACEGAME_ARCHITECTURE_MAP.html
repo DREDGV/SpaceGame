@@ -21,6 +21,7 @@
         <nav class="map-toc" id="map-toc" aria-label="Оглавление">
           <a href="#section-timeline">Время</a>
           <a href="#section-systems">Матрица систем</a>
+          <a href="#section-game-catalog">Каталог игры</a>
           <a href="#section-dependencies">Зависимости</a>
           <a href="#section-roadmap">Roadmap</a>
           <a href="#section-screens">UI screens</a>
@@ -29,7 +30,7 @@
           <input
             id="search-input"
             type="search"
-            placeholder="Поиск по эпохам, системам, зависимостям…"
+            placeholder="Поиск по эпохам, системам, каталогу игры, зависимостям…"
             autocomplete="off"
             aria-label="Поиск"
           />
@@ -43,6 +44,7 @@
             <button type="button" data-filter-eras="GHIJK" title="Индустрия, современность и космос">G–K</button>
             <button type="button" id="collapse-periods">Свернуть периоды</button>
             <button type="button" id="expand-periods">Развернуть периоды</button>
+            <button type="button" id="btn-matrix-clear">Сбросить подсветку матрицы</button>
             <button type="button" id="btn-view-compact" data-view-mode="compact">Компактно</button>
             <button type="button" id="btn-view-detailed" data-view-mode="detailed" class="is-active">Подробно</button>
           </div>
@@ -57,7 +59,7 @@
       <section class="card" aria-labelledby="timeline-title" id="section-timeline">
         <div class="card-head">
           <h2 class="card-title" id="timeline-title">1. Временная шкала эпох A–K</h2>
-          <p class="card-note">Главная ось: время → эпохи → периоды → системы → переходы. Данные: <code>spacegame-architecture-data.js</code>.</p>
+          <p class="card-note">Главная ось: время → эпохи → периоды → системы → переходы. Данные: <code>spacegame-architecture-data.js</code>. Ширина карточек на полосе пропорциональна полю <code>timelineSpanYears</code> (астрономические годы: до н.э. отрицательные); у эпохи K правый конец интервала условный для визуализации.</p>
         </div>
         <div class="timeline">
           <div class="timeline-grid" id="timeline-grid"></div>
@@ -95,17 +97,29 @@
         </div>
       </section>
 
+      <section class="card" aria-labelledby="game-catalog-title" id="section-game-catalog">
+        <div class="card-head">
+          <h2 class="card-title" id="game-catalog-title">4. Каталог игры (ресурсы, исследования, технологии, предприятия)</h2>
+          <p class="card-note">
+            Конкретное наполнение экономики: что считается ресурсом, какие темы исследований и технологии имеют смысл, какие типы предприятий стоят за UI-узлами.
+            Поля <code>eraFrom</code>–<code>eraTo</code> — эпохи A–K; при фильтре A–C / D–F / G–K показываются только пересекающиеся записи. Данные:
+            <code>gameResources</code>, <code>gameResearch</code>, <code>gameTechnologies</code>, <code>gameEnterprises</code> в <code>spacegame-architecture-data.js</code>.
+          </p>
+        </div>
+        <div class="game-catalog" id="game-catalog-root"></div>
+      </section>
+
       <section class="card" aria-labelledby="dependencies-title" id="section-dependencies">
         <div class="card-head">
-          <h2 class="card-title" id="dependencies-title">4. Слой зависимостей</h2>
-          <p class="card-note">Проектные связи между системами: условия, блокировки, переходы.</p>
+          <h2 class="card-title" id="dependencies-title">5. Слой зависимостей</h2>
+          <p class="card-note">Проектные связи между системами: условия, блокировки, переходы. Типы связей — на русском в бейдже.</p>
         </div>
         <div class="dependencies" id="dependencies-list"></div>
       </section>
 
       <section class="card" aria-labelledby="roadmap-title" id="section-roadmap">
         <div class="card-head">
-          <h2 class="card-title" id="roadmap-title">5. Дорожная карта карты</h2>
+          <h2 class="card-title" id="roadmap-title">6. Дорожная карта карты</h2>
           <p class="card-note">Развитие самой архитектурной карты как инструмента.</p>
         </div>
         <div class="roadmap" id="roadmap-list"></div>
@@ -113,7 +127,7 @@
 
       <section class="card" aria-labelledby="screens-title" id="section-screens">
         <div class="card-head">
-          <h2 class="card-title" id="screens-title">6. UI-экраны</h2>
+          <h2 class="card-title" id="screens-title">7. UI-экраны</h2>
           <p class="card-note">Индекс экранов по масштабу игры.</p>
         </div>
         <div class="screens" id="screens-list"></div>
@@ -218,12 +232,38 @@
       GHIJK: ["G", "H", "I", "J", "K"]
     };
 
+    const ERA_ORDER = "ABCDEFGHIJK";
+
+    const dependencyTypeLabels = {
+      requires: "требует",
+      enables: "открывает",
+      drives: "задаёт темп",
+      feeds: "питает",
+      unlocks: "разблокирует",
+      amplifies: "усиливает",
+      stabilizes: "стабилизирует",
+      extends: "расширяет",
+      pressures: "давит на",
+      anchors: "закрепляет",
+      shapes: "задаёт форму",
+      allocates: "распределяет",
+      risks: "рискует",
+      funds: "финансирует",
+      implements: "воплощает",
+      frames: "обрамляет",
+      tests: "проверяет",
+      surfaces: "показывает",
+      demands: "требует",
+      depends: "зависит от"
+    };
+
     const state = {
       search: "",
       status: "all",
       visibleEraIds: null,
       periodsCollapsed: false,
-      viewMode: "detailed"
+      viewMode: "detailed",
+      matrixHighlightSystemId: null
     };
 
     function escapeHtml(value) {
@@ -281,6 +321,42 @@
       return !!(state.search && includesText(era, state.search));
     }
 
+    function timelineFlexGrow(era) {
+      const span = era.timelineSpanYears;
+      if (!span || span.from == null || span.to == null) return 1;
+      const w = span.to - span.from;
+      return Math.max(1, w);
+    }
+
+    function computeEraCompleteness(era) {
+      let filled = 0;
+      let total = 0;
+      const bump = (ok) => {
+        total += 1;
+        if (ok) filled += 1;
+      };
+      bump((era.periods || []).length > 0);
+      bump((era.goals || []).length > 0);
+      bump((era.events || []).length > 0);
+      bump((era.discoveries || []).length > 0);
+      bump((era.limits || []).length > 0);
+      bump(!!(era.transition && String(era.transition.condition || "").trim()));
+      eraSystemKeys.forEach((key) => {
+        total += 1;
+        const v = era.systems && era.systems[key];
+        if (v && String(v).trim()) filled += 1;
+      });
+      return { filled, total };
+    }
+
+    function matrixActiveEraIdSet(eras, systemId) {
+      if (!systemId) return new Set();
+      const sys = architecture.systems.find((s) => s.id === systemId);
+      if (!sys) return new Set();
+      return new Set(
+        eras.filter((e) => systemPhase(sys, e.id).level !== "lvl0").map((e) => e.id)
+      );
+    }
     function systemPhase(system, eraId) {
       if (eraId < system.appearsIn) {
         return { level: "lvl0", label: "—", note: "еще не появляется" };
@@ -359,6 +435,14 @@
 
       const transitionInner = renderTransitionBlock(era, query);
 
+      const comp = computeEraCompleteness(era);
+      const compPct = comp.total ? Math.round((100 * comp.filled) / comp.total) : 0;
+      const spanNote =
+        era.timelineSpanYears && era.timelineSpanYears.note
+          ? ` <abbr class="timeline-span-note" title="${escapeHtml(era.timelineSpanYears.note)}">*</abbr>`
+          : "";
+      const flexGrow = timelineFlexGrow(era);
+
       let bodyHtml = "";
 
       if (compact) {
@@ -389,12 +473,21 @@
         ? ""
         : `<div class="pace"><strong>Темп:</strong> ${highlightPlain(era.timePace || "", query)}</div>`;
 
+      const completenessHtml = compact
+        ? ""
+        : `<div class="era-completeness" title="Периоды, четыре списка, условие перехода и заполненные слои systems в data.js">
+            <span class="era-completeness-label">Полнота данных</span>
+            <span class="era-completeness-bar" aria-hidden="true"><i style="width:${compPct}%"></i></span>
+            <span class="era-completeness-num">${comp.filled}/${comp.total}</span>
+          </div>`;
+
       return `
-        <article class="era-card searchable${compact ? " is-compact" : ""}${matchClass}" id="era-${escapeHtml(era.id)}" data-era-id="${escapeHtml(era.id)}" data-status="${escapeHtml(era.status)}" style="--era-color: ${eraColors[era.id] || "var(--blue)"}">
+        <article class="era-card searchable${compact ? " is-compact" : ""}${matchClass}" id="era-${escapeHtml(era.id)}" data-era-id="${escapeHtml(era.id)}" data-status="${escapeHtml(era.status)}" style="--era-color: ${eraColors[era.id] || "var(--blue)"}; flex: ${flexGrow} 1 220px">
           <div class="era-dot"></div>
           <h3 class="era-title"><span class="era-code">${highlightPlain(era.id, query)}</span>${highlightPlain(era.title, query)}</h3>
-          <p class="era-dates">${highlightPlain(era.dates, query)}</p>
+          <p class="era-dates">${highlightPlain(era.dates, query)}${spanNote}</p>
           ${createStatusPill(era.status)}
+          ${completenessHtml}
           <p class="summary">${highlightPlain(era.summary, query)}</p>
           <div class="era-sections">${bodyHtml}</div>
           ${paceHtml}
@@ -414,7 +507,12 @@
         ...new Set([
           ...architecture.eras.map((era) => era.status),
           ...architecture.systems.map((system) => system.status),
-          ...architecture.roadmap.map((item) => item.status)
+          ...architecture.roadmap.map((item) => item.status),
+          ...(architecture.gameResources || []).map((x) => x.status),
+          ...(architecture.gameResearch || []).map((x) => x.status),
+          ...(architecture.gameTechnologies || []).map((x) => x.status),
+          ...(architecture.gameEnterprises || []).map((x) => x.status),
+          ...(architecture.gameCatalog && architecture.gameCatalog.status ? [architecture.gameCatalog.status] : [])
         ])
       ];
       while (select.options.length > 1) select.remove(1);
@@ -517,6 +615,8 @@
         return byStatus && bySearch;
       });
 
+      matrix.classList.toggle("has-matrix-highlight", !!state.matrixHighlightSystemId);
+
       if (!eras.length) {
         matrix.innerHTML =
           '<div class="empty-state">Нет эпох по текущим фильтрам — матрица скрыта.</div>';
@@ -525,11 +625,13 @@
 
       matrix.style.setProperty("--era-count", Math.max(eras.length, 1));
 
+      const activeCols = matrixActiveEraIdSet(eras, state.matrixHighlightSystemId);
+
       const header = [
-        '<div class="cell head">Система</div>',
+        '<div class="cell head corner">Система <span class="matrix-hint">(клик по строке)</span></div>',
         ...eras.map(
           (era) =>
-            `<div class="cell head">${escapeHtml(era.id)}<small>${escapeHtml(era.title)}</small></div>`
+            `<div class="cell head${activeCols.has(era.id) ? " is-matrix-col-highlight" : ""}" data-era-col="${escapeHtml(era.id)}">${escapeHtml(era.id)}<small>${escapeHtml(era.title)}</small></div>`
         )
       ].join("");
 
@@ -538,11 +640,14 @@
           const cells = eras
             .map((era) => {
               const phase = systemPhase(system, era.id);
-              return `<div class="cell ${phase.level}">${escapeHtml(phase.label)}<small>${escapeHtml(phase.note)}</small></div>`;
+              const colH = activeCols.has(era.id) ? " is-matrix-col-highlight" : "";
+              return `<div class="cell ${phase.level}${colH}" data-era-col="${escapeHtml(era.id)}">${escapeHtml(phase.label)}<small>${escapeHtml(phase.note)}</small></div>`;
             })
             .join("");
+          const rowSel =
+            state.matrixHighlightSystemId === system.id ? " is-matrix-row-selected" : "";
           return `
-          <div class="cell system">${escapeHtml(system.title)}<small>${escapeHtml(system.description)}</small></div>
+          <div role="button" tabindex="0" class="cell system${rowSel}" data-matrix-system="${escapeHtml(system.id)}" title="Подсветить эпохи, где система уже в игре">${escapeHtml(system.title)}<small>${escapeHtml(system.description)}</small></div>
           ${cells}`;
         })
         .join("");
@@ -563,7 +668,7 @@
         <article class="dependency-card${matchClass(dependency)}">
           <h3 class="dependency-title">
             ${escapeHtml(dependency.from)} → ${escapeHtml(dependency.to)}
-            <span class="dependency-type">${escapeHtml(dependency.type)}</span>
+            <span class="dependency-type">${escapeHtml(dependencyTypeLabels[dependency.type] || dependency.type)}</span>
           </h3>
           <p>${markInEscaped(escapeHtml(dependency.description), state.search)}</p>
         </article>`
@@ -587,10 +692,93 @@
           <h3>${markInEscaped(escapeHtml(item.title), state.search)}</h3>
           ${createStatusPill(item.status)}
           <p>${markInEscaped(escapeHtml(item.summary), state.search)}</p>
+          ${
+            item.checklist && item.checklist.length
+              ? `<ul class="roadmap-checklist">${item.checklist
+                  .map((c) => `<li>${markInEscaped(escapeHtml(c), state.search)}</li>`)
+                  .join("")}</ul>`
+              : ""
+          }
         </article>`
             )
             .join("")
         : '<div class="empty-state">По текущим фильтрам этапы не найдены.</div>';
+    }
+
+    function catalogIntersectsVisibleEras(item) {
+      if (!state.visibleEraIds || !state.visibleEraIds.length) return true;
+      const a = ERA_ORDER.indexOf(item.eraFrom);
+      const b = ERA_ORDER.indexOf(item.eraTo);
+      if (a < 0 || b < 0) return true;
+      const lo = Math.min(a, b);
+      const hi = Math.max(a, b);
+      return state.visibleEraIds.some((eid) => {
+        const i = ERA_ORDER.indexOf(eid);
+        return i >= lo && i <= hi;
+      });
+    }
+
+    function filterGameCatalogItems(items) {
+      if (!items) return [];
+      return items.filter((item) => {
+        const byStatus = state.status === "all" || item.status === state.status;
+        const bySearch = includesText(item, state.search);
+        const byEra = catalogIntersectsVisibleEras(item);
+        return byStatus && bySearch && byEra;
+      });
+    }
+
+    function renderGameCatalog() {
+      const root = document.getElementById("game-catalog-root");
+      if (!root) return;
+      const gc = architecture.gameCatalog || {};
+      const resources = filterGameCatalogItems(architecture.gameResources || []);
+      const research = filterGameCatalogItems(architecture.gameResearch || []);
+      const tech = filterGameCatalogItems(architecture.gameTechnologies || []);
+      const ent = filterGameCatalogItems(architecture.gameEnterprises || []);
+
+      function cardHtml(item, opts) {
+        const match = state.search && includesText(item, state.search) ? " is-search-match" : "";
+        const eraPill = `<span class="game-pill game-pill-era">${escapeHtml(item.eraFrom)}–${escapeHtml(item.eraTo)}</span>`;
+        const cat = item.category || item.type;
+        const catPill = cat
+          ? `<span class="game-pill game-pill-cat">${escapeHtml(cat)}</span>`
+          : "";
+        let extra = "";
+        if (opts.unlocks && item.unlocks && item.unlocks.length)
+          extra += `<p class="game-extra"><strong>Открывает:</strong> ${item.unlocks
+            .map((u) => highlightPlain(String(u), state.search))
+            .join(", ")}</p>`;
+        if (opts.requires && item.requires && item.requires.length)
+          extra += `<p class="game-extra"><strong>Нужно:</strong> ${item.requires
+            .map((u) => highlightPlain(String(u), state.search))
+            .join(", ")}</p>`;
+        return `
+        <article class="game-card${match}" id="game-${escapeHtml(opts.prefix)}-${escapeHtml(item.id)}">
+          <h3 class="game-card-title">${markInEscaped(escapeHtml(item.title), state.search)}</h3>
+          <div class="game-card-meta">${eraPill}${catPill}${createStatusPill(item.status)}</div>
+          <p class="game-card-sum">${markInEscaped(escapeHtml(item.summary), state.search)}</p>
+          ${extra}
+        </article>`;
+      }
+
+      function block(title, items, opts) {
+        if (!items.length)
+          return `<div class="game-catalog-block"><h3 class="game-catalog-block-title">${escapeHtml(title)}</h3><div class="empty-state">По фильтрам нет записей.</div></div>`;
+        return `<div class="game-catalog-block"><h3 class="game-catalog-block-title">${escapeHtml(title)}</h3><div class="game-grid">${items
+          .map((it) => cardHtml(it, opts))
+          .join("")}</div></div>`;
+      }
+
+      root.innerHTML = `
+        <div class="game-catalog-intro">
+          <p><strong>${escapeHtml(gc.title || "Каталог")}.</strong> ${markInEscaped(escapeHtml(gc.summary || ""), state.search)}</p>
+        </div>
+        ${block("Ресурсы", resources, { prefix: "res" })}
+        ${block("Исследования (темы и ветки)", research, { prefix: "resch", unlocks: true })}
+        ${block("Технологии (применимые методы)", tech, { prefix: "tech", requires: true })}
+        ${block("Предприятия и узлы", ent, { prefix: "ent" })}
+      `;
     }
 
     function renderScreens() {
@@ -617,6 +805,7 @@
     function renderAll() {
       renderTimeline();
       renderSystemsMatrix();
+      renderGameCatalog();
       renderDependencies();
       renderRoadmap();
       renderScreens();
@@ -660,6 +849,29 @@
           setViewModeButtons();
           renderAll();
         });
+      });
+
+      document.getElementById("btn-matrix-clear").addEventListener("click", () => {
+        state.matrixHighlightSystemId = null;
+        renderSystemsMatrix();
+      });
+
+      document.getElementById("systems-matrix").addEventListener("click", (event) => {
+        const cell = event.target.closest("[data-matrix-system]");
+        if (!cell) return;
+        const id = cell.getAttribute("data-matrix-system");
+        state.matrixHighlightSystemId = state.matrixHighlightSystemId === id ? null : id;
+        renderSystemsMatrix();
+      });
+
+      document.getElementById("systems-matrix").addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        const cell = event.target.closest("[data-matrix-system]");
+        if (!cell) return;
+        event.preventDefault();
+        const id = cell.getAttribute("data-matrix-system");
+        state.matrixHighlightSystemId = state.matrixHighlightSystemId === id ? null : id;
+        renderSystemsMatrix();
       });
 
       window.addEventListener("hashchange", () => {
