@@ -16,23 +16,48 @@
       <div class="version" id="map-version"></div>
     </header>
 
-    <section class="toolbar" aria-label="Фильтры карты">
-      <input id="search-input" type="search" placeholder="Поиск по эпохам, системам, зависимостям..." autocomplete="off" />
-      <select id="status-filter" aria-label="Фильтр по статусу">
-        <option value="all">Все статусы</option>
-      </select>
-      <button id="show-ac" type="button">Показать A–C</button>
-      <button id="show-all" type="button">Показать все эпохи</button>
-      <button id="toggle-periods" type="button">Свернуть периоды</button>
-    </section>
+    <div class="map-sticky-host" id="map-sticky-host">
+      <div class="map-sticky" id="map-sticky-toolbar" role="region" aria-label="Навигация и фильтры карты">
+        <nav class="map-toc" id="map-toc" aria-label="Оглавление">
+          <a href="#section-timeline">Время</a>
+          <a href="#section-systems">Матрица систем</a>
+          <a href="#section-dependencies">Зависимости</a>
+          <a href="#section-roadmap">Roadmap</a>
+          <a href="#section-screens">UI screens</a>
+        </nav>
+        <div class="map-toolbar-rows">
+          <input
+            id="search-input"
+            type="search"
+            placeholder="Поиск по эпохам, системам, зависимостям…"
+            autocomplete="off"
+            aria-label="Поиск"
+          />
+          <div class="map-toolbar-actions" role="toolbar" aria-label="Фильтры эпох и режим">
+            <select id="status-filter" aria-label="Фильтр по статусу">
+              <option value="all">Все статусы</option>
+            </select>
+            <button type="button" data-filter-eras="all">Все эпохи</button>
+            <button type="button" data-filter-eras="ABC" title="Ранняя игра">A–C</button>
+            <button type="button" data-filter-eras="DEF" title="Государства и прединдустрия">D–F</button>
+            <button type="button" data-filter-eras="GHIJK" title="Индустрия, современность и космос">G–K</button>
+            <button type="button" id="collapse-periods">Свернуть периоды</button>
+            <button type="button" id="expand-periods">Развернуть периоды</button>
+            <button type="button" id="btn-view-compact" data-view-mode="compact">Компактно</button>
+            <button type="button" id="btn-view-detailed" data-view-mode="detailed" class="is-active">Подробно</button>
+          </div>
+          <div class="era-chips" id="era-chips" role="tablist" aria-label="Быстрый переход к эпохе"></div>
+        </div>
+      </div>
+    </div>
 
     <section class="legend" aria-label="Легенда статусов" id="status-legend"></section>
 
     <div class="board">
-      <section class="card" aria-labelledby="timeline-title">
+      <section class="card" aria-labelledby="timeline-title" id="section-timeline">
         <div class="card-head">
           <h2 class="card-title" id="timeline-title">1. Временная шкала эпох A–K</h2>
-          <p class="card-note">Главная ось карты: время → эпохи → периоды → системы → переходы. Карточки строятся из data-файла.</p>
+          <p class="card-note">Главная ось: время → эпохи → периоды → системы → переходы. Данные: <code>spacegame-architecture-data.js</code>.</p>
         </div>
         <div class="timeline">
           <div class="timeline-grid" id="timeline-grid"></div>
@@ -42,61 +67,61 @@
       <section class="card" aria-labelledby="pace-title">
         <div class="card-head">
           <h2 class="card-title" id="pace-title">2. Закон темпа времени</h2>
-          <p class="card-note">Историческая шкала задает последовательность и масштаб, а игровой темп определяется плотностью решений.</p>
+          <p class="card-note">Историческая шкала задаёт последовательность; игровой темп — плотность решений.</p>
         </div>
         <div class="principles">
           <div class="principle-card">
             <h3>Быстрый старт</h3>
-            <p>Первые эпохи должны быстро дать ощущение прогресса: от ручного выживания к стоянке, запасу и общему труду.</p>
+            <p>Первые эпохи дают быстрый прогресс: от ручного выживания к стоянке, запасу и общему труду.</p>
           </div>
           <div class="principle-card">
             <h3>Нарастающая сложность</h3>
-            <p>Каждый исторический слой добавляет системы: людей, знания, инфраструктуру, энергию, логистику и управление.</p>
+            <p>Каждый слой добавляет системы: людей, знания, инфраструктуру, энергию, логистику и управление.</p>
           </div>
           <div class="principle-card">
             <h3>Долгий финал</h3>
-            <p>Поздняя игра не обязана иметь жесткий конец: космос и дальние колонии дают длительные проекты и открытое развитие.</p>
+            <p>Поздняя игра может оставаться открытой: космос и дальние колонии — длительные проекты.</p>
           </div>
         </div>
       </section>
 
-      <section class="card" aria-labelledby="systems-title">
+      <section class="card" aria-labelledby="systems-title" id="section-systems">
         <div class="card-head">
           <h2 class="card-title" id="systems-title">3. Матрица систем по эпохам</h2>
-          <p class="card-note">Системы появляются и становятся центральными в разные эпохи. Матрица строится из массива systems.</p>
+          <p class="card-note">Системы появляются и становятся центральными в разные эпохи.</p>
         </div>
         <div class="systems-wrap">
           <div class="systems-matrix" id="systems-matrix"></div>
         </div>
       </section>
 
-      <section class="card" aria-labelledby="dependencies-title">
+      <section class="card" aria-labelledby="dependencies-title" id="section-dependencies">
         <div class="card-head">
           <h2 class="card-title" id="dependencies-title">4. Слой зависимостей</h2>
-          <p class="card-note">Первые связи между системами. Этот слой нужен для проектирования условий, блокировок и переходов.</p>
+          <p class="card-note">Проектные связи между системами: условия, блокировки, переходы.</p>
         </div>
         <div class="dependencies" id="dependencies-list"></div>
       </section>
 
-      <section class="card" aria-labelledby="roadmap-title">
+      <section class="card" aria-labelledby="roadmap-title" id="section-roadmap">
         <div class="card-head">
           <h2 class="card-title" id="roadmap-title">5. Дорожная карта карты</h2>
-          <p class="card-note">Верхнеуровневые шаги развития самой архитектурной карты.</p>
+          <p class="card-note">Развитие самой архитектурной карты как инструмента.</p>
         </div>
         <div class="roadmap" id="roadmap-list"></div>
       </section>
 
-      <section class="card" aria-labelledby="screens-title">
+      <section class="card" aria-labelledby="screens-title" id="section-screens">
         <div class="card-head">
           <h2 class="card-title" id="screens-title">6. UI-экраны</h2>
-          <p class="card-note">Начальный индекс экранов, которые должны расти вместе с масштабом игры.</p>
+          <p class="card-note">Индекс экранов по масштабу игры.</p>
         </div>
         <div class="screens" id="screens-list"></div>
       </section>
     </div>
 
     <p class="footer-note">
-      Редактируйте данные в <code>spacegame-architecture-data.js</code>. HTML остается просмотрщиком, CSS — визуальным слоем.
+      Редактируйте данные в <code>spacegame-architecture-data.js</code>. HTML — просмотрщик, CSS — визуальный слой.
     </p>
   </main>
 
@@ -118,18 +143,41 @@
       later: "var(--gray)"
     };
 
+    /** Порядок строк «систем» внутри карточки эпохи (ключи объекта era.systems). */
+    const eraSystemKeys = [
+      "people",
+      "needs",
+      "labor",
+      "resources",
+      "storage",
+      "craft",
+      "production",
+      "buildings",
+      "knowledge",
+      "logistics",
+      "trade",
+      "economy",
+      "goals",
+      "events",
+      "limits"
+    ];
+
     const systemRowLabels = {
       people: "Люди",
+      needs: "Потребности",
       labor: "Труд",
-      buildings: "Постройки",
       resources: "Ресурсы",
+      storage: "Хранение",
+      craft: "Ремесло",
+      production: "Производство",
+      buildings: "Постройки",
       knowledge: "Знания",
-      economy: "Экономика",
       logistics: "Логистика",
       trade: "Торговля",
-      goals: "Цели",
-      events: "События",
-      limits: "Ограничения"
+      economy: "Экономика",
+      goals: "Цели (слой)",
+      events: "События (слой)",
+      limits: "Ограничения (слой)"
     };
 
     const eraColors = {
@@ -146,11 +194,18 @@
       K: "var(--k)"
     };
 
+    const ERA_GROUPS = {
+      ABC: ["A", "B", "C"],
+      DEF: ["D", "E", "F"],
+      GHIJK: ["G", "H", "I", "J", "K"]
+    };
+
     const state = {
       search: "",
       status: "all",
       visibleEraIds: null,
-      periodsCollapsed: false
+      periodsCollapsed: false,
+      viewMode: "detailed"
     };
 
     function escapeHtml(value) {
@@ -160,6 +215,36 @@
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#039;");
+    }
+
+    function escapeRegExp(s) {
+      return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+
+    /** Подсветка первого вхождения запроса в уже экранированной строке (безопасно). */
+    function markInEscaped(escaped, query) {
+      const q = String(query || "").trim();
+      if (!q || !escaped) return escaped;
+      const qLower = q.toLowerCase();
+      const lowerEsc = escaped.toLowerCase();
+      const idx = lowerEsc.indexOf(qLower);
+      if (idx < 0) return escaped;
+      for (let end = idx + 1; end <= escaped.length; end++) {
+        if (escaped.slice(idx, end).toLowerCase() === qLower) {
+          return (
+            escaped.slice(0, idx) +
+            "<mark class=\"search-hit\">" +
+            escaped.slice(idx, end) +
+            "</mark>" +
+            escaped.slice(end)
+          );
+        }
+      }
+      return escaped;
+    }
+
+    function highlightPlain(text, query) {
+      return markInEscaped(escapeHtml(text), query);
     }
 
     function includesText(item, query) {
@@ -174,28 +259,128 @@
       return byEraGroup && byStatus && bySearch;
     }
 
+    function eraSearchMatch(era) {
+      return !!(state.search && includesText(era, state.search));
+    }
+
     function systemPhase(system, eraId) {
       if (eraId < system.appearsIn) {
         return { level: "lvl0", label: "—", note: "еще не появляется" };
       }
-
       if (eraId === system.appearsIn && eraId === system.becomesCoreIn) {
         return { level: "lvl3", label: "ядро", note: system.status };
       }
-
       if (eraId === system.appearsIn) {
         return { level: "lvl1", label: "появляется", note: system.status };
       }
-
       if (eraId < system.becomesCoreIn) {
         return { level: "lvl2", label: "развивается", note: system.status };
       }
-
       return { level: "lvl3", label: "ключевая", note: system.status };
     }
 
     function createStatusPill(status) {
       return `<span class="status-pill">${escapeHtml(statusLabels[status] || status)}</span>`;
+    }
+
+    function renderListHtml(items, query) {
+      if (!items || !items.length) return "";
+      return `<ul class="era-bullets">${items.map((t) => `<li>${highlightPlain(t, query)}</li>`).join("")}</ul>`;
+    }
+
+    function renderDetailsSection(title, innerHtml, options) {
+      if (!innerHtml || !String(innerHtml).trim()) return "";
+      const open = options.open ? " open" : "";
+      return `<details class="era-sec"${open}><summary class="era-sec-sum">${escapeHtml(title)}</summary><div class="era-sec-body">${innerHtml}</div></details>`;
+    }
+
+    function renderTransitionBlock(era, query) {
+      const t = era.transition || {};
+      const unlocks = (t.unlocks || []).map((u) => highlightPlain(u, query)).join(", ") || "—";
+      const inner = `
+        <p><strong>К ${escapeHtml(t.to || "?")}:</strong> ${highlightPlain(t.condition || "", query)}</p>
+        <p><strong>Открывает:</strong> ${unlocks}</p>
+      `;
+      return inner;
+    }
+
+    function renderEraCard(era) {
+      const query = state.search;
+      const compact = state.viewMode === "compact";
+      const periodsOpen = !compact && !state.periodsCollapsed;
+      const transOpen = !compact && !state.periodsCollapsed;
+
+      const matchClass = eraSearchMatch(era) ? " is-search-match" : "";
+
+      const goals = era.goals;
+      const events = era.events;
+      const discoveries = era.discoveries;
+      const limits = era.limits;
+
+      const periodsInner = (era.periods || [])
+        .map(
+          (p) => `
+        <div class="period-line">
+          <strong>${highlightPlain(p.id, query)}:</strong> ${highlightPlain(p.title, query)} · ${highlightPlain(p.dates, query)}
+          <div class="period-sum">${highlightPlain(p.summary, query)}</div>
+        </div>`
+        )
+        .join("");
+
+      const systemRows = eraSystemKeys
+        .map((key) => {
+          const val = era.systems && era.systems[key];
+          if (!val) return "";
+          return `
+            <div class="era-row">
+              <b>${escapeHtml(systemRowLabels[key] || key)}</b>
+              <span>${highlightPlain(val, query)}</span>
+            </div>`;
+        })
+        .join("");
+
+      const transitionInner = renderTransitionBlock(era, query);
+
+      let bodyHtml = "";
+
+      if (compact) {
+        bodyHtml += renderDetailsSection(
+          `Периоды (${(era.periods || []).length})`,
+          periodsInner,
+          { open: false }
+        );
+        bodyHtml += renderDetailsSection("Переход", transitionInner, { open: false });
+      } else {
+        bodyHtml += renderDetailsSection(`Периоды (${(era.periods || []).length})`, periodsInner, {
+          open: periodsOpen
+        });
+        if (goals && goals.length)
+          bodyHtml += renderDetailsSection("Цели", renderListHtml(goals, query), { open: true });
+        if (events && events.length)
+          bodyHtml += renderDetailsSection("События", renderListHtml(events, query), { open: true });
+        if (discoveries && discoveries.length)
+          bodyHtml += renderDetailsSection("Открытия", renderListHtml(discoveries, query), { open: true });
+        if (limits && limits.length)
+          bodyHtml += renderDetailsSection("Ограничения", renderListHtml(limits, query), { open: true });
+        if (systemRows.trim())
+          bodyHtml += renderDetailsSection("Системы", `<div class="era-list">${systemRows}</div>`, { open: true });
+        bodyHtml += renderDetailsSection("Переход", transitionInner, { open: transOpen });
+      }
+
+      const paceHtml = compact
+        ? ""
+        : `<div class="pace"><strong>Темп:</strong> ${highlightPlain(era.timePace || "", query)}</div>`;
+
+      return `
+        <article class="era-card searchable${compact ? " is-compact" : ""}${matchClass}" id="era-${escapeHtml(era.id)}" data-era-id="${escapeHtml(era.id)}" data-status="${escapeHtml(era.status)}" style="--era-color: ${eraColors[era.id] || "var(--blue)"}">
+          <div class="era-dot"></div>
+          <h3 class="era-title"><span class="era-code">${highlightPlain(era.id, query)}</span>${highlightPlain(era.title, query)}</h3>
+          <p class="era-dates">${highlightPlain(era.dates, query)}</p>
+          ${createStatusPill(era.status)}
+          <p class="summary">${highlightPlain(era.summary, query)}</p>
+          <div class="era-sections">${bodyHtml}</div>
+          ${paceHtml}
+        </article>`;
     }
 
     function renderMeta() {
@@ -207,12 +392,14 @@
 
     function renderStatusFilter() {
       const select = document.getElementById("status-filter");
-      const statuses = [...new Set([
-        ...architecture.eras.map((era) => era.status),
-        ...architecture.systems.map((system) => system.status),
-        ...architecture.roadmap.map((item) => item.status)
-      ])];
-
+      const statuses = [
+        ...new Set([
+          ...architecture.eras.map((era) => era.status),
+          ...architecture.systems.map((system) => system.status),
+          ...architecture.roadmap.map((item) => item.status)
+        ])
+      ];
+      while (select.options.length > 1) select.remove(1);
       statuses.forEach((status) => {
         const option = document.createElement("option");
         option.value = status;
@@ -224,8 +411,64 @@
     function renderLegend() {
       const legend = document.getElementById("status-legend");
       legend.innerHTML = Object.entries(statusLabels)
-        .map(([status, label]) => `<span><i class="dot" style="background: ${statusColors[status]}"></i>${escapeHtml(label)}</span>`)
+        .map(
+          ([status, label]) =>
+            `<span><i class="dot" style="background: ${statusColors[status]}"></i>${escapeHtml(label)}</span>`
+        )
         .join("");
+    }
+
+    function renderEraChips() {
+      const host = document.getElementById("era-chips");
+      host.innerHTML = architecture.eras
+        .map(
+          (e) =>
+            `<button type="button" class="era-chip" data-era-scroll="${escapeHtml(e.id)}" aria-label="Эпоха ${escapeHtml(e.id)}">${escapeHtml(e.id)}</button>`
+        )
+        .join("");
+      host.querySelectorAll("[data-era-scroll]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const id = btn.getAttribute("data-era-scroll");
+          location.hash = `era-${id}`;
+          scrollToEra(id);
+          syncChipActive();
+        });
+      });
+    }
+
+    function syncChipActive() {
+      const hash = (location.hash || "").replace(/^#/, "");
+      document.querySelectorAll(".era-chip").forEach((btn) => {
+        const id = btn.getAttribute("data-era-scroll");
+        btn.classList.toggle("is-active", hash === `era-${id}`);
+      });
+    }
+
+    function scrollToEra(eraId) {
+      const el = document.getElementById(`era-${eraId}`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    function applyHashFromUrl() {
+      const hash = (location.hash || "").replace(/^#/, "");
+      const m = /^era-([A-K])$/i.exec(hash);
+      if (m) {
+        scrollToEra(m[1].toUpperCase());
+      }
+      syncChipActive();
+    }
+
+    function setViewModeButtons() {
+      document.getElementById("btn-view-compact").classList.toggle("is-active", state.viewMode === "compact");
+      document.getElementById("btn-view-detailed").classList.toggle("is-active", state.viewMode === "detailed");
+    }
+
+    function setAllPeriodDetails(open) {
+      document.querySelectorAll("#timeline-grid details.era-sec").forEach((d) => {
+        if (d.querySelector(".era-sec-sum")?.textContent?.startsWith("Периоды")) {
+          d.open = open;
+        }
+      });
     }
 
     function renderTimeline() {
@@ -238,87 +481,77 @@
         return;
       }
 
-      timeline.innerHTML = visibleEras.map((era) => {
-        const periods = era.periods.map((period) => `
-          <div><strong>${escapeHtml(period.id)}:</strong> ${escapeHtml(period.title)} · ${escapeHtml(period.summary)}</div>
-        `).join("");
+      timeline.innerHTML = visibleEras.map((era) => renderEraCard(era)).join("");
 
-        const systemRows = Object.entries(systemRowLabels)
-          .map(([key, label]) => `
-            <div class="era-row">
-              <b>${escapeHtml(label)}</b>
-              <span>${escapeHtml(era.systems[key] || "—")}</span>
-            </div>
-          `).join("");
-
-        const unlocks = (era.transition.unlocks || []).map((unlock) => escapeHtml(unlock)).join(", ");
-
-        return `
-          <article class="era-card searchable" data-status="${escapeHtml(era.status)}" style="--era-color: ${eraColors[era.id] || "var(--blue)"}">
-            <div class="era-dot"></div>
-            <h3 class="era-title"><span class="era-code">${escapeHtml(era.id)}</span>${escapeHtml(era.title)}</h3>
-            <p class="era-dates">${escapeHtml(era.dates)}</p>
-            ${createStatusPill(era.status)}
-            <p class="summary">${escapeHtml(era.summary)}</p>
-            <div class="periods ${state.periodsCollapsed ? "is-collapsed" : ""}">
-              <b>Периоды</b>
-              <div class="period-list">${periods}</div>
-            </div>
-            <div class="era-list">${systemRows}</div>
-            <div class="transition">
-              <b>Переход к ${escapeHtml(era.transition.to || "открытому финалу")}</b>
-              <div>${escapeHtml(era.transition.condition)}</div>
-              <div><strong>Открывает:</strong> ${unlocks || "—"}</div>
-            </div>
-            <div class="pace"><strong>Темп:</strong> ${escapeHtml(era.timePace)}</div>
-          </article>
-        `;
-      }).join("");
+      if (state.periodsCollapsed) {
+        setAllPeriodDetails(false);
+      } else if (state.viewMode === "detailed") {
+        setAllPeriodDetails(true);
+      }
     }
 
     function renderSystemsMatrix() {
       const matrix = document.getElementById("systems-matrix");
-      const eras = architecture.eras.filter((era) => !state.visibleEraIds || state.visibleEraIds.includes(era.id));
+      const eras = architecture.eras.filter(isEraVisible);
       const systems = architecture.systems.filter((system) => {
         const byStatus = state.status === "all" || system.status === state.status;
         const bySearch = includesText(system, state.search);
         return byStatus && bySearch;
       });
 
+      if (!eras.length) {
+        matrix.innerHTML =
+          '<div class="empty-state">Нет эпох по текущим фильтрам — матрица скрыта.</div>';
+        return;
+      }
+
       matrix.style.setProperty("--era-count", Math.max(eras.length, 1));
 
       const header = [
         '<div class="cell head">Система</div>',
-        ...eras.map((era) => `<div class="cell head">${escapeHtml(era.id)}<small>${escapeHtml(era.title)}</small></div>`)
+        ...eras.map(
+          (era) =>
+            `<div class="cell head">${escapeHtml(era.id)}<small>${escapeHtml(era.title)}</small></div>`
+        )
       ].join("");
 
-      const rows = systems.map((system) => {
-        const cells = eras.map((era) => {
-          const phase = systemPhase(system, era.id);
-          return `<div class="cell ${phase.level}">${escapeHtml(phase.label)}<small>${escapeHtml(phase.note)}</small></div>`;
-        }).join("");
-
-        return `
+      const rows = systems
+        .map((system) => {
+          const cells = eras
+            .map((era) => {
+              const phase = systemPhase(system, era.id);
+              return `<div class="cell ${phase.level}">${escapeHtml(phase.label)}<small>${escapeHtml(phase.note)}</small></div>`;
+            })
+            .join("");
+          return `
           <div class="cell system">${escapeHtml(system.title)}<small>${escapeHtml(system.description)}</small></div>
-          ${cells}
-        `;
-      }).join("");
+          ${cells}`;
+        })
+        .join("");
 
-      matrix.innerHTML = systems.length ? header + rows : '<div class="empty-state">По текущим фильтрам системы не найдены.</div>';
+      matrix.innerHTML = systems.length
+        ? header + rows
+        : '<div class="empty-state">По текущим фильтрам системы не найдены.</div>';
     }
 
     function renderDependencies() {
       const list = document.getElementById("dependencies-list");
-      const dependencies = architecture.dependencies.filter((dependency) => includesText(dependency, state.search));
-      list.innerHTML = dependencies.length ? dependencies.map((dependency) => `
-        <article class="dependency-card">
+      const dependencies = architecture.dependencies.filter((d) => includesText(d, state.search));
+      const matchClass = (d) => (state.search && includesText(d, state.search) ? " is-search-match" : "");
+      list.innerHTML = dependencies.length
+        ? dependencies
+            .map(
+              (dependency) => `
+        <article class="dependency-card${matchClass(dependency)}">
           <h3 class="dependency-title">
             ${escapeHtml(dependency.from)} → ${escapeHtml(dependency.to)}
             <span class="dependency-type">${escapeHtml(dependency.type)}</span>
           </h3>
-          <p>${escapeHtml(dependency.description)}</p>
-        </article>
-      `).join("") : '<div class="empty-state">По текущему поиску зависимости не найдены.</div>';
+          <p>${markInEscaped(escapeHtml(dependency.description), state.search)}</p>
+        </article>`
+            )
+            .join("")
+        : '<div class="empty-state">По текущему поиску зависимости не найдены.</div>';
     }
 
     function renderRoadmap() {
@@ -327,14 +560,19 @@
         const byStatus = state.status === "all" || item.status === state.status;
         return byStatus && includesText(item, state.search);
       });
-
-      list.innerHTML = items.length ? items.map((item) => `
-        <article class="roadmap-item">
-          <h3>${escapeHtml(item.title)}</h3>
+      const matchClass = (item) => (state.search && includesText(item, state.search) ? " is-search-match" : "");
+      list.innerHTML = items.length
+        ? items
+            .map(
+              (item) => `
+        <article class="roadmap-item${matchClass(item)}">
+          <h3>${markInEscaped(escapeHtml(item.title), state.search)}</h3>
           ${createStatusPill(item.status)}
-          <p>${escapeHtml(item.summary)}</p>
-        </article>
-      `).join("") : '<div class="empty-state">По текущим фильтрам этапы не найдены.</div>';
+          <p>${markInEscaped(escapeHtml(item.summary), state.search)}</p>
+        </article>`
+            )
+            .join("")
+        : '<div class="empty-state">По текущим фильтрам этапы не найдены.</div>';
     }
 
     function renderScreens() {
@@ -343,14 +581,19 @@
         const byStatus = state.status === "all" || screen.status === state.status;
         return byStatus && includesText(screen, state.search);
       });
-
-      list.innerHTML = items.length ? items.map((screen) => `
-        <article class="screen-card">
-          <h3>${escapeHtml(screen.title)}</h3>
+      const matchClass = (s) => (state.search && includesText(s, state.search) ? " is-search-match" : "");
+      list.innerHTML = items.length
+        ? items
+            .map(
+              (screen) => `
+        <article class="screen-card${matchClass(screen)}">
+          <h3>${markInEscaped(escapeHtml(screen.title), state.search)}</h3>
           ${createStatusPill(screen.status)}
-          <p><strong>Эпоха ${escapeHtml(screen.appearsIn)}.</strong> ${escapeHtml(screen.summary)}</p>
-        </article>
-      `).join("") : '<div class="empty-state">По текущим фильтрам экраны не найдены.</div>';
+          <p><strong>Эпоха ${escapeHtml(screen.appearsIn)}.</strong> ${markInEscaped(escapeHtml(screen.summary), state.search)}</p>
+        </article>`
+            )
+            .join("")
+        : '<div class="empty-state">По текущим фильтрам экраны не найдены.</div>';
     }
 
     function renderAll() {
@@ -359,6 +602,7 @@
       renderDependencies();
       renderRoadmap();
       renderScreens();
+      applyHashFromUrl();
     }
 
     function bindControls() {
@@ -372,26 +616,44 @@
         renderAll();
       });
 
-      document.getElementById("show-ac").addEventListener("click", () => {
-        state.visibleEraIds = ["A", "B", "C"];
-        renderAll();
+      document.querySelectorAll("[data-filter-eras]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const key = btn.getAttribute("data-filter-eras");
+          state.visibleEraIds = key === "all" ? null : [...(ERA_GROUPS[key] || [])];
+          renderAll();
+        });
       });
 
-      document.getElementById("show-all").addEventListener("click", () => {
-        state.visibleEraIds = null;
-        renderAll();
-      });
-
-      document.getElementById("toggle-periods").addEventListener("click", (event) => {
-        state.periodsCollapsed = !state.periodsCollapsed;
-        event.target.textContent = state.periodsCollapsed ? "Развернуть периоды" : "Свернуть периоды";
+      document.getElementById("collapse-periods").addEventListener("click", () => {
+        state.periodsCollapsed = true;
         renderTimeline();
+        setAllPeriodDetails(false);
+      });
+
+      document.getElementById("expand-periods").addEventListener("click", () => {
+        state.periodsCollapsed = false;
+        renderTimeline();
+        if (state.viewMode === "detailed") setAllPeriodDetails(true);
+      });
+
+      document.querySelectorAll("[data-view-mode]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          state.viewMode = btn.getAttribute("data-view-mode") || "detailed";
+          setViewModeButtons();
+          renderAll();
+        });
+      });
+
+      window.addEventListener("hashchange", () => {
+        applyHashFromUrl();
       });
     }
 
     renderMeta();
     renderStatusFilter();
     renderLegend();
+    renderEraChips();
+    setViewModeButtons();
     bindControls();
     renderAll();
   </script>
