@@ -21,6 +21,7 @@
         <nav class="map-toc" id="map-toc" aria-label="Оглавление">
           <a href="#section-timeline">Время</a>
           <a href="#section-systems">Матрица систем</a>
+          <a href="#section-system-progression">Сквозные системы</a>
           <a href="#section-game-catalog">Каталог игры</a>
           <a href="#section-dependencies">Зависимости</a>
           <a href="#section-roadmap">Roadmap</a>
@@ -30,9 +31,9 @@
           <input
             id="search-input"
             type="search"
-            placeholder="Поиск по эпохам, системам, каталогу игры, зависимостям…"
+            placeholder="Поиск по эпохам, системам, сквозным системам, каталогу игры, зависимостям…"
             autocomplete="off"
-            aria-label="Поиск"
+            aria-label="Поиск по эпохам, системам, сквозным системам и каталогу"
           />
           <div class="map-toolbar-actions" role="toolbar" aria-label="Фильтры эпох и режим">
             <select id="status-filter" aria-label="Фильтр по статусу">
@@ -104,9 +105,20 @@
         </div>
       </section>
 
+      <section class="card" aria-labelledby="system-progression-title" id="section-system-progression">
+        <div class="card-head">
+          <h2 class="card-title" id="system-progression-title">4. Сквозные системы</h2>
+          <p class="card-note">
+            Длинная линия одной системы через эпохи A–K (дополняет краткие строки в карточках эпох и фазу в матрице). Строки таблицы сужаются при фильтре эпох A–C / D–F / G–K. Данные:
+            <code>systemProgression</code> в <code>spacegame-architecture-data.js</code>.
+          </p>
+        </div>
+        <div class="system-progression-host" id="system-progression-root"></div>
+      </section>
+
       <section class="card" aria-labelledby="game-catalog-title" id="section-game-catalog">
         <div class="card-head">
-          <h2 class="card-title" id="game-catalog-title">4. Каталог игры (ресурсы, исследования, технологии, предприятия)</h2>
+          <h2 class="card-title" id="game-catalog-title">5. Каталог игры (ресурсы, исследования, технологии, предприятия)</h2>
           <p class="card-note">
             Конкретное наполнение экономики: что считается ресурсом, какие темы исследований и технологии имеют смысл, какие типы предприятий стоят за UI-узлами.
             Поля <code>eraFrom</code>–<code>eraTo</code> — эпохи A–K; при фильтре A–C / D–F / G–K показываются только пересекающиеся записи. Данные:
@@ -118,7 +130,7 @@
 
       <section class="card" aria-labelledby="dependencies-title" id="section-dependencies">
         <div class="card-head">
-          <h2 class="card-title" id="dependencies-title">5. Слой зависимостей</h2>
+          <h2 class="card-title" id="dependencies-title">6. Слой зависимостей</h2>
           <p class="card-note">Проектные связи между системами: условия, блокировки, переходы. Типы связей — на русском в бейдже.</p>
         </div>
         <div class="dependencies" id="dependencies-list"></div>
@@ -126,7 +138,7 @@
 
       <section class="card" aria-labelledby="roadmap-title" id="section-roadmap">
         <div class="card-head">
-          <h2 class="card-title" id="roadmap-title">6. Дорожная карта карты</h2>
+          <h2 class="card-title" id="roadmap-title">7. Дорожная карта карты</h2>
           <p class="card-note">Развитие самой архитектурной карты как инструмента.</p>
         </div>
         <div class="roadmap" id="roadmap-list"></div>
@@ -134,7 +146,7 @@
 
       <section class="card" aria-labelledby="screens-title" id="section-screens">
         <div class="card-head">
-          <h2 class="card-title" id="screens-title">7. UI-экраны</h2>
+          <h2 class="card-title" id="screens-title">8. UI-экраны</h2>
           <p class="card-note">Индекс экранов по масштабу игры.</p>
         </div>
         <div class="screens" id="screens-list"></div>
@@ -590,6 +602,7 @@
         ...new Set([
           ...architecture.eras.map((era) => era.status),
           ...architecture.systems.map((system) => system.status),
+          ...(architecture.systemProgression || []).map((p) => p.status),
           ...architecture.roadmap.map((item) => item.status),
           ...(architecture.gameResources || []).map((x) => x.status),
           ...(architecture.gameResearch || []).map((x) => x.status),
@@ -740,6 +753,65 @@
         : '<div class="empty-state">По текущим фильтрам системы не найдены.</div>';
     }
 
+    function progressionEraRowVisible(eraId) {
+      return !state.visibleEraIds || !state.visibleEraIds.length || state.visibleEraIds.includes(eraId);
+    }
+
+    function renderSystemProgression() {
+      const root = document.getElementById("system-progression-root");
+      if (!root) return;
+      const list = architecture.systemProgression;
+      if (!Array.isArray(list) || !list.length) {
+        root.innerHTML =
+          '<div class="empty-state">В data нет массива <code>systemProgression</code> или он пуст.</div>';
+        return;
+      }
+      const items = list.filter((entry) => {
+        const byStatus = state.status === "all" || entry.status === state.status;
+        const bySearch = includesText(entry, state.search);
+        return byStatus && bySearch;
+      });
+      if (!items.length) {
+        root.innerHTML =
+          '<div class="empty-state">По текущим фильтрам сквозные системы не найдены.</div>';
+        return;
+      }
+      root.innerHTML = items
+        .map((entry) => {
+          const query = state.search;
+          const matchClass = query && includesText(entry, query) ? " is-search-match" : "";
+          const eraRows = [...ERA_ORDER].filter((eid) => progressionEraRowVisible(eid));
+          const tableBody = eraRows
+            .map((eid) => {
+              const text = entry.byEra && entry.byEra[eid];
+              if (text == null || !String(text).trim()) return "";
+              return `<tr><th scope="row">${escapeHtml(eid)}</th><td>${highlightPlain(String(text), query)}</td></tr>`;
+            })
+            .join("");
+          const tableBlock = tableBody.trim()
+            ? `<table class="system-progression-table"><thead><tr><th scope="col">Эпоха</th><th scope="col">Линия системы</th></tr></thead><tbody>${tableBody}</tbody></table>`
+            : `<div class="empty-state">При выбранном фильтре эпох нет строк для этой системы.</div>`;
+          const notes =
+            Array.isArray(entry.designNotes) && entry.designNotes.length
+              ? `<div class="system-progression-notes"><p class="system-progression-notes-title">Заметки дизайна</p><ul class="system-progression-notes-list">${entry.designNotes
+                  .map((n) => `<li>${highlightPlain(String(n), query)}</li>`)
+                  .join("")}</ul></div>`
+              : "";
+          return `
+        <article class="system-progression-card${matchClass}" id="system-progression-${escapeHtml(entry.systemId)}">
+          <header class="system-progression-card-head">
+            <h3 class="system-progression-card-title">${markInEscaped(escapeHtml(entry.title), query)}</h3>
+            ${createStatusPill(entry.status)}
+          </header>
+          <p class="system-progression-sum">${markInEscaped(escapeHtml(entry.summary), query)}</p>
+          <p class="system-progression-meta"><code>${escapeHtml(entry.systemId)}</code></p>
+          ${tableBlock}
+          ${notes}
+        </article>`;
+        })
+        .join("");
+    }
+
     function renderDependencies() {
       const list = document.getElementById("dependencies-list");
       const dependencies = architecture.dependencies.filter((d) => includesText(d, state.search));
@@ -888,6 +960,7 @@
     function renderAll() {
       renderTimeline();
       renderSystemsMatrix();
+      renderSystemProgression();
       renderGameCatalog();
       renderDependencies();
       renderRoadmap();

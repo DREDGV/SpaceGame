@@ -171,7 +171,7 @@ function validateCatalogArray(name, items, eraIds) {
 function validateSystems(systems) {
   if (!Array.isArray(systems)) {
     err("systems must be an array");
-    return;
+    return new Set();
   }
   const seen = new Set();
   for (const s of systems) {
@@ -187,6 +187,64 @@ function validateSystems(systems) {
     const bi = eraIndex(s.becomesCoreIn);
     if (ai != null && bi != null && ai > bi) err(`system ${s.id}: appearsIn must be <= becomesCoreIn`);
   }
+  return seen;
+}
+
+function validateSystemProgression(architecture, systemIds) {
+  const sp = architecture.systemProgression;
+  if (sp == null || sp === undefined) return;
+  if (!Array.isArray(sp)) {
+    err("systemProgression must be an array when present");
+    return;
+  }
+  const ids = systemIds instanceof Set ? systemIds : new Set(architecture.systems?.map((s) => s.id) || []);
+
+  sp.forEach((entry, idx) => {
+    const label = `systemProgression[${idx}]`;
+    if (!entry || typeof entry !== "object") {
+      err(`${label}: must be an object`);
+      return;
+    }
+    if (!entry.systemId || typeof entry.systemId !== "string" || !String(entry.systemId).trim()) {
+      err(`${label}: systemId is required`);
+    } else if (!ids.has(entry.systemId)) {
+      err(`${label}: systemId "${entry.systemId}" must match an id in systems[]`);
+    }
+    if (!entry.title || typeof entry.title !== "string" || !String(entry.title).trim()) err(`${label}: title is required`);
+    if (!entry.summary || typeof entry.summary !== "string" || !String(entry.summary).trim())
+      err(`${label}: summary is required`);
+    if (!entry.status || typeof entry.status !== "string" || !String(entry.status).trim()) err(`${label}: status is required`);
+
+    const byEra = entry.byEra;
+    if (!byEra || typeof byEra !== "object" || Array.isArray(byEra)) {
+      err(`${label}: byEra must be an object`);
+      return;
+    }
+    for (const key of Object.keys(byEra)) {
+      if (!ERA_IDS.has(key)) err(`${label}: byEra has invalid key "${key}" (only A–K)`);
+    }
+
+    if (entry.systemId === "people") {
+      for (const c of ERA_ORDER) {
+        const v = byEra[c];
+        if (typeof v !== "string" || !String(v).trim()) err(`${label}: byEra.${c} must be a non-empty string`);
+      }
+    } else {
+      for (const key of Object.keys(byEra)) {
+        const v = byEra[key];
+        if (typeof v !== "string" || !String(v).trim()) err(`${label}: byEra.${key} must be a non-empty string when present`);
+      }
+    }
+
+    if (entry.designNotes != null) {
+      if (!Array.isArray(entry.designNotes)) err(`${label}: designNotes must be an array when present`);
+      else {
+        entry.designNotes.forEach((n, i) => {
+          if (typeof n !== "string") err(`${label}: designNotes[${i}] must be a string`);
+        });
+      }
+    }
+  });
 }
 
 function validateDependencies(deps) {
@@ -205,7 +263,8 @@ function validateDependencies(deps) {
 const architecture = loadArchitecture();
 validateEras(architecture);
 validateGameCatalog(architecture);
-validateSystems(architecture.systems || []);
+const systemIdSet = validateSystems(architecture.systems || []);
+validateSystemProgression(architecture, systemIdSet);
 validateDependencies(architecture.dependencies || []);
 validateCatalogArray("gameResources", architecture.gameResources, ERA_IDS);
 validateCatalogArray("gameResearch", architecture.gameResearch, ERA_IDS);

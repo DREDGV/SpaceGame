@@ -38,6 +38,7 @@ window.SPACEGAME_ARCHITECTURE = {
   meta: {},
   eras: [],
   systems: [],
+  systemProgression: [],
   dependencies: [],
   roadmap: [],
   uiScreens: [],
@@ -48,6 +49,10 @@ window.SPACEGAME_ARCHITECTURE = {
   gameEnterprises: []
 };
 ```
+
+## Сквозные системы (`systemProgression`)
+
+Добавляйте или правьте объекты в массиве **`systemProgression`** в `spacegame-architecture-data.js`: поле **`systemId`** должно совпадать с **`systems[].id`**, поле **`byEra`** — только ключи **A–K** со строками по смыслу эпохи; опционально **`designNotes`** (массив строк). В просмотрщике откройте секцию **«4. Сквозные системы»** (`#section-system-progression`): таблица строк реагирует на фильтр эпох A–C / D–F / G–K и на поиск так же, как каталог игры. После правок запускайте `node tools/validate-architecture-map.mjs` — для записи с `systemId: "people"` требуются все ключи A–K с непустыми строками.
 
 ## Проектные поля эпохи (вес, роль, плотность)
 
