@@ -38,6 +38,13 @@
             <select id="status-filter" aria-label="Фильтр по статусу">
               <option value="all">Все статусы</option>
             </select>
+            <select id="design-weight-filter" aria-label="Фильтр по весу эпохи (проектный)">
+              <option value="all">Все веса</option>
+              <option value="light">Лёгкий</option>
+              <option value="medium">Средний</option>
+              <option value="heavy">Тяжёлый</option>
+              <option value="core">Ядро</option>
+            </select>
             <button type="button" data-filter-eras="all">Все эпохи</button>
             <button type="button" data-filter-eras="ABC" title="Ранняя игра">A–C</button>
             <button type="button" data-filter-eras="DEF" title="Государства и прединдустрия">D–F</button>
@@ -59,7 +66,7 @@
       <section class="card" aria-labelledby="timeline-title" id="section-timeline">
         <div class="card-head">
           <h2 class="card-title" id="timeline-title">1. Временная шкала эпох A–K</h2>
-          <p class="card-note">Главная ось: время → эпохи → периоды → системы → переходы. Данные: <code>spacegame-architecture-data.js</code>. Ширина карточек на полосе пропорциональна полю <code>timelineSpanYears</code> (астрономические годы: до н.э. отрицательные); у эпохи K правый конец интервала условный для визуализации.</p>
+          <p class="card-note">Главная ось: время → эпохи → периоды → системы → переходы. Данные: <code>spacegame-architecture-data.js</code>. Ширина карточек на полосе пропорциональна полю <code>timelineSpanYears</code> (астрономические годы: до н.э. отрицательные); у эпохи K правый конец интервала условный для визуализации. У эпохи заданы проектные метки <code>role</code>, <code>designWeight</code>, <code>gameplayDensity</code>, <code>playerTimeShare</code> (цветная полоска слева — вес дизайна); одинаковая форма карточки не означает одинаковую глубину контента.</p>
         </div>
         <div class="timeline">
           <div class="timeline-grid" id="timeline-grid"></div>
@@ -234,6 +241,42 @@
 
     const ERA_ORDER = "ABCDEFGHIJK";
 
+    /** Человекочитаемые подписи проектных полей эпохи (не игровые характеристики). */
+    const roleLabelsRu = {
+      tutorial: "обучение",
+      bridge: "мост",
+      core_expansion: "ядро расширения",
+      state_expansion: "государство / территория",
+      transition: "переход",
+      industrial_core: "индустрия",
+      modern_core: "современность",
+      planetary_core: "планета",
+      space_core: "космос",
+      endgame: "финал"
+    };
+
+    const designWeightLabelsRu = {
+      light: "лёгкий",
+      medium: "средний",
+      heavy: "тяжёлый",
+      core: "ядро"
+    };
+
+    const gameplayDensityLabelsRu = {
+      low: "низкая",
+      medium: "средняя",
+      high: "высокая",
+      very_high: "очень высокая"
+    };
+
+    const playerTimeShareLabelsRu = {
+      short: "короткое",
+      medium: "среднее",
+      long: "долгое",
+      very_long: "очень долгое",
+      endgame: "endgame"
+    };
+
     const dependencyTypeLabels = {
       requires: "требует",
       enables: "открывает",
@@ -260,6 +303,7 @@
     const state = {
       search: "",
       status: "all",
+      designWeight: "all",
       visibleEraIds: null,
       periodsCollapsed: false,
       viewMode: "detailed",
@@ -313,8 +357,9 @@
     function isEraVisible(era) {
       const byEraGroup = !state.visibleEraIds || state.visibleEraIds.includes(era.id);
       const byStatus = state.status === "all" || era.status === state.status;
+      const byWeight = state.designWeight === "all" || era.designWeight === state.designWeight;
       const bySearch = includesText(era, state.search);
-      return byEraGroup && byStatus && bySearch;
+      return byEraGroup && byStatus && byWeight && bySearch;
     }
 
     function eraSearchMatch(era) {
@@ -328,6 +373,7 @@
       return Math.max(1, w);
     }
 
+    /** Доля заполнения обязательной структуры в data.js (не «больше целей — лучше»). */
     function computeEraCompleteness(era) {
       let filled = 0;
       let total = 0;
@@ -336,17 +382,34 @@
         if (ok) filled += 1;
       };
       bump((era.periods || []).length > 0);
-      bump((era.goals || []).length > 0);
-      bump((era.events || []).length > 0);
-      bump((era.discoveries || []).length > 0);
-      bump((era.limits || []).length > 0);
       bump(!!(era.transition && String(era.transition.condition || "").trim()));
+      bump(!!String(era.role || "").trim());
+      bump(!!String(era.designWeight || "").trim());
+      bump(!!String(era.gameplayDensity || "").trim());
+      bump(!!String(era.playerTimeShare || "").trim());
+      bump(!!String(era.contentGuideline || "").trim());
+      const cl = era.transition && era.transition.checklist;
+      bump(Array.isArray(cl) && cl.length > 0 && cl.every((x) => String(x || "").trim()));
       eraSystemKeys.forEach((key) => {
         total += 1;
         const v = era.systems && era.systems[key];
         if (v && String(v).trim()) filled += 1;
       });
       return { filled, total };
+    }
+
+    function eraMetaBadgesHtml(era) {
+      const r = roleLabelsRu[era.role] || era.role || "—";
+      const dw = designWeightLabelsRu[era.designWeight] || era.designWeight || "—";
+      const gd = gameplayDensityLabelsRu[era.gameplayDensity] || era.gameplayDensity || "—";
+      const pts = playerTimeShareLabelsRu[era.playerTimeShare] || era.playerTimeShare || "—";
+      return `
+        <div class="era-meta-badges" aria-label="Проектные метки эпохи">
+          <span class="era-metric" title="Роль: ${escapeHtml(r)}">${escapeHtml(r)}</span>
+          <span class="era-metric" title="Вес дизайна: ${escapeHtml(dw)}">${escapeHtml(dw)}</span>
+          <span class="era-metric" title="Плотность решений: ${escapeHtml(gd)}">${escapeHtml(gd)}</span>
+          <span class="era-metric" title="Доля игрового времени: ${escapeHtml(pts)}">${escapeHtml(pts)}</span>
+        </div>`;
     }
 
     function matrixActiveEraIdSet(eras, systemId) {
@@ -391,9 +454,16 @@
     function renderTransitionBlock(era, query) {
       const t = era.transition || {};
       const unlocks = (t.unlocks || []).map((u) => highlightPlain(u, query)).join(", ") || "—";
+      const ch = t.checklist;
+      const checklistBlock =
+        Array.isArray(ch) && ch.length
+          ? `<div class="transition-checklist-wrap"><p class="transition-checklist-heading">Чеклист перехода</p>${renderListHtml(ch, query)}</div>`
+          : "";
+      const toLabel = t.to == null || t.to === "" ? "нет (конец шкалы A–K)" : String(t.to);
       const inner = `
-        <p><strong>К ${escapeHtml(t.to || "?")}:</strong> ${highlightPlain(t.condition || "", query)}</p>
+        <p><strong>К ${escapeHtml(toLabel)}:</strong> ${highlightPlain(t.condition || "", query)}</p>
         <p><strong>Открывает:</strong> ${unlocks}</p>
+        ${checklistBlock}
       `;
       return inner;
     }
@@ -435,6 +505,14 @@
 
       const transitionInner = renderTransitionBlock(era, query);
 
+      const principleInner =
+        era.contentGuideline && String(era.contentGuideline).trim()
+          ? `<p class="principle-text">${highlightPlain(era.contentGuideline.trim(), query)}</p>`
+          : "";
+      const principleSection = principleInner
+        ? renderDetailsSection("Принцип наполнения", principleInner, { open: false })
+        : "";
+
       const comp = computeEraCompleteness(era);
       const compPct = comp.total ? Math.round((100 * comp.filled) / comp.total) : 0;
       const spanNote =
@@ -451,11 +529,13 @@
           periodsInner,
           { open: false }
         );
+        bodyHtml += principleSection;
         bodyHtml += renderDetailsSection("Переход", transitionInner, { open: false });
       } else {
         bodyHtml += renderDetailsSection(`Периоды (${(era.periods || []).length})`, periodsInner, {
           open: periodsOpen
         });
+        bodyHtml += principleSection;
         if (goals && goals.length)
           bodyHtml += renderDetailsSection("Цели", renderListHtml(goals, query), { open: true });
         if (events && events.length)
@@ -475,17 +555,20 @@
 
       const completenessHtml = compact
         ? ""
-        : `<div class="era-completeness" title="Периоды, четыре списка, условие перехода и заполненные слои systems в data.js">
-            <span class="era-completeness-label">Полнота данных</span>
+        : `<div class="era-completeness" title="Чеклист обязательной структуры в data.js: периоды, проектные поля эпохи, условие перехода, непустой чеклист перехода, заполненные слои systems. Не оценка «чем больше целей/событий — тем лучше».">
+            <span class="era-completeness-label">Полнота структуры</span>
             <span class="era-completeness-bar" aria-hidden="true"><i style="width:${compPct}%"></i></span>
             <span class="era-completeness-num">${comp.filled}/${comp.total}</span>
           </div>`;
 
+      const dw = era.designWeight && String(era.designWeight).trim() ? String(era.designWeight).trim() : "medium";
+
       return `
-        <article class="era-card searchable${compact ? " is-compact" : ""}${matchClass}" id="era-${escapeHtml(era.id)}" data-era-id="${escapeHtml(era.id)}" data-status="${escapeHtml(era.status)}" style="--era-color: ${eraColors[era.id] || "var(--blue)"}; flex: ${flexGrow} 1 220px">
+        <article class="era-card searchable era-weight-${escapeHtml(dw)}${compact ? " is-compact" : ""}${matchClass}" id="era-${escapeHtml(era.id)}" data-era-id="${escapeHtml(era.id)}" data-status="${escapeHtml(era.status)}" data-design-weight="${escapeHtml(dw)}" style="--era-color: ${eraColors[era.id] || "var(--blue)"}; flex: ${flexGrow} 1 220px">
           <div class="era-dot"></div>
           <h3 class="era-title"><span class="era-code">${highlightPlain(era.id, query)}</span>${highlightPlain(era.title, query)}</h3>
           <p class="era-dates">${highlightPlain(era.dates, query)}${spanNote}</p>
+          ${eraMetaBadgesHtml(era)}
           ${createStatusPill(era.status)}
           ${completenessHtml}
           <p class="summary">${highlightPlain(era.summary, query)}</p>
@@ -820,6 +903,11 @@
 
       document.getElementById("status-filter").addEventListener("change", (event) => {
         state.status = event.target.value;
+        renderAll();
+      });
+
+      document.getElementById("design-weight-filter").addEventListener("change", (event) => {
+        state.designWeight = event.target.value;
         renderAll();
       });
 
