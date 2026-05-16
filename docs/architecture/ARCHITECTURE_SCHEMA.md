@@ -158,6 +158,91 @@ window.SPACEGAME_ARCHITECTURE = {
 
 Валидатор **не требует** эти поля у всех записей.
 
+### Паспорт сущности каталога
+
+Каталожные сущности (`gameResources[]`, `gameResearch[]`, `gameTechnologies[]`, `gameEnterprises[]`) заполняются через паспорт, чтобы каталог не превращался в несвязанный список названий.
+
+**Минимальный паспорт**:
+
+```js
+{
+  id: "iron",
+  title: "Железо",
+  summary: "Ключевой металл для инструментов, оружия, строительства и индустрии.",
+  status: "planned",
+  eraFrom: "D",
+  eraTo: "K",
+  systemIds: ["resources", "production", "trade", "logistics"]
+}
+```
+
+**Полный паспорт** дополняет минимальный:
+
+```js
+{
+  availabilityCondition: "Появляется после освоения добычи руды и металлургической обработки.",
+  requires: ["ore_extraction", "smelting"],
+  unlocks: ["iron_tools", "advanced_weapons", "stronger_structures"],
+  usedIn: ["tools", "construction", "machines", "transport"],
+  producedBy: ["mine", "smelter"],
+  storedIn: ["warehouse"],
+  transportedBy: ["cart", "road", "rail"],
+  riskNotes: ["Требует топлива, плавки и логистики; создаёт зависимость от рудных месторождений."],
+  prototypeRefs: []
+}
+```
+
+Шаблон технологии:
+
+```js
+{
+  id: "smelting",
+  title: "Плавка металла",
+  summary: "...",
+  status: "planned",
+  eraFrom: "D",
+  eraTo: "K",
+  systemIds: ["research", "production", "resources"],
+  availabilityCondition: "...",
+  requires: ["fire_control", "ore_knowledge"],
+  unlocks: ["copper_tools", "bronze_tools", "iron_processing"],
+  usedIn: ["metal_tools", "weapons", "construction"],
+  prototypeRefs: []
+}
+```
+
+Шаблон предприятия / производственного узла:
+
+```js
+{
+  id: "early_workshop",
+  title: "Ранняя мастерская",
+  summary: "...",
+  status: "prototype",
+  eraFrom: "B",
+  eraTo: "C",
+  systemIds: ["buildings", "production", "labor"],
+  availabilityCondition: "...",
+  requires: ["wood", "stone", "fiber"],
+  unlocks: ["basic_tools", "planks"],
+  usedIn: ["settlement_craft"],
+  producedBy: [],
+  storedIn: [],
+  transportedBy: [],
+  prototypeRefs: ["web/prototype/data/early-workshop-node.js"]
+}
+```
+
+Обязательные для минимального паспорта поля: `id`, `title`, `summary`, `status`, `eraFrom`, `eraTo`, `systemIds`. Остальные поля опциональны и добавляются по мере проработки.
+
+Валидация:
+
+- `systemIds` — массив id из `systems[]`.
+- `requires`, `unlocks`, `usedIn`, `producedBy`, `storedIn`, `transportedBy`, `riskNotes`, `prototypeRefs` — массивы непустых строк, если поле указано.
+- `availabilityCondition` — строка, если поле указано.
+- `prototypeRefs` хранит прямые ссылки на файлы, модули или заметки прототипа; если прямой связи нет, поле можно не указывать.
+- Неполный расширенный паспорт может давать warning валидатора, но не является ошибкой.
+
 ---
 
 ## `dependencies[]`

@@ -564,6 +564,48 @@
       enterprise: "gameEnterprises"
     };
 
+    const CATALOG_MINIMUM_PASSPORT_FIELDS = ["id", "title", "summary", "status", "eraFrom", "eraTo", "systemIds"];
+    const CATALOG_EXTENDED_PASSPORT_FIELDS = [
+      "availabilityCondition",
+      "requires",
+      "unlocks",
+      "usedIn",
+      "producedBy",
+      "prototypeRefs"
+    ];
+
+    function hasPassportValue(item, field) {
+      const value = item ? item[field] : null;
+      if (Array.isArray(value)) return value.some((v) => String(v || "").trim());
+      return typeof value === "string" ? !!value.trim() : value != null;
+    }
+
+    function catalogPassportMissingFields(item) {
+      return CATALOG_EXTENDED_PASSPORT_FIELDS.filter((field) => !hasPassportValue(item, field));
+    }
+
+    function catalogPassportLevel(item) {
+      const minimumOk = CATALOG_MINIMUM_PASSPORT_FIELDS.every((field) => hasPassportValue(item, field));
+      const extendedCount = CATALOG_EXTENDED_PASSPORT_FIELDS.reduce(
+        (count, field) => count + (hasPassportValue(item, field) ? 1 : 0),
+        0
+      );
+      return minimumOk && extendedCount >= 3 ? "extended" : "basic";
+    }
+
+    function entityKindClass(kind) {
+      return String(kind || "").replace(/[^a-z0-9_-]/gi, "-");
+    }
+
+    function entityStatusFromFound(found) {
+      const data = found && found.data;
+      if (!data) return "";
+      if (data.status) return data.status;
+      if (data.module && data.module.status) return data.module.status;
+      if (data.transition) return "designing";
+      return "";
+    }
+
     function eraIndex(id) {
       const i = ERA_ORDER.indexOf(id);
       return i >= 0 ? i : null;
@@ -1080,6 +1122,46 @@
       return `<details class="entity-inspector-section" open><summary class="entity-inspector-section-sum">Связи</summary><div class="entity-inspector-links">${inner}</div></details>`;
     }
 
+    function renderInspectorFactBlock(title, rows, options) {
+      const opts = options || {};
+      const clean = (rows || []).filter((row) => row && row.value != null && String(row.value).trim());
+      if (!clean.length) return "";
+      const open = opts.open === false ? "" : " open";
+      const items = clean
+        .map(
+          (row) =>
+            `<li><span class="entity-fact-label">${escapeHtml(row.label)}</span><span class="entity-fact-value">${row.value}</span></li>`
+        )
+        .join("");
+      return `<details class="entity-inspector-section entity-inspector-facts"${open}><summary class="entity-inspector-section-sum">${escapeHtml(title)}</summary><ul class="entity-fact-list">${items}</ul></details>`;
+    }
+
+    function renderCatalogPassportBlock(item) {
+      const level = catalogPassportLevel(item);
+      const missing = catalogPassportMissingFields(item);
+      const levelLabel = level === "extended" ? "Паспорт расширен." : "Паспорт: базовый.";
+      const missingHtml = missing.length
+        ? `<p class="entity-inspector-muted">Для полноценного паспорта не хватает:</p><ul class="entity-inspector-list">${missing
+            .map((field) => `<li><code>${escapeHtml(field)}</code></li>`)
+            .join("")}</ul>`
+        : `<p class="entity-inspector-muted">Паспорт расширен.</p>`;
+      return `<details class="entity-inspector-section entity-inspector-passport" open><summary class="entity-inspector-section-sum">${escapeHtml(levelLabel)}</summary>${missingHtml}</details>`;
+    }
+
+    function prototypeModulesForSystems(systemIds) {
+      const hits = [];
+      const seen = new Set();
+      (systemIds || []).forEach((sid) => {
+        prototypeModulesForSystem(sid).forEach((hit) => {
+          const key = `${hit.eraId}|${hit.module.path}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          hits.push(hit);
+        });
+      });
+      return hits;
+    }
+
     function renderBridgeInspectorBody(bridgeKey, bridge, q) {
       const listHtml = (items) =>
         items && items.length
@@ -1149,11 +1231,23 @@
       return `<details class="entity-inspector-section"><summary class="entity-inspector-section-sum">${escapeHtml(title)}</summary><ul class="entity-inspector-list">${lis}</ul></details>`;
     }
 
-    function renderPrototypeBlock(hits, q) {
-      if (!hits || !hits.length) {
-        return `<div class="entity-inspector-section entity-inspector-prototype"><p class="entity-inspector-muted">Прямых связей с прототипом пока нет.</p></div>`;
+    function renderPrototypeBlock(hits, q, options) {
+      const opts = options || {};
+      const directRefs = Array.isArray(opts.directRefs) ? opts.directRefs.filter((ref) => String(ref || "").trim()) : [];
+      const title = opts.title || "Связь с прототипом";
+      const visibleHits = opts.limit ? (hits || []).slice(0, opts.limit) : hits || [];
+      if (!visibleHits.length && !directRefs.length) {
+        const suggestion = opts.suggestion
+          ? `<p class="entity-inspector-muted">${escapeHtml(opts.suggestion)}</p>`
+          : "";
+        return `<details class="entity-inspector-section entity-inspector-prototype" open><summary class="entity-inspector-section-sum">${escapeHtml(title)}</summary><p class="entity-inspector-muted">Прямых связей с прототипом пока нет.</p>${suggestion}</details>`;
       }
-      const cards = hits
+      const directHtml = directRefs.length
+        ? `<p class="entity-inspector-subhead">Прямые связи</p><ul class="entity-inspector-list">${directRefs
+            .map((ref) => `<li><code>${highlightPlain(String(ref), q)}</code></li>`)
+            .join("")}</ul>`
+        : "";
+      const cards = visibleHits
         .map((h) => {
           const pid = prototypeModuleId(h.eraId, h.module.path);
           return `<button type="button" class="prototype-ref-card entity-link" data-entity-select="prototype" data-entity-id="${escapeHtml(pid)}">
@@ -1161,10 +1255,15 @@
             <span class="prototype-ref-label">${escapeHtml(h.module.label || h.module.path)}</span>
             <code class="prototype-ref-path">${escapeHtml(h.module.path)}</code>
             ${h.module.status ? `<span class="prototype-ref-status">${escapeHtml(statusLabels[h.module.status] || h.module.status)}</span>` : ""}
+            ${h.module.note ? `<span class="prototype-ref-note">${highlightPlain(String(h.module.note), q)}</span>` : ""}
           </button>`;
         })
         .join("");
-      return `<details class="entity-inspector-section" open><summary class="entity-inspector-section-sum">Связь с прототипом</summary><div class="prototype-ref-grid">${cards}</div></details>`;
+      const mappedHtml = cards
+        ? `<p class="entity-inspector-subhead">${directRefs.length ? "Связанные модули карты" : "Есть прямые связи"}</p><div class="prototype-ref-grid">${cards}</div>`
+        : "";
+      const more = opts.limit && hits && hits.length > opts.limit ? `<p class="entity-inspector-muted">Показано ${opts.limit} из ${hits.length} модулей.</p>` : "";
+      return `<details class="entity-inspector-section entity-inspector-prototype" open><summary class="entity-inspector-section-sum">${escapeHtml(title)}</summary>${directHtml}${mappedHtml}${more}</details>`;
     }
 
     function renderActionButton(a) {
@@ -1183,21 +1282,21 @@
       if (!list.length) return "";
       const groups = { primary: [], context: [], utility: [] };
       list.forEach((a) => groups[inferActionTier(a)].push(a));
-      const MAX_CONTEXT = 6;
-      const ctxHead = groups.context.slice(0, MAX_CONTEXT);
-      const ctxMore = groups.context.slice(MAX_CONTEXT);
+      const primaryHead = groups.primary.slice(0, 3);
+      const overflowPrimary = groups.primary.slice(3).map((a) => ({ ...a, tier: "context" }));
+      const contextList = [...groups.context, ...overflowPrimary, ...groups.utility.map((a) => ({ ...a, tier: "context" }))];
+      const MAX_CONTEXT = 3;
+      const ctxHead = contextList.slice(0, MAX_CONTEXT);
+      const ctxMore = contextList.slice(MAX_CONTEXT);
       let html = "";
-      if (groups.primary.length) {
-        html += `<div class="entity-actions entity-actions--primary">${groups.primary.map(renderActionButton).join("")}</div>`;
+      if (primaryHead.length) {
+        html += `<div class="entity-actions-block entity-actions-block--primary"><p class="entity-actions-label">Быстрые действия</p><div class="entity-actions entity-actions--primary">${primaryHead.map(renderActionButton).join("")}</div></div>`;
       }
       if (ctxHead.length) {
-        html += `<div class="entity-actions entity-actions--context">${ctxHead.map(renderActionButton).join("")}</div>`;
+        html += `<div class="entity-actions-block"><p class="entity-actions-label">Дополнительно</p><div class="entity-actions entity-actions--context">${ctxHead.map(renderActionButton).join("")}</div></div>`;
       }
       if (ctxMore.length) {
-        html += `<details class="entity-actions-more"><summary class="entity-actions-more-sum">Ещё (${ctxMore.length})</summary><div class="entity-actions entity-actions--context">${ctxMore.map(renderActionButton).join("")}</div></details>`;
-      }
-      if (groups.utility.length) {
-        html += `<div class="entity-actions entity-actions--utility">${groups.utility.map(renderActionButton).join("")}</div>`;
+        html += `<details class="entity-actions-more"><summary class="entity-actions-more-sum">Ещё действия (${ctxMore.length})</summary><div class="entity-actions entity-actions--context">${ctxMore.map(renderActionButton).join("")}</div></details>`;
       }
       return html;
     }
@@ -1447,10 +1546,12 @@
       panel.classList.add("entity-inspector--active");
       panel.classList.remove("entity-inspector--era-hover");
       const kindLabel = ENTITY_KIND_LABELS[sel.kind] || sel.kind;
+      const status = entityStatusFromFound(found);
+      const statusBadge = status ? createStatusPill(status) : "";
       let body = "";
       const actions = [
-        { action: "scroll", label: "На карте", tier: "primary", argKind: sel.kind, argId: sel.id },
-        { action: "copy-link", label: "Ссылка", tier: "utility", argKind: sel.kind, argId: sel.id }
+        { action: "scroll", label: "Перейти к месту", tier: "primary", argKind: sel.kind, argId: sel.id },
+        { action: "copy-link", label: "Скопировать ссылку", tier: "primary", argKind: sel.kind, argId: sel.id }
       ];
 
       if (sel.kind === "system") {
@@ -1479,9 +1580,12 @@
 
       panel.innerHTML = `<div class="entity-inspector-head">
           <h3 class="dashboard-panel-title entity-inspector-title">Инспектор объекта</h3>
-          <button type="button" class="entity-inspector-clear-btn" id="btn-clear-system-focus" title="Сбросить выбор">×</button>
+          <button type="button" class="entity-inspector-clear-btn" id="btn-clear-system-focus" title="Сбросить выбор" aria-label="Сбросить выбор">Сбросить выбор</button>
         </div>
-        <p class="entity-inspector-kind">${escapeHtml(kindLabel)}</p>
+        <div class="entity-inspector-badges">
+          <span class="entity-kind-badge entity-kind-badge--${escapeHtml(entityKindClass(sel.kind))}">${escapeHtml(kindLabel)}</span>
+          ${statusBadge}
+        </div>
         ${body}
         ${renderActions(sel, actions)}`;
     }
@@ -1540,18 +1644,21 @@
         edgePartner && getSystemById(edgePartner)
           ? `<p class="entity-inspector-edge-pair"><strong>Связь на схеме:</strong> ${renderEntityChip("system", s.id, s.title)} → ${renderEntityChip("system", edgePartner, getSystemById(edgePartner).title || edgePartner)}${edgeKind ? ` <span class="entity-rel-type">${escapeHtml(dependencyTypeLabels[edgeKind] || edgeKind)}</span>` : ""}</p>`
           : "";
+      const main = renderInspectorFactBlock("Главное", [
+        { label: "Эпохи", value: `${renderEntityChip("era", s.appearsIn, s.appearsIn)} → ${renderEntityChip("era", s.becomesCoreIn, s.becomesCoreIn)}` },
+        { label: "Категория", value: escapeHtml(s.category || "") },
+        { label: "Роль", value: highlightPlain(String(s.roleInGame || ""), q) },
+        { label: "Сквозная линия", value: prog ? renderEntityChip("systemProgression", s.id, prog.title) : "" }
+      ]);
       return `
         <div class="entity-inspector-card">
           ${edgeBlock}
           <h4 class="entity-inspector-name">${markInEscaped(escapeHtml(s.title), q)}</h4>
           <p class="entity-inspector-id"><code>${escapeHtml(s.id)}</code> · ${escapeHtml(s.category || "")}</p>
-          ${createStatusPill(s.status)}
           <p class="entity-inspector-sum">${highlightPlain(String(s.summary || ""), q)}</p>
-          <p><strong>В игре:</strong> ${highlightPlain(String(s.roleInGame || ""), q)}</p>
-          <p><strong>Эпохи:</strong> ${renderEntityChip("era", s.appearsIn, s.appearsIn)} → ${renderEntityChip("era", s.becomesCoreIn, s.becomesCoreIn)}</p>
+          ${main}
           ${links}
-          ${prog ? `<p><strong>Сквозная линия:</strong> ${renderEntityChip("systemProgression", s.id, prog.title)}</p>` : ""}
-          ${renderPrototypeBlock(protoHits, q)}
+          ${renderPrototypeBlock(protoHits, q, { limit: 6 })}
         </div>`;
     }
 
@@ -1572,22 +1679,27 @@
       const protoHits = pm
         ? (pm.modules || []).map((mod) => ({ eraId: pm.eraId, module: mod, eraRow: pm }))
         : [];
+      const main = renderInspectorFactBlock("Главное", [
+        { label: "Диапазон", value: escapeHtml(era.dates || "") },
+        { label: "Роль", value: escapeHtml(roleLabelsRu[era.role] || era.role || "") },
+        { label: "Вес", value: escapeHtml(designWeightLabelsRu[era.designWeight] || era.designWeight || "") },
+        { label: "Плотность", value: escapeHtml(era.gameplayDensity || "") },
+        { label: "Доля времени", value: escapeHtml(pts) },
+        { label: "Чеклист", value: prog.total ? `${prog.done}/${prog.total}` : "" }
+      ]);
       return `
         <div class="entity-inspector-card">
           <h4 class="entity-inspector-name">${markInEscaped(escapeHtml(era.title), q)}</h4>
           <p class="entity-inspector-id"><code>${escapeHtml(era.id)}</code> · ${escapeHtml(era.dates || "")}</p>
-          ${createStatusPill(era.status)}
           <p class="entity-inspector-sum">${highlightPlain(String(era.summary || ""), q)}</p>
-          <p><strong>Роль:</strong> ${escapeHtml(roleLabelsRu[era.role] || era.role || "")} · <strong>Вес:</strong> ${escapeHtml(designWeightLabelsRu[era.designWeight] || "")} · <strong>Плотность:</strong> ${escapeHtml(era.gameplayDensity || "")}</p>
-          <p><strong>Доля времени игрока:</strong> ${escapeHtml(pts)}</p>
+          ${main}
           <p class="entity-inspector-meta">${highlightPlain(String(era.contentGuideline || ""), q)}</p>
           ${t.condition ? `<p><strong>Переход → ${escapeHtml(t.to || "—")}:</strong> ${highlightPlain(String(t.condition), q)}</p>` : ""}
-          ${prog.total ? `<p><strong>Чеклист:</strong> ${prog.done}/${prog.total}</p>` : ""}
           ${bridges.length ? `<p><strong>Мост:</strong> ${bridges.map((k) => renderEntityChip("bridge", k, k.replace(/_/g, "→"))).join(" ")}</p>` : ""}
           ${eraSystemsInspectorBlock(era, q)}
           ${catChips ? `<details class="entity-inspector-section" open><summary class="entity-inspector-section-sum">Каталог в эпохе</summary><div class="entity-chip-row">${catChips}</div></details>` : ""}
           ${pm ? `<p><strong>Прототип (эпоха):</strong> ${escapeHtml(pm.summary || "")}</p>` : ""}
-          ${renderPrototypeBlock(protoHits, q)}
+          ${renderPrototypeBlock(protoHits, q, { limit: 6 })}
         </div>`;
     }
 
@@ -1643,23 +1755,41 @@
         renderStringList("Открывает", item.unlocks, q, "unlocks"),
         renderStringList("Используется в", item.usedIn, q)
       ]);
+      const passport = renderCatalogPassportBlock(item);
+      const main = renderInspectorFactBlock("Главное", [
+        { label: "Эпохи", value: `${renderEntityChip("era", item.eraFrom, item.eraFrom)} – ${renderEntityChip("era", item.eraTo, item.eraTo)}` },
+        { label: "Системы", value: sysChips },
+        { label: "Тип", value: escapeHtml(item.category || item.type || "") },
+        { label: "Доступность", value: item.availabilityCondition ? highlightPlain(String(item.availabilityCondition), q) : "" }
+      ]);
+      const protoHits = prototypeModulesForSystems(sysIds);
+      const detailsInner = [
+        renderStringList("Производится", item.producedBy, q),
+        renderStringList("Хранится в", item.storedIn, q),
+        renderStringList("Транспорт", item.transportedBy, q),
+        renderStringList("Риски", item.riskNotes, q),
+        extraKind
+      ]
+        .filter(Boolean)
+        .join("");
+      const details = detailsInner
+        ? `<details class="entity-inspector-section"><summary class="entity-inspector-section-sum">Детали</summary>${detailsInner}</details>`
+        : "";
       return `
         <div class="entity-inspector-card">
           <h4 class="entity-inspector-name">${markInEscaped(escapeHtml(item.title), q)}</h4>
           <p class="entity-inspector-id"><code>${escapeHtml(item.id)}</code>${item.category ? ` · ${escapeHtml(item.category)}` : item.type ? ` · ${escapeHtml(item.type)}` : ""}</p>
-          ${createStatusPill(item.status)}
           <p class="entity-inspector-sum">${highlightPlain(String(item.summary || ""), q)}</p>
-          <p><strong>Эпохи:</strong> ${renderEntityChip("era", item.eraFrom, item.eraFrom)} – ${renderEntityChip("era", item.eraTo, item.eraTo)}</p>
-          ${item.availabilityCondition ? `<p><strong>Доступность:</strong> ${highlightPlain(String(item.availabilityCondition), q)}</p>` : ""}
+          ${main}
           ${links}
+          ${passport}
           ${item.requiredBy && item.requiredBy.length ? renderStringList("Требуется для (data)", item.requiredBy, q, "requiredBy") : ""}
-          ${renderStringList("Производится", item.producedBy, q)}
-          ${renderStringList("Хранится в", item.storedIn, q)}
-          ${renderStringList("Транспорт", item.transportedBy, q)}
-          ${renderStringList("Риски", item.riskNotes, q)}
-          ${extraKind}
-          ${renderRefList("Прототип (ссылки)", item.prototypeRefs, q)}
-          ${renderPrototypeBlock(prototypeModulesForSystem(sysIds[0] || ""), q)}
+          ${details}
+          ${renderPrototypeBlock(protoHits, q, {
+            directRefs: item.prototypeRefs,
+            limit: 6,
+            suggestion: "Подсказка: добавить prototypeRefs или связать сущность через prototypeMapping."
+          })}
         </div>`;
     }
 
@@ -3967,6 +4097,8 @@
         const catPill = cat
           ? `<span class="game-pill game-pill-cat">${escapeHtml(cat)}</span>`
           : "";
+        const passportLevel = catalogPassportLevel(item);
+        const passportPill = `<span class="game-pill game-pill-passport game-pill-passport--${passportLevel}">паспорт: ${passportLevel === "extended" ? "расширенный" : "базовый"}</span>`;
         let extra = "";
         if (opts.unlocks && item.unlocks && item.unlocks.length)
           extra += `<p class="game-extra"><strong>Открывает:</strong> ${item.unlocks
@@ -3999,7 +4131,7 @@
         return `
         <article class="game-card catalog-entity-card entity-link-card${match}${focusClass}${mutedClass}" tabindex="0" data-entity-select="${catalogEntityKind}" data-entity-id="${escapeHtml(item.id)}" id="game-${escapeHtml(opts.prefix)}-${escapeHtml(item.id)}">
           <h3 class="game-card-title">${markInEscaped(escapeHtml(item.title), state.search)}</h3>
-          <div class="game-card-meta">${eraPill}${catPill}${createStatusPill(item.status)}</div>
+          <div class="game-card-meta">${eraPill}${catPill}${createStatusPill(item.status)}${passportPill}</div>
           <p class="game-card-sum">${markInEscaped(escapeHtml(item.summary), state.search)}</p>
           ${extra}
         </article>`;

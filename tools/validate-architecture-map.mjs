@@ -58,9 +58,14 @@ const ALLOWED = {
 };
 
 const errors = [];
+const warnings = [];
 
 function err(msg) {
   errors.push(msg);
+}
+
+function warn(msg) {
+  warnings.push(msg);
 }
 
 function eraIndex(id) {
@@ -254,6 +259,27 @@ function validateCatalogArray(name, items, eraIds, systemIdSet) {
     }
     if (item.availabilityCondition != null && typeof item.availabilityCondition !== "string") {
       err(`${name} ${id}: availabilityCondition must be a string when present`);
+    }
+    const minimumPassportFields = ["id", "title", "summary", "status", "eraFrom", "eraTo", "systemIds"];
+    const extendedPassportFields = [
+      "availabilityCondition",
+      "requires",
+      "unlocks",
+      "usedIn",
+      "producedBy",
+      "prototypeRefs"
+    ];
+    const hasPassportValue = (key) => {
+      const value = item[key];
+      if (Array.isArray(value)) return value.some((v) => typeof v === "string" && String(v).trim());
+      return typeof value === "string" ? !!String(value).trim() : value != null;
+    };
+    const missingMinimum = minimumPassportFields.filter((key) => !hasPassportValue(key));
+    const missingExtended = extendedPassportFields.filter((key) => !hasPassportValue(key));
+    if (missingMinimum.length) {
+      warn(`${name} ${id}: basic passport missing ${missingMinimum.join(", ")}`);
+    } else if (missingExtended.length) {
+      warn(`${name} ${id}: extended passport missing ${missingExtended.join(", ")}`);
     }
   }
 }
@@ -475,6 +501,11 @@ if (errors.length) {
   console.error("Architecture map validation failed:\n");
   for (const e of errors) console.error(`  - ${e}`);
   process.exit(1);
+}
+
+if (warnings.length) {
+  console.warn("Architecture map validation warnings:");
+  for (const w of warnings) console.warn(`  WARN ${w}`);
 }
 
 console.log("Architecture map validation passed.");
