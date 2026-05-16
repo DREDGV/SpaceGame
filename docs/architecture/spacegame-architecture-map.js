@@ -479,7 +479,19 @@
       lowerGateOpen: false,
       eraCompareActive: false,
       eraCompareLeft: "B",
-      eraCompareRight: "C"
+      eraCompareRight: "C",
+      selectedEntity: null,
+      mainlineEdgePartner: null,
+      mainlineEdgeKind: null,
+      hoveredEraId: null,
+      catalogFocus: null
+    };
+
+    const CATALOG_KIND_PREFIX = {
+      resource: "res",
+      research: "resch",
+      technology: "tech",
+      enterprise: "ent"
     };
 
     const TRANSITION_CHECKLIST_STORAGE_KEY = "sg-arch-transition-checklist-v1";
@@ -526,6 +538,1383 @@
       });
       return { done, total: ch.length };
     }
+
+    // --- Entity inspector ---
+
+    const ENTITY_KIND_LABELS = {
+      system: "Система",
+      era: "Эпоха",
+      systemProgression: "Сквозная система",
+      resource: "Ресурс",
+      research: "Исследование",
+      technology: "Технология",
+      enterprise: "Предприятие",
+      transition: "Переход эпох",
+      bridge: "Мост эпох",
+      prototype: "Модуль прототипа",
+      roadmap: "Этап дорожной карты",
+      dependency: "Зависимость слоя",
+      uiScreen: "UI-экран"
+    };
+
+    const CATALOG_KIND_MAP = {
+      resource: "gameResources",
+      research: "gameResearch",
+      technology: "gameTechnologies",
+      enterprise: "gameEnterprises"
+    };
+
+    function eraIndex(id) {
+      const i = ERA_ORDER.indexOf(id);
+      return i >= 0 ? i : null;
+    }
+
+    function eraInRange(eraId, from, to) {
+      const e = eraIndex(eraId);
+      const a = eraIndex(from);
+      const b = eraIndex(to);
+      if (e == null || a == null || b == null) return false;
+      return e >= Math.min(a, b) && e <= Math.max(a, b);
+    }
+
+    function encodeEntityHash(kind, id) {
+      return `#entity:${kind}:${encodeURIComponent(String(id))}`;
+    }
+
+    function parseEntityHash(hash) {
+      const h = (hash || "").replace(/^#/, "");
+      const m = /^entity:([a-z]+):(.+)$/i.exec(h);
+      if (!m) return null;
+      try {
+        return { kind: m[1], id: decodeURIComponent(m[2]) };
+      } catch {
+        return { kind: m[1], id: m[2] };
+      }
+    }
+
+    function getSelectedEntity() {
+      return state.selectedEntity;
+    }
+
+    function clearSelectedEntity(options) {
+      const opts = options || {};
+      state.selectedEntity = null;
+      if (opts.clearSystemFocus !== false) {
+        state.focusedSystemId = null;
+        state.matrixHighlightSystemId = null;
+        state.hoveredSystemId = null;
+      }
+      if (opts.clearEraFocus) state.focusedEraId = null;
+      state.mainlineEdgePartner = null;
+      state.mainlineEdgeKind = null;
+      state.catalogFocus = null;
+      syncEntityHash(null);
+      applyMainlineHighlightClasses();
+      renderEntityInspectorPanel();
+      syncMatrixFocusRenders();
+      renderFocusRecommendations();
+      syncEntitySelectionDom();
+    }
+
+    function syncEntityHash(entity) {
+      if (state.applyingHash) return;
+      const base = location.pathname + location.search;
+      if (!entity) {
+        if (/^#entity:/i.test(location.hash)) history.replaceState(null, "", base);
+        return;
+      }
+      const want = encodeEntityHash(entity.kind, entity.id);
+      if (location.hash !== want) history.replaceState(null, "", base + want);
+    }
+
+    function findEntity(kind, id) {
+      if (!kind || id == null) return null;
+      const sid = String(id);
+      switch (kind) {
+        case "system":
+          return getSystemById(sid) ? { kind, id: sid, data: getSystemById(sid) } : null;
+        case "era": {
+          const era = (architecture.eras || []).find((e) => e && e.id === sid);
+          return era ? { kind, id: sid, data: era } : null;
+        }
+        case "systemProgression": {
+          const row = (architecture.systemProgression || []).find((e) => e && e.systemId === sid);
+          return row ? { kind, id: sid, data: row } : null;
+        }
+        case "resource":
+        case "research":
+        case "technology":
+        case "enterprise": {
+          const arr = architecture[CATALOG_KIND_MAP[kind]] || [];
+          const item = arr.find((x) => x && x.id === sid);
+          return item ? { kind, id: sid, data: item, catalogKind: kind } : null;
+        }
+        case "bridge": {
+          const ab = architecture.architectureBridge;
+          if (!ab || !ab[sid]) return null;
+          return { kind, id: sid, data: ab[sid] };
+        }
+        case "roadmap": {
+          const item = (architecture.roadmap || []).find((r) => r && r.id === sid);
+          return item ? { kind, id: sid, data: item } : null;
+        }
+        case "transition": {
+          const era = (architecture.eras || []).find((e) => e && e.id === sid);
+          if (!era || !era.transition) return null;
+          return { kind, id: sid, data: { era, transition: era.transition } };
+        }
+        case "prototype": {
+          const parts = sid.split("|");
+          const eraId = parts[0];
+          const path = parts.slice(1).join("|");
+          const pm = architecture.prototypeMapping;
+          if (!pm || !Array.isArray(pm.eras)) return null;
+          const row = pm.eras.find((r) => r && r.eraId === eraId);
+          if (!row) return null;
+          const mod = (row.modules || []).find((m) => m && m.path === path);
+          if (!mod) return null;
+          return { kind, id: sid, data: { eraId, module: mod, eraRow: row } };
+        }
+        case "dependency": {
+          const parts = sid.split("|");
+          if (parts.length < 2) return null;
+          const from = parts[0];
+          const to = parts[1];
+          const type = parts[2] || "";
+          const d = (architecture.dependencies || []).find(
+            (x) => x && x.from === from && x.to === to && (!type || x.type === type)
+          );
+          return d ? { kind, id: sid, data: d } : null;
+        }
+        case "uiScreen": {
+          const screen = (architecture.uiScreens || []).find((x) => x && x.id === sid);
+          return screen ? { kind, id: sid, data: screen } : null;
+        }
+        default:
+          return null;
+      }
+    }
+
+    function dependencyEntityId(d) {
+      if (!d || !d.from || !d.to) return "";
+      return `${d.from}|${d.to}|${d.type || ""}`;
+    }
+
+    function prototypeModuleId(eraId, path) {
+      return `${eraId}|${path}`;
+    }
+
+    function catalogItemsForEra(eraId) {
+      const out = { resource: [], research: [], technology: [], enterprise: [] };
+      for (const kind of Object.keys(CATALOG_KIND_MAP)) {
+        const arr = architecture[CATALOG_KIND_MAP[kind]] || [];
+        out[kind] = arr.filter((item) => item && eraInRange(eraId, item.eraFrom, item.eraTo));
+      }
+      return out;
+    }
+
+    function catalogItemsForSystem(systemId) {
+      const out = { resource: [], research: [], technology: [], enterprise: [] };
+      for (const kind of Object.keys(CATALOG_KIND_MAP)) {
+        const arr = architecture[CATALOG_KIND_MAP[kind]] || [];
+        out[kind] = arr.filter((item) => {
+          const ids = resolveCatalogSystemIds(item, CATALOG_KIND_PREFIX[kind]);
+          return ids.includes(systemId);
+        });
+      }
+      return out;
+    }
+
+    function catalogKindPrefix(kind) {
+      return CATALOG_KIND_PREFIX[kind] || "res";
+    }
+
+    function clearCatalogFocus() {
+      if (!state.catalogFocus) return;
+      state.catalogFocus = null;
+      renderGameCatalog();
+      syncEntitySelectionDom();
+    }
+
+    function catalogItemPassesFocus(item, catalogKind) {
+      const f = state.catalogFocus;
+      if (!f) return true;
+      if (f.kinds && f.kinds.length && !f.kinds.includes(catalogKind)) return false;
+      if (f.systemId) {
+        const ids = resolveCatalogSystemIds(item, catalogKindPrefix(catalogKind));
+        if (!ids.includes(f.systemId)) return false;
+      }
+      if (f.eraId && !eraInRange(f.eraId, item.eraFrom, item.eraTo)) return false;
+      return true;
+    }
+
+    function focusCatalogForSystem(systemId, kinds) {
+      const kindList =
+        kinds && String(kinds).trim()
+          ? String(kinds)
+              .split(",")
+              .map((k) => k.trim())
+              .filter(Boolean)
+          : null;
+      state.catalogFocus = {
+        systemId: String(systemId),
+        kinds: kindList
+      };
+      openLowerSection("lower-gate-catalog");
+      renderGameCatalog();
+      syncEntitySelectionDom();
+      document.getElementById("section-game-catalog")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      requestAnimationFrame(() => {
+        const first = document.querySelector(".catalog-entity-card--focus-match");
+        if (first) first.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    }
+
+    function focusCatalogForEra(eraId) {
+      state.catalogFocus = { eraId: String(eraId), kinds: null };
+      openLowerSection("lower-gate-catalog");
+      renderGameCatalog();
+      syncEntitySelectionDom();
+      document.getElementById("section-game-catalog")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    function findCatalogItemByRef(ref) {
+      if (!ref) return null;
+      const r = String(ref);
+      for (const kind of Object.keys(CATALOG_KIND_MAP)) {
+        const arr = architecture[CATALOG_KIND_MAP[kind]] || [];
+        const item = arr.find((x) => x && (x.id === r || x.title === r));
+        if (item) return { kind, item };
+      }
+      return null;
+    }
+
+    function requiredByForCatalogItem(item) {
+      const id = item && item.id ? String(item.id) : "";
+      if (!id) return [];
+      const hits = [];
+      for (const kind of Object.keys(CATALOG_KIND_MAP)) {
+        const arr = architecture[CATALOG_KIND_MAP[kind]] || [];
+        arr.forEach((other) => {
+          if (!other || other.id === id) return;
+          const refs = [...(other.requires || []), ...(other.requiredBy || []), ...(other.usedIn || [])];
+          if (refs.some((r) => String(r) === id)) hits.push({ kind, item: other });
+        });
+      }
+      return hits.slice(0, 16);
+    }
+
+    function roadmapItemsForTransition(eraId, toEra) {
+      const re = new RegExp(`\\b(${eraId}|${toEra || "x"})\\b`, "i");
+      return (architecture.roadmap || [])
+        .filter((item) => {
+          if (!item) return false;
+          const blob = [item.title, item.summary, item.id, ...(item.checklist || [])].join(" ");
+          return re.test(blob);
+        })
+        .slice(0, 6);
+    }
+
+    function eraSystemsInspectorBlock(era, q) {
+      const rows = eraSystemKeys
+        .filter((k) => era.systems && String(era.systems[k] || "").trim())
+        .map((k) => {
+          const snippet = highlightPlain(truncateText(era.systems[k], 72), q);
+          if (getSystemById(k))
+            return `<li class="entity-era-sys-row">${renderEntityChip("system", k, systemRowLabels[k] || k)}<span class="entity-era-sys-snippet">${snippet}</span></li>`;
+          return `<li class="entity-era-sys-row"><span class="entity-chip entity-chip--static">${escapeHtml(systemRowLabels[k] || k)}</span><span class="entity-era-sys-snippet">${snippet}</span></li>`;
+        })
+        .join("");
+      if (!rows) return "";
+      return `<details class="entity-inspector-section" open><summary class="entity-inspector-section-sum">Ключевые системы эпохи</summary><ul class="entity-inspector-list entity-era-sys-list">${rows}</ul></details>`;
+    }
+
+    function getRelatedDomContext() {
+      const sel = state.selectedEntity;
+      const ctx = {
+        systemIds: new Set(),
+        catalogKeys: new Set(),
+        eraIds: new Set(),
+        bridgeKeys: new Set()
+      };
+      if (!sel) return ctx;
+      const found = findEntity(sel.kind, sel.id);
+      if (!found) return ctx;
+      if (sel.kind === "system") {
+        const s = found.data;
+        (s.relatedSystems || []).forEach((r) => r && r.systemId && ctx.systemIds.add(r.systemId));
+        const cat = catalogItemsForSystem(s.id);
+        for (const k of Object.keys(cat)) cat[k].forEach((it) => ctx.catalogKeys.add(`${k}:${it.id}`));
+      } else if (sel.kind === "era") {
+        const era = found.data;
+        ctx.eraIds.add(sel.id);
+        bridgeKeysForEra(sel.id).forEach((bk) => ctx.bridgeKeys.add(bk));
+        const cat = catalogItemsForEra(sel.id);
+        for (const k of Object.keys(cat)) cat[k].forEach((it) => ctx.catalogKeys.add(`${k}:${it.id}`));
+        eraSystemKeys.forEach((k) => {
+          if (era.systems && String(era.systems[k] || "").trim() && getSystemById(k)) ctx.systemIds.add(k);
+        });
+      } else if (["resource", "research", "technology", "enterprise"].includes(sel.kind)) {
+        const item = found.data;
+        resolveCatalogSystemIds(item, catalogKindPrefix(sel.kind)).forEach((sid) => ctx.systemIds.add(sid));
+        if (item.eraFrom) ctx.eraIds.add(item.eraFrom);
+        if (item.eraTo) ctx.eraIds.add(item.eraTo);
+        requiredByForCatalogItem(item).forEach((h) => ctx.catalogKeys.add(`${h.kind}:${h.item.id}`));
+        (item.requires || []).forEach((r) => {
+          const hit = findCatalogItemByRef(String(r));
+          if (hit) ctx.catalogKeys.add(`${hit.kind}:${hit.item.id}`);
+        });
+        (item.unlocks || []).forEach((r) => {
+          const hit = findCatalogItemByRef(String(r));
+          if (hit) ctx.catalogKeys.add(`${hit.kind}:${hit.item.id}`);
+        });
+      } else if (sel.kind === "systemProgression") {
+        const e = found.data;
+        ctx.systemIds.add(e.systemId);
+        (e.relatedSystems || []).forEach((r) => r && r.systemId && ctx.systemIds.add(r.systemId));
+      } else if (sel.kind === "dependency") {
+        const d = found.data;
+        if (getSystemById(d.from)) ctx.systemIds.add(d.from);
+        if (getSystemById(d.to)) ctx.systemIds.add(d.to);
+      }
+      return ctx;
+    }
+
+    function actionFingerprint(a) {
+      return [
+        a.action,
+        a.label,
+        a.argKind || "",
+        a.argId || "",
+        a.anchor || "",
+        a.kinds || "",
+        a.field || ""
+      ].join("\0");
+    }
+
+    function dedupeActions(actions) {
+      const seen = new Set();
+      const out = [];
+      for (const a of actions) {
+        const fp = actionFingerprint(a);
+        if (seen.has(fp)) continue;
+        seen.add(fp);
+        out.push(a);
+      }
+      return out;
+    }
+
+    function inferActionTier(a) {
+      if (a.tier) return a.tier;
+      if (a.action === "copy-link") return "utility";
+      if (a.action === "scroll" || a.action === "select") return "primary";
+      return "context";
+    }
+
+    function finalizeInspectorActions(sel, actions) {
+      let list = actions.filter((a) => a.action !== "clear");
+      const found = findEntity(sel.kind, sel.id);
+      if (!found) return dedupeActions(list);
+
+      list = list.filter(
+        (a) => !(a.action === "related-systems" && a.argKind === "system" && a.argId === sel.id)
+      );
+
+      if (sel.kind === "system") {
+        const specificCatalog = list.filter(
+          (a) => a.action === "catalog-system" && a.kinds && !/^resource,research,technology,enterprise$/.test(a.kinds)
+        );
+        if (specificCatalog.length) {
+          list = list.filter(
+            (a) =>
+              !(
+                a.action === "catalog-system" &&
+                a.kinds === "resource,research,technology,enterprise"
+              )
+          );
+        } else {
+          const cat = catalogItemsForSystem(sel.id);
+          const total = Object.keys(cat).reduce((n, k) => n + cat[k].length, 0);
+          if (total && !list.some((a) => a.action === "catalog-system")) {
+            list.push({
+              action: "catalog-system",
+              label: "Каталог",
+              argId: sel.id,
+              kinds: "resource,research,technology,enterprise",
+              tier: "context"
+            });
+          }
+        }
+      }
+
+      if (sel.kind === "era") {
+        if (list.some((a) => a.anchor === `#era-${sel.id}`)) {
+          list = list.filter((a) => a.action !== "scroll");
+        }
+        const eraCatalog = list.filter((a) => a.action === "catalog-era");
+        if (eraCatalog.length > 1) {
+          const keep =
+            eraCatalog.find((a) => /сущност/i.test(a.label)) || eraCatalog[0];
+          list = list.filter((a) => a.action !== "catalog-era" || a === keep);
+        }
+      }
+
+      if (["resource", "research", "technology", "enterprise"].includes(sel.kind)) {
+        list = list.filter((a) => a.label !== "Показать в каталоге");
+        if (list.some((a) => a.label === "Перейти к каталогу")) {
+          list = list.filter((a) => a.action !== "scroll");
+        }
+        const item = found.data;
+        if (item.eraTo && item.eraTo !== item.eraFrom) {
+          const hasEra = list.some((a) => a.action === "select" && a.argKind === "era");
+          if (!hasEra) {
+            list.push({
+              action: "select",
+              label: `Эпохи ${item.eraFrom}–${item.eraTo}`,
+              argKind: "era",
+              argId: item.eraFrom,
+              tier: "context"
+            });
+          }
+        }
+      }
+
+      if (sel.kind === "systemProgression") {
+        const catalogs = list.filter((a) => a.action === "catalog-system");
+        if (catalogs.length > 1) {
+          const keep = catalogs.find((a) => a.label === "Каталог") || catalogs[0];
+          list = list.filter((a) => a.action !== "catalog-system" || a === keep);
+        } else if (!catalogs.length) {
+          list.push({
+            action: "catalog-system",
+            label: "Каталог",
+            argId: found.data.systemId,
+            kinds: "resource,research,technology,enterprise",
+            tier: "context"
+          });
+        }
+      }
+
+      if (sel.kind === "uiScreen") {
+        list = list.filter((a) => a.action !== "scroll");
+      }
+
+      return dedupeActions(list);
+    }
+
+    function prototypeModulesForSystem(systemId) {
+      const pm = architecture.prototypeMapping;
+      if (!pm || !Array.isArray(pm.eras)) return [];
+      const hits = [];
+      pm.eras.forEach((row) => {
+        (row.modules || []).forEach((mod) => {
+          if (mod && Array.isArray(mod.systemIds) && mod.systemIds.includes(systemId)) {
+            hits.push({ eraId: row.eraId, module: mod, eraRow: row });
+          }
+        });
+      });
+      return hits;
+    }
+
+    function prototypeRowForEra(eraId) {
+      const pm = architecture.prototypeMapping;
+      if (!pm || !Array.isArray(pm.eras)) return null;
+      return pm.eras.find((r) => r && r.eraId === eraId) || null;
+    }
+
+    function bridgeKeysForEra(eraId) {
+      const keys = [];
+      if ((eraId === "B" || eraId === "C") && architecture.architectureBridge?.B_to_C) keys.push("B_to_C");
+      if (eraId === "D" && architecture.architectureBridge?.C_to_D) keys.push("C_to_D");
+      return keys;
+    }
+
+    function dependenciesTouchingSystem(systemId) {
+      const requires = [];
+      const enables = [];
+      for (const d of architecture.dependencies || []) {
+        if (!d || !d.from || !d.to) continue;
+        if (d.to === systemId) requires.push(d);
+        if (d.from === systemId) enables.push(d);
+      }
+      return { requires, enables };
+    }
+
+    function dependenciesTouchingCatalogItem(item, sysIds) {
+      const hits = [];
+      const seen = new Set();
+      const id = item && item.id ? String(item.id) : "";
+      for (const d of architecture.dependencies || []) {
+        if (!d) continue;
+        const key = `${d.from}|${d.to}|${d.type}`;
+        if (seen.has(key)) continue;
+        const inText = id && String(d.description || "").includes(id);
+        const inSys = sysIds.some((sid) => d.from === sid || d.to === sid);
+        if (inText || inSys) {
+          seen.add(key);
+          hits.push(d);
+        }
+      }
+      return hits.slice(0, 12);
+    }
+
+    function renderDepRows(deps, q) {
+      if (!deps || !deps.length) return "";
+      return deps
+        .map((d) => {
+          const fromBtn = getSystemById(d.from)
+            ? renderEntityChip("system", d.from, d.from)
+            : escapeHtml(d.from);
+          const toBtn = getSystemById(d.to)
+            ? renderEntityChip("system", d.to, d.to)
+            : escapeHtml(d.to);
+          const type = dependencyTypeLabels[d.type] || d.type;
+          return `<li><span class="entity-rel-type">${escapeHtml(type)}</span> ${fromBtn} → ${toBtn}<div class="entity-rel-note">${highlightPlain(String(d.description || ""), q)}</div></li>`;
+        })
+        .join("");
+    }
+
+    function renderUnifiedLinksSection(sectionsHtml) {
+      const inner = sectionsHtml.filter(Boolean).join("");
+      if (!inner) return "";
+      return `<details class="entity-inspector-section" open><summary class="entity-inspector-section-sum">Связи</summary><div class="entity-inspector-links">${inner}</div></details>`;
+    }
+
+    function renderBridgeInspectorBody(bridgeKey, bridge, q) {
+      const listHtml = (items) =>
+        items && items.length
+          ? `<ul class="bridge-list">${items.map((t) => `<li>${highlightPlain(String(t), q)}</li>`).join("")}</ul>`
+          : '<p class="bridge-empty">—</p>';
+      const inheritsHtml =
+        bridge.inherits && bridge.inherits.length
+          ? `<ul class="bridge-inherits">${bridge.inherits
+              .map(
+                (r) =>
+                  `<li>${renderEntityChip("system", r.system, r.system)} — ${highlightPlain(String(r.note || ""), q)}</li>`
+              )
+              .join("")}</ul>`
+          : "";
+      let html = `<p class="entity-inspector-sum">${highlightPlain(String(bridge.summary || ""), q)}</p>`;
+      html += (bridge.shifts || [])
+        .map(
+          (s) =>
+            `<details class="bridge-sec" open><summary class="bridge-sec-sum">${escapeHtml(s.title)}</summary><div class="bridge-sec-body">${listHtml(s.items)}</div></details>`
+        )
+        .join("");
+      html += `<details class="bridge-sec"><summary class="bridge-sec-sum">Перестаёт быть нормой</summary><div class="bridge-sec-body">${listHtml(bridge.stopsDoing)}</div></details>`;
+      if (bridgeKey === "B_to_C") {
+        html += `<details class="bridge-sec"><summary class="bridge-sec-sum">Становится трудом поселения</summary><div class="bridge-sec-body">${listHtml(bridge.settlementLabor)}</div></details>`;
+        html += `<details class="bridge-sec" open><summary class="bridge-sec-sum">Наследует прототип (системы)</summary><div class="bridge-sec-body">${inheritsHtml}</div></details>`;
+        html += `<details class="bridge-sec"><summary class="bridge-sec-sum">UI становится второстепенным</summary><div class="bridge-sec-body">${listHtml(bridge.uiSecondary)}</div></details>`;
+        html += `<details class="bridge-sec" open><summary class="bridge-sec-sum">Критерии перехода к C</summary><div class="bridge-sec-body">${listHtml(bridge.criteria)}</div></details>`;
+        html += `<details class="bridge-sec"><summary class="bridge-sec-sum">Минимальный макет C до кода</summary><div class="bridge-sec-body">${listHtml(bridge.minDesignPack)}</div></details>`;
+        if (bridge.docRef) html += `<p class="entity-inspector-meta"><code>${escapeHtml(bridge.docRef)}</code></p>`;
+      } else {
+        html += `<details class="bridge-sec" open><summary class="bridge-sec-sum">От поселения к городу</summary><div class="bridge-sec-body">${listHtml(bridge.settlementToCity)}</div></details>`;
+        html += `<details class="bridge-sec" open><summary class="bridge-sec-sum">Наследует слой C (системы)</summary><div class="bridge-sec-body">${inheritsHtml}</div></details>`;
+        html += `<details class="bridge-sec"><summary class="bridge-sec-sum">Фокус разблокировок</summary><div class="bridge-sec-body">${listHtml(bridge.unlocksFocus)}</div></details>`;
+        html += `<details class="bridge-sec" open><summary class="bridge-sec-sum">Критерии перехода к D</summary><div class="bridge-sec-body">${listHtml(bridge.criteria)}</div></details>`;
+      }
+      html += `<details class="bridge-sec"><summary class="bridge-sec-sum">Запрещено до моста</summary><div class="bridge-sec-body">${listHtml(bridge.forbiddenUntilBridge)}</div></details>`;
+      return html;
+    }
+
+    function renderEntityChip(kind, id, label, extraClass) {
+      const found = findEntity(kind, id);
+      if (!found && kind === "system" && !getSystemById(id)) {
+        return `<span class="entity-chip entity-chip--static">${escapeHtml(label || id)}</span>`;
+      }
+      return `<button type="button" class="entity-chip entity-link${extraClass ? " " + extraClass : ""}" data-entity-select="${escapeHtml(kind)}" data-entity-id="${escapeHtml(id)}">${escapeHtml(label || id)}</button>`;
+    }
+
+    function renderStringList(title, items, q, fieldId) {
+      if (!items || !items.length) return "";
+      const lis = items
+        .map((t) => `<li>${highlightPlain(String(t), q)}</li>`)
+        .join("");
+      const idAttr = fieldId ? ` id="inspector-field-${escapeHtml(fieldId)}"` : "";
+      return `<details class="entity-inspector-section" open${idAttr}><summary class="entity-inspector-section-sum">${escapeHtml(title)}</summary><ul class="entity-inspector-list">${lis}</ul></details>`;
+    }
+
+    function renderRefList(title, refs, q) {
+      if (!refs || !refs.length) return "";
+      const lis = refs
+        .map((r) => {
+          if (typeof r === "string") return `<li>${highlightPlain(r, q)}</li>`;
+          if (r && r.path)
+            return `<li><code>${escapeHtml(r.path)}</code>${r.label ? ` — ${escapeHtml(r.label)}` : ""}</li>`;
+          return `<li>${escapeHtml(String(r))}</li>`;
+        })
+        .join("");
+      return `<details class="entity-inspector-section"><summary class="entity-inspector-section-sum">${escapeHtml(title)}</summary><ul class="entity-inspector-list">${lis}</ul></details>`;
+    }
+
+    function renderPrototypeBlock(hits, q) {
+      if (!hits || !hits.length) {
+        return `<div class="entity-inspector-section entity-inspector-prototype"><p class="entity-inspector-muted">Прямых связей с прототипом пока нет.</p></div>`;
+      }
+      const cards = hits
+        .map((h) => {
+          const pid = prototypeModuleId(h.eraId, h.module.path);
+          return `<button type="button" class="prototype-ref-card entity-link" data-entity-select="prototype" data-entity-id="${escapeHtml(pid)}">
+            <span class="prototype-ref-era">${escapeHtml(h.eraId)}</span>
+            <span class="prototype-ref-label">${escapeHtml(h.module.label || h.module.path)}</span>
+            <code class="prototype-ref-path">${escapeHtml(h.module.path)}</code>
+            ${h.module.status ? `<span class="prototype-ref-status">${escapeHtml(statusLabels[h.module.status] || h.module.status)}</span>` : ""}
+          </button>`;
+        })
+        .join("");
+      return `<details class="entity-inspector-section" open><summary class="entity-inspector-section-sum">Связь с прототипом</summary><div class="prototype-ref-grid">${cards}</div></details>`;
+    }
+
+    function renderActionButton(a) {
+      const tier = inferActionTier(a);
+      let attrs = `data-entity-action="${escapeHtml(a.action)}"`;
+      if (a.argKind) attrs += ` data-entity-action-kind="${escapeHtml(a.argKind)}"`;
+      if (a.argId != null && a.argId !== "") attrs += ` data-entity-action-id="${escapeHtml(a.argId)}"`;
+      if (a.anchor) attrs += ` data-entity-action-anchor="${escapeHtml(a.anchor)}"`;
+      if (a.kinds) attrs += ` data-entity-action-kinds="${escapeHtml(a.kinds)}"`;
+      if (a.field) attrs += ` data-entity-action-field="${escapeHtml(a.field)}"`;
+      return `<button type="button" class="entity-action-btn entity-action-btn--${escapeHtml(tier)}" ${attrs}>${escapeHtml(a.label)}</button>`;
+    }
+
+    function renderActions(sel, actions) {
+      const list = finalizeInspectorActions(sel, actions);
+      if (!list.length) return "";
+      const groups = { primary: [], context: [], utility: [] };
+      list.forEach((a) => groups[inferActionTier(a)].push(a));
+      const MAX_CONTEXT = 6;
+      const ctxHead = groups.context.slice(0, MAX_CONTEXT);
+      const ctxMore = groups.context.slice(MAX_CONTEXT);
+      let html = "";
+      if (groups.primary.length) {
+        html += `<div class="entity-actions entity-actions--primary">${groups.primary.map(renderActionButton).join("")}</div>`;
+      }
+      if (ctxHead.length) {
+        html += `<div class="entity-actions entity-actions--context">${ctxHead.map(renderActionButton).join("")}</div>`;
+      }
+      if (ctxMore.length) {
+        html += `<details class="entity-actions-more"><summary class="entity-actions-more-sum">Ещё (${ctxMore.length})</summary><div class="entity-actions entity-actions--context">${ctxMore.map(renderActionButton).join("")}</div></details>`;
+      }
+      if (groups.utility.length) {
+        html += `<div class="entity-actions entity-actions--utility">${groups.utility.map(renderActionButton).join("")}</div>`;
+      }
+      return html;
+    }
+
+    function selectEntity(kind, id, options) {
+      const opts = options || {};
+      const found = findEntity(kind, id);
+      if (!found) {
+        if (!opts.silent) clearSelectedEntity({ clearEraFocus: false });
+        return false;
+      }
+      state.selectedEntity = { kind, id: String(id) };
+
+      if (kind === "system") {
+        if (!opts.keepEdgePartner) {
+          state.mainlineEdgePartner = null;
+          state.mainlineEdgeKind = null;
+        }
+        state.focusedSystemId = String(id);
+        state.matrixHighlightSystemId = String(id);
+        state.hoveredSystemId = null;
+        applyMainlineHighlightClasses();
+        syncMatrixFocusRenders();
+      } else if (kind === "era") {
+        setEraFocus(String(id), { updateHash: false, scrollInspector: !!opts.scrollInspector, openTimeline: false });
+        if (opts.scroll !== false) {
+          scrollSpineCardIntoView(String(id));
+          highlightTimelineEraCard(String(id));
+          scrollToEra(String(id));
+        }
+      } else if (kind === "systemProgression") {
+        const sys = getSystemById(String(id));
+        if (sys) {
+          state.focusedSystemId = String(id);
+          state.matrixHighlightSystemId = String(id);
+          applyMainlineHighlightClasses();
+        }
+      }
+
+      if (opts.updateHash !== false) syncEntityHash(state.selectedEntity);
+      renderEntityInspectorPanel();
+      renderFocusRecommendations();
+      syncEntitySelectionDom();
+      if (opts.scroll) scrollToEntityAnchor(kind, id);
+      if (opts.scrollInspector !== false && (kind === "system" || kind === "era")) scrollEntityInspectorIntoView();
+      return true;
+    }
+
+    function scrollEntityInspectorIntoView() {
+      const panel = document.getElementById("system-focus-panel");
+      if (!panel) return;
+      requestAnimationFrame(() => {
+        panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
+    }
+
+    function focusMainlineEdge(from, to, kind) {
+      if (!from || !getSystemById(from)) return;
+      state.mainlineEdgePartner = to && getSystemById(to) && to !== from ? to : null;
+      state.mainlineEdgeKind = kind && kind !== "focus" ? kind : null;
+      selectEntity("system", from, {
+        scroll: false,
+        scrollInspector: true,
+        updateHash: true,
+        keepEdgePartner: true
+      });
+      state.hoveredSystemId = null;
+      applyMainlineHighlightClasses();
+      renderEntityInspectorPanel();
+      if (kind && kind !== "focus") flashMainlineEdgeKind(kind);
+    }
+
+    function scrollToEntityAnchor(kind, id) {
+      if (kind === "system") {
+        scrollToSystem(id);
+        return;
+      }
+      if (kind === "era") {
+        const el = document.getElementById(`era-${id}`);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      const catalogAnchor = {
+        resource: "res",
+        research: "resch",
+        technology: "tech",
+        enterprise: "ent"
+      };
+      if (catalogAnchor[kind]) {
+        const el = document.getElementById(`game-${catalogAnchor[kind]}-${id}`);
+        if (el) {
+          openLowerSection("lower-gate-catalog");
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+        return;
+      }
+      if (kind === "systemProgression") {
+        const el = document.getElementById(`system-progression-${id}`);
+        if (el) {
+          openLowerSection("lower-gate-systems");
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+        return;
+      }
+      if (kind === "uiScreen") {
+        openLowerSection("lower-gate-catalog");
+        document.getElementById("section-screens")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        const card = document.getElementById(`screen-card-${id}`);
+        if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }
+
+    function syncEntitySelectionDom() {
+      const sel = state.selectedEntity;
+      const ctx = getRelatedDomContext();
+      document.querySelectorAll("[data-entity-select]").forEach((el) => {
+        const k = el.getAttribute("data-entity-select");
+        const id = el.getAttribute("data-entity-id");
+        const on = !!(sel && sel.kind === k && sel.id === id);
+        el.classList.toggle("entity-card--selected", on);
+        el.classList.toggle("entity-link--selected", on);
+        let related = false;
+        let muted = false;
+        if (sel && !on) {
+          if (k === "system" && ctx.systemIds.has(id)) related = true;
+          if (["resource", "research", "technology", "enterprise"].includes(k) && ctx.catalogKeys.has(`${k}:${id}`))
+            related = true;
+          if (k === "era" && ctx.eraIds.has(id)) related = true;
+          if (k === "bridge" && ctx.bridgeKeys.has(id)) related = true;
+          if (sel.kind === "system" && k === "system") muted = !related;
+          if (["resource", "research", "technology", "enterprise"].includes(sel.kind) && k === "system")
+            muted = !related;
+        }
+        el.classList.toggle("entity-card--related", related);
+        el.classList.toggle("entity-card--muted", muted);
+      });
+      document.querySelectorAll("[data-mainline-system]").forEach((el) => {
+        const id = el.getAttribute("data-mainline-system");
+        if (sel && sel.kind === "system") {
+          el.classList.toggle("entity-card--selected", sel.id === id);
+        }
+      });
+      document.querySelectorAll("[data-era-spine]").forEach((el) => {
+        const id = el.getAttribute("data-era-spine");
+        const on = !!(sel && sel.kind === "era" && sel.id === id);
+        el.classList.toggle("entity-link--selected", on);
+        el.classList.toggle("entity-card--selected", on);
+      });
+      document.querySelectorAll(".era-card[data-entity-select]").forEach((el) => {
+        const k = el.getAttribute("data-entity-select");
+        const id = el.getAttribute("data-entity-id");
+        const on = !!(sel && sel.kind === k && sel.id === id);
+        el.classList.toggle("entity-card--selected", on);
+        el.classList.toggle("entity-link--selected", on);
+      });
+    }
+
+    function setHoveredEraColumn(eraId) {
+      state.hoveredEraId = eraId || null;
+      document.querySelectorAll("[data-matrix-era]").forEach((el) => {
+        el.classList.toggle("is-matrix-col-hover", !!(eraId && el.getAttribute("data-matrix-era") === eraId));
+      });
+      document.querySelectorAll("#timeline-grid .era-card").forEach((el) => {
+        const id = el.getAttribute("data-entity-id") || (el.id || "").replace(/^era-/, "");
+        el.classList.toggle("era-card--hover", !!(eraId && id === eraId));
+      });
+      const panel = document.getElementById("system-focus-panel");
+      if (panel) {
+        panel.classList.toggle("entity-inspector--era-hover", !!eraId);
+        if (eraId && !state.selectedEntity) {
+          const era = (architecture.eras || []).find((e) => e && e.id === eraId);
+          if (era) {
+            panel.classList.add("entity-inspector--active");
+            panel.innerHTML = `<h3 class="dashboard-panel-title entity-inspector-title">Инспектор объекта</h3>
+              <p class="entity-inspector-kind">Эпоха (наведение)</p>
+              <div class="entity-inspector-card entity-inspector-card--preview">
+                <h4 class="entity-inspector-name">${escapeHtml(era.title)}</h4>
+                <p class="entity-inspector-id"><code>${escapeHtml(era.id)}</code></p>
+                <p class="entity-inspector-sum">${escapeHtml(truncateText(era.summary || "", 160))}</p>
+                <p class="entity-inspector-muted">Клик — зафиксировать выбор.</p>
+              </div>`;
+          }
+        } else if (!eraId && !state.selectedEntity) {
+          panel.classList.remove("entity-inspector--active", "entity-inspector--era-hover");
+          panel.innerHTML = `<h3 class="dashboard-panel-title entity-inspector-title">Инспектор объекта</h3>
+            <p class="entity-inspector-empty">Выберите эпоху, систему, ресурс, технологию или другой объект карты.</p>`;
+        } else if (!eraId) {
+          panel.classList.remove("entity-inspector--era-hover");
+        }
+      }
+    }
+
+    function copyEntityLink(kind, id, feedbackBtn) {
+      const url = location.origin + location.pathname + location.search + encodeEntityHash(kind, id);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard
+          .writeText(url)
+          .then(() => flashActionButton(feedbackBtn, "Скопировано"))
+          .catch(() => flashActionButton(feedbackBtn, "Ссылка в адресе"));
+      } else {
+        flashActionButton(feedbackBtn, "Ссылка в адресе");
+      }
+      syncEntityHash({ kind, id: String(id) });
+    }
+
+    function flashActionButton(btn, message) {
+      if (!btn) return;
+      const prev = btn.textContent;
+      btn.textContent = message;
+      btn.classList.add("is-flashed");
+      btn.disabled = true;
+      clearTimeout(btn._flashTimer);
+      btn._flashTimer = setTimeout(() => {
+        btn.textContent = prev;
+        btn.classList.remove("is-flashed");
+        btn.disabled = false;
+      }, 1400);
+    }
+
+    function renderInspectorEmptyHint() {
+      return `<p class="entity-inspector-hint">Клик по узлу <strong>магистрали</strong>, эпохе на линии или карточке в каталоге открывает связи и действия здесь.</p>
+        <p class="entity-inspector-hint entity-inspector-hint--examples">Примеры: ${renderEntityChip("system", "people", "Люди")} ${renderEntityChip("era", "C", "Эпоха C")}</p>`;
+    }
+
+    function renderEntityInspectorPanel() {
+      const panel = document.getElementById("system-focus-panel");
+      if (!panel) return;
+      const q = state.search;
+      let sel = state.selectedEntity;
+      if (!sel && state.focusedSystemId) sel = { kind: "system", id: state.focusedSystemId };
+      if (!sel && state.focusedEraId) sel = { kind: "era", id: state.focusedEraId };
+
+      if (!sel) {
+        panel.classList.remove("entity-inspector--active");
+        panel.innerHTML = `<h3 class="dashboard-panel-title entity-inspector-title">Инспектор объекта</h3>
+          <p class="entity-inspector-empty">Выберите эпоху, систему, ресурс, технологию или другой объект карты.</p>
+          ${renderInspectorEmptyHint()}`;
+        return;
+      }
+
+      const found = findEntity(sel.kind, sel.id);
+      if (!found) {
+        panel.innerHTML = `<h3 class="dashboard-panel-title">Инспектор объекта</h3><p class="entity-inspector-empty">Объект не найден.</p>`;
+        return;
+      }
+
+      panel.classList.add("entity-inspector--active");
+      panel.classList.remove("entity-inspector--era-hover");
+      const kindLabel = ENTITY_KIND_LABELS[sel.kind] || sel.kind;
+      let body = "";
+      const actions = [
+        { action: "scroll", label: "На карте", tier: "primary", argKind: sel.kind, argId: sel.id },
+        { action: "copy-link", label: "Ссылка", tier: "utility", argKind: sel.kind, argId: sel.id }
+      ];
+
+      if (sel.kind === "system") {
+        body = renderInspectorSystem(found.data, q, actions);
+      } else if (sel.kind === "era") {
+        body = renderInspectorEra(found.data, q, actions);
+      } else if (sel.kind === "systemProgression") {
+        body = renderInspectorSystemProgression(found.data, q, actions);
+      } else if (["resource", "research", "technology", "enterprise"].includes(sel.kind)) {
+        body = renderInspectorCatalogItem(found.data, sel.kind, q, actions);
+      } else if (sel.kind === "bridge") {
+        body = renderInspectorBridge(sel.id, found.data, q, actions);
+      } else if (sel.kind === "roadmap") {
+        body = renderInspectorRoadmap(found.data, q, actions);
+      } else if (sel.kind === "transition") {
+        body = renderInspectorTransition(found.data, q, actions);
+      } else if (sel.kind === "prototype") {
+        body = renderInspectorPrototype(found.data, q, actions);
+      } else if (sel.kind === "dependency") {
+        body = renderInspectorDependency(found.data, q, actions);
+      } else if (sel.kind === "uiScreen") {
+        body = renderInspectorUiScreen(found.data, q, actions);
+      } else {
+        body = `<p class="entity-inspector-muted">Тип «${escapeHtml(sel.kind)}» пока без детального шаблона.</p>`;
+      }
+
+      panel.innerHTML = `<div class="entity-inspector-head">
+          <h3 class="dashboard-panel-title entity-inspector-title">Инспектор объекта</h3>
+          <button type="button" class="entity-inspector-clear-btn" id="btn-clear-system-focus" title="Сбросить выбор">×</button>
+        </div>
+        <p class="entity-inspector-kind">${escapeHtml(kindLabel)}</p>
+        ${body}
+        ${renderActions(sel, actions)}`;
+    }
+
+    function renderInspectorSystem(s, q, actions) {
+      actions.push(
+        { action: "select", label: "Магистраль", tier: "primary", argKind: "system", argId: s.id },
+        { action: "anchor", label: "Карточка", tier: "context", anchor: `#core-system-card-${s.id}` },
+        { action: "anchor", label: "Сквозная линия", tier: "context", anchor: `#system-progression-${s.id}` }
+      );
+      const titleMap = buildSystemTitleMap(architecture.systems);
+      const rs = s.relatedSystems || [];
+      const relInner = rs.length
+        ? `<ul class="entity-inspector-rel">${rs
+            .map((r) => {
+              const tl = titleMap.get(r.systemId) || r.systemId;
+              return `<li><span class="entity-rel-type">${escapeHtml(r.relation)}</span> ${renderEntityChip("system", r.systemId, tl)}<div class="entity-rel-note">${highlightPlain(String(r.note || ""), q)}</div></li>`;
+            })
+            .join("")}</ul>`
+        : "";
+      const deps = dependenciesTouchingSystem(s.id);
+      const depInner =
+        deps.requires.length || deps.enables.length
+          ? `<p class="entity-inspector-subhead">Зависимости (слой)</p><ul class="entity-inspector-rel">${renderDepRows(deps.requires, q)}${renderDepRows(deps.enables, q)}</ul>`
+          : "";
+      const prog = (architecture.systemProgression || []).find((e) => e && e.systemId === s.id);
+      const cat = catalogItemsForSystem(s.id);
+      const catChips = Object.keys(cat)
+        .flatMap((k) => cat[k].slice(0, 8).map((it) => renderEntityChip(k, it.id, it.title)))
+        .join("");
+      if (cat.resource.length)
+        actions.push({
+          action: "catalog-system",
+          label: "Ресурсы",
+          tier: "context",
+          argId: s.id,
+          kinds: "resource"
+        });
+      if (cat.technology.length || cat.research.length)
+        actions.push({
+          action: "catalog-system",
+          label: "Технологии",
+          tier: "context",
+          argId: s.id,
+          kinds: "research,technology"
+        });
+      const protoHits = prototypeModulesForSystem(s.id);
+      const links = renderUnifiedLinksSection([
+        relInner,
+        depInner,
+        catChips ? `<p class="entity-inspector-subhead">Каталог</p><div class="entity-chip-row">${catChips}</div>` : ""
+      ]);
+      const edgePartner = state.mainlineEdgePartner;
+      const edgeKind = state.mainlineEdgeKind;
+      const edgeBlock =
+        edgePartner && getSystemById(edgePartner)
+          ? `<p class="entity-inspector-edge-pair"><strong>Связь на схеме:</strong> ${renderEntityChip("system", s.id, s.title)} → ${renderEntityChip("system", edgePartner, getSystemById(edgePartner).title || edgePartner)}${edgeKind ? ` <span class="entity-rel-type">${escapeHtml(dependencyTypeLabels[edgeKind] || edgeKind)}</span>` : ""}</p>`
+          : "";
+      return `
+        <div class="entity-inspector-card">
+          ${edgeBlock}
+          <h4 class="entity-inspector-name">${markInEscaped(escapeHtml(s.title), q)}</h4>
+          <p class="entity-inspector-id"><code>${escapeHtml(s.id)}</code> · ${escapeHtml(s.category || "")}</p>
+          ${createStatusPill(s.status)}
+          <p class="entity-inspector-sum">${highlightPlain(String(s.summary || ""), q)}</p>
+          <p><strong>В игре:</strong> ${highlightPlain(String(s.roleInGame || ""), q)}</p>
+          <p><strong>Эпохи:</strong> ${renderEntityChip("era", s.appearsIn, s.appearsIn)} → ${renderEntityChip("era", s.becomesCoreIn, s.becomesCoreIn)}</p>
+          ${links}
+          ${prog ? `<p><strong>Сквозная линия:</strong> ${renderEntityChip("systemProgression", s.id, prog.title)}</p>` : ""}
+          ${renderPrototypeBlock(protoHits, q)}
+        </div>`;
+    }
+
+    function renderInspectorEra(era, q, actions) {
+      actions.push({ action: "anchor", label: "Карточка эпохи", tier: "primary", anchor: `#era-${era.id}` });
+      actions.push({ action: "select", label: "Переход", tier: "context", argKind: "transition", argId: era.id });
+      actions.push({ action: "catalog-era", label: "Каталог эпохи", tier: "context", argId: era.id });
+      actions.push({ action: "related-systems", label: "Системы", tier: "context", argKind: "era", argId: era.id });
+      const bridges = bridgeKeysForEra(era.id);
+      const t = era.transition || {};
+      const prog = transitionChecklistProgress(era.id);
+      const pm = prototypeRowForEra(era.id);
+      const cat = catalogItemsForEra(era.id);
+      const catChips = Object.keys(cat)
+        .flatMap((k) => cat[k].slice(0, 8).map((it) => renderEntityChip(k, it.id, it.title)))
+        .join("");
+      const pts = era.playerTimeShare ? playerTimeShareLabelsRu[era.playerTimeShare] || era.playerTimeShare : "—";
+      const protoHits = pm
+        ? (pm.modules || []).map((mod) => ({ eraId: pm.eraId, module: mod, eraRow: pm }))
+        : [];
+      return `
+        <div class="entity-inspector-card">
+          <h4 class="entity-inspector-name">${markInEscaped(escapeHtml(era.title), q)}</h4>
+          <p class="entity-inspector-id"><code>${escapeHtml(era.id)}</code> · ${escapeHtml(era.dates || "")}</p>
+          ${createStatusPill(era.status)}
+          <p class="entity-inspector-sum">${highlightPlain(String(era.summary || ""), q)}</p>
+          <p><strong>Роль:</strong> ${escapeHtml(roleLabelsRu[era.role] || era.role || "")} · <strong>Вес:</strong> ${escapeHtml(designWeightLabelsRu[era.designWeight] || "")} · <strong>Плотность:</strong> ${escapeHtml(era.gameplayDensity || "")}</p>
+          <p><strong>Доля времени игрока:</strong> ${escapeHtml(pts)}</p>
+          <p class="entity-inspector-meta">${highlightPlain(String(era.contentGuideline || ""), q)}</p>
+          ${t.condition ? `<p><strong>Переход → ${escapeHtml(t.to || "—")}:</strong> ${highlightPlain(String(t.condition), q)}</p>` : ""}
+          ${prog.total ? `<p><strong>Чеклист:</strong> ${prog.done}/${prog.total}</p>` : ""}
+          ${bridges.length ? `<p><strong>Мост:</strong> ${bridges.map((k) => renderEntityChip("bridge", k, k.replace(/_/g, "→"))).join(" ")}</p>` : ""}
+          ${eraSystemsInspectorBlock(era, q)}
+          ${catChips ? `<details class="entity-inspector-section" open><summary class="entity-inspector-section-sum">Каталог в эпохе</summary><div class="entity-chip-row">${catChips}</div></details>` : ""}
+          ${pm ? `<p><strong>Прототип (эпоха):</strong> ${escapeHtml(pm.summary || "")}</p>` : ""}
+          ${renderPrototypeBlock(protoHits, q)}
+        </div>`;
+    }
+
+    function renderInspectorCatalogItem(item, kind, q, actions) {
+      const prefix = catalogKindPrefix(kind);
+      actions.push({
+        action: "anchor",
+        label: "В каталоге",
+        tier: "primary",
+        anchor: `#game-${prefix}-${item.id}`
+      });
+      actions.push({ action: "select", label: `Эпоха ${item.eraFrom}`, tier: "context", argKind: "era", argId: item.eraFrom });
+      actions.push({ action: "anchor", label: "Зависимости", tier: "context", anchor: "#section-dependencies" });
+      if (item.requires && item.requires.length)
+        actions.push({ action: "inspector-focus", label: "Требования", tier: "context", field: "requires" });
+      if (item.unlocks && item.unlocks.length)
+        actions.push({ action: "inspector-focus", label: "Открывает", tier: "context", field: "unlocks" });
+      if (kind === "resource" || kind === "research" || kind === "technology" || kind === "enterprise")
+        actions.push({ action: "anchor", label: "Прототип", tier: "context", anchor: "#prototype-dash-panel" });
+      const sysIds = resolveCatalogSystemIds(item, prefix);
+      const sysChips = sysIds.map((sid) => {
+        const sys = getSystemById(sid);
+        return renderEntityChip("system", sid, sys ? sys.title : sid);
+      }).join("");
+      const depHits = dependenciesTouchingCatalogItem(item, sysIds);
+      const depInner = depHits.length
+        ? `<ul class="entity-inspector-rel">${renderDepRows(depHits, q)}</ul>`
+        : "";
+      const reqBy = requiredByForCatalogItem(item);
+      const reqByChips = reqBy.length
+        ? `<p class="entity-inspector-subhead">Требуется для</p><div class="entity-chip-row">${reqBy
+            .map((h) => renderEntityChip(h.kind, h.item.id, h.item.title))
+            .join("")}</div>`
+        : "";
+      const extraKind =
+        kind === "research" || kind === "technology"
+          ? renderStringList("Связанные ресурсы", item.relatedResources, q) +
+            renderStringList("Связанные постройки", item.relatedBuildings, q) +
+            renderStringList("Связанные предприятия", item.relatedEnterprises, q)
+          : kind === "enterprise"
+            ? renderStringList("Требует ресурсы", item.requiresResources, q) +
+              renderStringList("Требует труд", item.requiresLabor, q) +
+              renderStringList("Производит", item.produces, q) +
+              renderStringList("Хранит", item.stores, q) +
+              renderStringList("Занятость", item.employs, q) +
+              renderStringList("Апгрейд до", item.upgradesTo, q)
+            : "";
+      const links = renderUnifiedLinksSection([
+        sysChips ? `<div class="entity-chip-row">${sysChips}</div>` : "",
+        depInner,
+        reqByChips,
+        renderStringList("Требует", item.requires, q, "requires"),
+        renderStringList("Открывает", item.unlocks, q, "unlocks"),
+        renderStringList("Используется в", item.usedIn, q)
+      ]);
+      return `
+        <div class="entity-inspector-card">
+          <h4 class="entity-inspector-name">${markInEscaped(escapeHtml(item.title), q)}</h4>
+          <p class="entity-inspector-id"><code>${escapeHtml(item.id)}</code>${item.category ? ` · ${escapeHtml(item.category)}` : item.type ? ` · ${escapeHtml(item.type)}` : ""}</p>
+          ${createStatusPill(item.status)}
+          <p class="entity-inspector-sum">${highlightPlain(String(item.summary || ""), q)}</p>
+          <p><strong>Эпохи:</strong> ${renderEntityChip("era", item.eraFrom, item.eraFrom)} – ${renderEntityChip("era", item.eraTo, item.eraTo)}</p>
+          ${item.availabilityCondition ? `<p><strong>Доступность:</strong> ${highlightPlain(String(item.availabilityCondition), q)}</p>` : ""}
+          ${links}
+          ${item.requiredBy && item.requiredBy.length ? renderStringList("Требуется для (data)", item.requiredBy, q, "requiredBy") : ""}
+          ${renderStringList("Производится", item.producedBy, q)}
+          ${renderStringList("Хранится в", item.storedIn, q)}
+          ${renderStringList("Транспорт", item.transportedBy, q)}
+          ${renderStringList("Риски", item.riskNotes, q)}
+          ${extraKind}
+          ${renderRefList("Прототип (ссылки)", item.prototypeRefs, q)}
+          ${renderPrototypeBlock(prototypeModulesForSystem(sysIds[0] || ""), q)}
+        </div>`;
+    }
+
+    function renderInspectorSystemProgression(entry, q, actions) {
+      actions.push({ action: "select", label: "Показать систему", argKind: "system", argId: entry.systemId });
+      actions.push({ action: "anchor", label: "Карточка сквозной линии", anchor: `#system-progression-${entry.systemId}` });
+      const titleMap = buildSystemTitleMap(architecture.systems);
+      const relInner =
+        Array.isArray(entry.relatedSystems) && entry.relatedSystems.length
+          ? `<ul class="entity-inspector-rel">${entry.relatedSystems
+              .map((r) => {
+                const tl = titleMap.get(r.systemId) || r.systemId;
+                return `<li><span class="entity-rel-type">${escapeHtml(r.relation)}</span> ${renderEntityChip("system", r.systemId, tl)}<div class="entity-rel-note">${highlightPlain(String(r.note || ""), q)}</div></li>`;
+              })
+              .join("")}</ul>`
+          : "";
+      const eraSample = ERA_ORDER.filter((eid) => entry.byEra && entry.byEra[eid] && String(entry.byEra[eid]).trim())
+        .slice(0, 3)
+        .map((eid) => `<li><strong>${escapeHtml(eid)}:</strong> ${highlightPlain(truncateText(entry.byEra[eid], 100), q)}</li>`)
+        .join("");
+      return `
+        <div class="entity-inspector-card">
+          <h4 class="entity-inspector-name">${markInEscaped(escapeHtml(entry.title), q)}</h4>
+          <p class="entity-inspector-id"><code>${escapeHtml(entry.systemId)}</code></p>
+          ${createStatusPill(entry.status)}
+          <p class="entity-inspector-sum">${highlightPlain(String(entry.summary || ""), q)}</p>
+          <p>${renderEntityChip("system", entry.systemId, "Система " + entry.systemId)}</p>
+          ${relInner ? renderUnifiedLinksSection([relInner]) : ""}
+          ${eraSample ? `<details class="entity-inspector-section"><summary class="entity-inspector-section-sum">Линия по эпохам (фрагмент)</summary><ul class="entity-inspector-list">${eraSample}</ul></details>` : ""}
+        </div>`;
+    }
+
+    function renderInspectorBridge(key, block, q, actions) {
+      actions.push({
+        action: "anchor",
+        label: "Панель моста",
+        anchor: "#bridge-panel-b-c"
+      });
+      return `
+        <div class="entity-inspector-card">
+          <h4 class="entity-inspector-name">${escapeHtml(block.title || key)}</h4>
+          ${renderBridgeInspectorBody(key, block, q)}
+        </div>`;
+    }
+
+    function renderInspectorUiScreen(screen, q, actions) {
+      actions.push({ action: "anchor", label: "Список UI", tier: "primary", anchor: "#section-screens" });
+      if (screen.appearsIn) {
+        actions.push({
+          action: "select",
+          label: `Эпоха ${screen.appearsIn}`,
+          tier: "context",
+          argKind: "era",
+          argId: screen.appearsIn
+        });
+      }
+      return `
+        <div class="entity-inspector-card">
+          <h4 class="entity-inspector-name">${markInEscaped(escapeHtml(screen.title), q)}</h4>
+          <p class="entity-inspector-id"><code>${escapeHtml(screen.id)}</code></p>
+          ${createStatusPill(screen.status)}
+          <p class="entity-inspector-sum">${highlightPlain(String(screen.summary || ""), q)}</p>
+          <p><strong>Появление:</strong> ${renderEntityChip("era", screen.appearsIn, screen.appearsIn)}</p>
+        </div>`;
+    }
+
+    function renderInspectorRoadmap(item, q, actions) {
+      actions.push({ action: "anchor", label: "Roadmap", tier: "context", anchor: "#section-roadmap" });
+      return `
+        <div class="entity-inspector-card">
+          <h4 class="entity-inspector-name">${markInEscaped(escapeHtml(item.title), q)}</h4>
+          <p class="entity-inspector-id"><code>${escapeHtml(item.id)}</code></p>
+          ${createStatusPill(item.status)}
+          <p class="entity-inspector-sum">${highlightPlain(String(item.summary || ""), q)}</p>
+          ${renderStringList("Чеклист", item.checklist, q)}
+        </div>`;
+    }
+
+    function renderInspectorTransition(payload, q, actions) {
+      const era = payload.era;
+      const t = payload.transition;
+      actions.push({ action: "select", label: "Эпоха «откуда»", argKind: "era", argId: era.id });
+      if (t.to) actions.push({ action: "select", label: "Эпоха «куда»", argKind: "era", argId: t.to });
+      actions.push({ action: "anchor", label: "Карточка на шкале", anchor: `#era-${era.id}` });
+      const bridges = bridgeKeysForEra(era.id);
+      const prog = transitionChecklistProgress(era.id);
+      const doneMap = getTransitionChecklistDone(era.id);
+      const checklist = (t.checklist || [])
+        .map((c, i) => `<li class="${doneMap[String(i)] ? "is-done" : ""}">${highlightPlain(c, q)}</li>`)
+        .join("");
+      const roadmapHits = roadmapItemsForTransition(era.id, t.to);
+      const roadmapChips = roadmapHits.map((r) => renderEntityChip("roadmap", r.id, r.title)).join("");
+      const pm = prototypeRowForEra(era.id);
+      const protoHits = pm
+        ? (pm.modules || []).map((mod) => ({ eraId: pm.eraId, module: mod, eraRow: pm }))
+        : [];
+      return `
+        <div class="entity-inspector-card">
+          <h4 class="entity-inspector-name">${escapeHtml(era.id)} → ${escapeHtml(t.to || "—")}</h4>
+          <p class="entity-inspector-id">${escapeHtml(era.title || "")}</p>
+          ${prog.total ? `<p><strong>Чеклист (браузер):</strong> ${prog.done}/${prog.total}</p>` : ""}
+          <p>${highlightPlain(String(t.condition || ""), q)}</p>
+          ${checklist ? `<details class="entity-inspector-section" open><summary class="entity-inspector-section-sum">Чеклист перехода</summary><ul class="entity-inspector-list">${checklist}</ul></details>` : ""}
+          ${renderStringList("Открывает", t.unlocks, q)}
+          ${bridges.length ? `<p><strong>Мост:</strong> ${bridges.map((k) => renderEntityChip("bridge", k, k.replace(/_/g, "→"))).join(" ")}</p>` : ""}
+          ${roadmapChips ? `<p><strong>Roadmap:</strong> ${roadmapChips}</p>` : ""}
+          ${renderPrototypeBlock(protoHits, q)}
+        </div>`;
+    }
+
+    function renderInspectorPrototype(payload, q, actions) {
+      const mod = payload.module;
+      const row = payload.eraRow;
+      actions.push({ action: "select", label: "Эпоха", argKind: "era", argId: payload.eraId });
+      actions.push({ action: "anchor", label: "Таблица прототипа", anchor: "#prototype-dash-panel" });
+      return `
+        <div class="entity-inspector-card">
+          <h4 class="entity-inspector-name">${escapeHtml(mod.label || mod.path)}</h4>
+          <p class="entity-inspector-id"><code>${escapeHtml(mod.path)}</code></p>
+          ${mod.status ? createStatusPill(mod.status) : ""}
+          ${mod.note ? `<p class="entity-inspector-sum">${highlightPlain(String(mod.note), q)}</p>` : ""}
+          <p><strong>Эпоха карты:</strong> ${renderEntityChip("era", payload.eraId, payload.eraId)}</p>
+          ${row && row.summary ? `<p class="entity-inspector-meta">${escapeHtml(row.summary)}</p>` : ""}
+          <p><strong>Системы:</strong> ${(mod.systemIds || []).map((sid) => renderEntityChip("system", sid, sid)).join(" ") || "—"}</p>
+        </div>`;
+    }
+
+    function renderInspectorDependency(d, q, actions) {
+      actions.push({ action: "anchor", label: "Слой зависимостей", anchor: "#section-dependencies" });
+      actions.push({ action: "select", label: "Система «откуда»", argKind: "system", argId: d.from });
+      actions.push({ action: "select", label: "Система «куда»", argKind: "system", argId: d.to });
+      const type = dependencyTypeLabels[d.type] || d.type;
+      return `
+        <div class="entity-inspector-card">
+          <h4 class="entity-inspector-name">${escapeHtml(d.from)} → ${escapeHtml(d.to)}</h4>
+          <p class="entity-inspector-id"><span class="entity-rel-type">${escapeHtml(type)}</span></p>
+          <p class="entity-inspector-sum">${highlightPlain(String(d.description || ""), q)}</p>
+          <p>${renderEntityChip("system", d.from, d.from)} → ${renderEntityChip("system", d.to, d.to)}</p>
+        </div>`;
+    }
+
+    function applyEntityHashFromUrl() {
+      const parsed = parseEntityHash(location.hash);
+      if (!parsed) return false;
+      state.applyingHash = true;
+      selectEntity(parsed.kind, parsed.id, { updateHash: false, scroll: true, scrollInspector: true });
+      state.applyingHash = false;
+      return true;
+    }
+
+    function handleEntityActionClick(event) {
+      const btn = event.target.closest("[data-entity-action]");
+      if (!btn) return false;
+      const action = btn.getAttribute("data-entity-action");
+      if (action === "clear") {
+        clearSelectedEntity();
+        clearSystemFocus();
+        clearEraFocus();
+        return true;
+      }
+      const kind = btn.getAttribute("data-entity-action-kind");
+      const id = btn.getAttribute("data-entity-action-id");
+      if (action === "select" && kind && id) {
+        selectEntity(kind, id, { scroll: true });
+        return true;
+      }
+      if (action === "scroll" && kind && id) {
+        selectEntity(kind, id, { scroll: true });
+        return true;
+      }
+      if (action === "copy-link" && kind && id) {
+        copyEntityLink(kind, id, btn);
+        return true;
+      }
+      const anchor = btn.getAttribute("data-entity-action-anchor");
+      if (action === "anchor" && anchor) {
+        const el = document.querySelector(anchor);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+        return true;
+      }
+      if (action === "catalog-system") {
+        const systemId = btn.getAttribute("data-entity-action-id");
+        const kinds = btn.getAttribute("data-entity-action-kinds");
+        if (systemId) focusCatalogForSystem(systemId, kinds);
+        return true;
+      }
+      if (action === "catalog-era") {
+        const eraId = btn.getAttribute("data-entity-action-id");
+        if (eraId) focusCatalogForEra(eraId);
+        return true;
+      }
+      if (action === "related-systems") {
+        const rk = btn.getAttribute("data-entity-action-kind");
+        const rid = btn.getAttribute("data-entity-action-id");
+        if (rk === "system" && rid) {
+          selectEntity("system", rid, { scroll: true, scrollInspector: true });
+        } else if (rk === "era" && rid) {
+          selectEntity("era", rid, { scrollInspector: true, scroll: true });
+          openLowerSection("lower-gate-systems");
+          document.getElementById("section-core-systems")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          syncEntitySelectionDom();
+        }
+        return true;
+      }
+      if (action === "inspector-focus") {
+        const field = btn.getAttribute("data-entity-action-field");
+        const panel = document.getElementById("system-focus-panel");
+        const el = field && panel ? panel.querySelector(`#inspector-field-${field}`) : null;
+        if (el) {
+          if (el.tagName === "DETAILS") el.open = true;
+          el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+        return true;
+      }
+      return false;
+    }
+
+    function handleEntitySelectClick(event) {
+      if (event.target.closest("[data-stop-card-select]")) {
+        event.stopPropagation();
+      }
+      const el = event.target.closest("[data-entity-select]");
+      if (!el) return false;
+      event.preventDefault();
+      const kind = el.getAttribute("data-entity-select");
+      const id = el.getAttribute("data-entity-id");
+      if (!kind || !id) return false;
+      if (kind === "system" && event.detail === 2) {
+        selectEntity(kind, id, { scroll: false, scrollInspector: true });
+        scrollToSystem(id);
+        const core = document.getElementById("core-system-card-" + id);
+        if (core) {
+          openLowerSection("lower-gate-systems");
+          core.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+        return true;
+      }
+      if (kind === "system") {
+        state.mainlineEdgePartner = null;
+        state.mainlineEdgeKind = null;
+        const toggle = state.selectedEntity && state.selectedEntity.kind === "system" && state.selectedEntity.id === id;
+        if (toggle && !event.shiftKey) {
+          clearSelectedEntity();
+          clearSystemFocus();
+          return true;
+        }
+      }
+      const onMainline = el.hasAttribute("data-mainline-system");
+      selectEntity(kind, id, {
+        scroll: kind !== "system" || onMainline,
+        scrollInspector: true
+      });
+      return true;
+    }
+
 
     function renderInteractiveTransitionChecklist(era, query) {
       const ch = era.transition && Array.isArray(era.transition.checklist) ? era.transition.checklist : [];
@@ -839,12 +2228,12 @@
           </div>`;
       const titleHtml = inInspector
         ? ""
-        : `<button type="button" class="era-title-btn" data-era-focus="${escapeHtml(era.id)}">
+        : `<button type="button" class="era-title-btn entity-link" data-era-focus="${escapeHtml(era.id)}" data-entity-select="era" data-entity-id="${escapeHtml(era.id)}">
             <h3 class="era-title"><span class="era-code">${highlightPlain(era.id, query)}</span>${highlightPlain(era.title, query)}</h3>
           </button>`;
 
       return `
-        <article class="era-card searchable era-card--interactive${inInspector ? " era-card--inspector" : ""} era-weight-${escapeHtml(dw)}${compact ? " is-compact" : ""}${balanced ? " is-balanced" : ""}${forceExpanded ? " is-expanded" : ""}${matchClass}" id="era-${escapeHtml(era.id)}" data-era-id="${escapeHtml(era.id)}" data-status="${escapeHtml(era.status)}" data-design-weight="${escapeHtml(dw)}" style="--era-color: ${eraColors[era.id] || "var(--blue)"}; flex: ${flexGrow} 1 220px">
+        <article class="era-card searchable era-card--interactive entity-link-card${inInspector ? " era-card--inspector" : ""} era-weight-${escapeHtml(dw)}${compact ? " is-compact" : ""}${balanced ? " is-balanced" : ""}${forceExpanded ? " is-expanded" : ""}${matchClass}" id="era-${escapeHtml(era.id)}" data-era-id="${escapeHtml(era.id)}"${inInspector ? "" : ` tabindex="0" data-entity-select="era" data-entity-id="${escapeHtml(era.id)}"`} data-status="${escapeHtml(era.status)}" data-design-weight="${escapeHtml(dw)}" style="--era-color: ${eraColors[era.id] || "var(--blue)"}; flex: ${flexGrow} 1 220px">
           ${inInspector ? "" : '<div class="era-dot"></div>'}
           ${inspectorHero}
           ${toolbarHtml}
@@ -1048,7 +2437,7 @@
           ? `<ul class="bridge-inherits">${bridge.inherits
               .map(
                 (r) =>
-                  `<li><button type="button" class="bridge-system-link" data-bridge-system="${escapeHtml(r.system)}">${escapeHtml(r.system)}</button> — ${escapeHtml(r.note)}</li>`
+                  `<li><button type="button" class="bridge-system-link entity-link" data-entity-select="system" data-entity-id="${escapeHtml(r.system)}">${escapeHtml(r.system)}</button> — ${escapeHtml(r.note)}</li>`
               )
               .join("")}</ul>`
           : "";
@@ -1060,7 +2449,8 @@
         )
         .join("");
 
-      let bodyHtml = `<p class="bridge-summary">${escapeHtml(bridge.summary)}</p>${shiftsHtml}`;
+      let bodyHtml = `<p class="bridge-toolbar"><button type="button" class="entity-action-btn entity-link" data-entity-select="bridge" data-entity-id="${escapeHtml(bridgeKey)}">Открыть мост в инспекторе</button></p>`;
+      bodyHtml += `<p class="bridge-summary">${escapeHtml(bridge.summary)}</p>${shiftsHtml}`;
       bodyHtml += `<details class="bridge-sec"><summary class="bridge-sec-sum">Перестаёт быть нормой</summary><div class="bridge-sec-body">${listHtml(bridge.stopsDoing)}</div></details>`;
 
       if (bridgeKey === "B_to_C") {
@@ -1089,18 +2479,20 @@
 
     function renderPrototypeModulesHtml(row, compact) {
       if (!row || !row.modules || !row.modules.length) return '<p class="prototype-empty">Нет привязанных модулей.</p>';
+      const eraId = row.eraId || "";
       const rows = row.modules
         .map((mod) => {
+          const pid = prototypeModuleId(eraId, mod.path);
           const sys =
             mod.systemIds && mod.systemIds.length
               ? mod.systemIds
                   .map((sid) => {
                     const s = architecture.systems.find((x) => x && x.id === sid);
-                    return `<button type="button" class="game-system-link" data-catalog-system="${escapeHtml(sid)}">${escapeHtml(s ? s.title : sid)}</button>`;
+                    return `<button type="button" class="game-system-link entity-link" data-entity-select="system" data-entity-id="${escapeHtml(sid)}">${escapeHtml(s ? s.title : sid)}</button>`;
                   })
                   .join(" ")
               : "—";
-          return `<tr>
+          return `<tr class="prototype-module-row entity-link-card" tabindex="0" data-entity-select="prototype" data-entity-id="${escapeHtml(pid)}">
             <td><code class="prototype-path">${escapeHtml(mod.path)}</code></td>
             <td>${escapeHtml(mod.label)}</td>
             <td>${createStatusPill(mod.status || "planned")}</td>
@@ -1352,21 +2744,21 @@
       const opts = options || {};
       if (!eraId) return;
       state.focusedEraId = eraId;
+      state.selectedEntity = { kind: "era", id: eraId };
       if (opts.openTimeline) {
         state.lowerGateOpen = true;
         openLowerSection("lower-gate-timeline");
       }
       if (opts.updateHash !== false && !state.applyingHash) {
-        const want = `#era-${eraId}`;
-        if (location.hash !== want) {
-          history.replaceState(null, "", location.pathname + location.search + want);
-        }
+        syncEntityHash({ kind: "era", id: eraId });
       }
       renderEraInspector();
       renderBridgePanel();
       renderPrototypeDashPanel();
       syncEraSpineActiveFromHash();
+      renderEntityInspectorPanel();
       renderFocusRecommendations();
+      syncEntitySelectionDom();
       if (opts.scrollInspector !== false) {
         requestAnimationFrame(() => {
           const panel = document.getElementById("era-inspector-panel");
@@ -1379,12 +2771,14 @@
 
     function clearEraFocus() {
       state.focusedEraId = null;
+      if (state.selectedEntity && state.selectedEntity.kind === "era") state.selectedEntity = null;
       const panel = document.getElementById("era-inspector-panel");
       if (panel) panel.hidden = true;
       const host = document.getElementById("era-inspector-root");
       if (host) host.innerHTML = "";
       renderBridgePanel();
       renderPrototypeDashPanel();
+      renderEntityInspectorPanel();
     }
 
     function renderEraInspector() {
@@ -1549,6 +2943,8 @@
         if (!activeId) return;
         if (id === activeId) {
           el.classList.add(state.focusedSystemId === id ? "mainline-node--active" : "mainline-node--hover");
+        } else if (state.mainlineEdgePartner && id === state.mainlineEdgePartner) {
+          el.classList.add("mainline-node--related", "mainline-node--edge-partner");
         } else if (related.has(id)) {
           el.classList.add("mainline-node--related");
         } else {
@@ -1579,32 +2975,37 @@
       state.focusedSystemId = null;
       state.hoveredSystemId = null;
       state.matrixHighlightSystemId = null;
+      state.mainlineEdgePartner = null;
+      state.mainlineEdgeKind = null;
+      if (!state.selectedEntity || state.selectedEntity.kind === "system") state.selectedEntity = null;
       applyMainlineHighlightClasses();
-      renderSystemFocusPanel();
+      renderEntityInspectorPanel();
       renderFocusRecommendations();
       syncMatrixFocusRenders();
-      if (!state.applyingHash) clearSystemHashIfAny();
+      if (!state.applyingHash) syncEntityHash(null);
+    }
+
+    function scrollToSystem(systemId) {
+      const el = document.getElementById("mainline-card-" + systemId) || document.getElementById("core-system-card-" + systemId);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
 
     function setSystemFocus(systemId, options) {
       const opts = options || {};
       if (opts.toggle && state.focusedSystemId === systemId) {
+        clearSelectedEntity();
         clearSystemFocus();
         return;
       }
-      if (!systemId || !getSystemById(systemId)) return;
-      state.focusedSystemId = systemId;
-      state.matrixHighlightSystemId = systemId;
-      state.hoveredSystemId = null;
-      applyMainlineHighlightClasses();
-      renderSystemFocusPanel();
-      renderFocusRecommendations();
-      syncMatrixFocusRenders();
-      if (opts.updateHash !== false) syncSystemHash(systemId);
-      if (opts.scroll) {
-        const el = document.getElementById(`mainline-card-${systemId}`);
-        if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      if (!opts.keepEdgePartner) {
+        state.mainlineEdgePartner = null;
+        state.mainlineEdgeKind = null;
       }
+      selectEntity("system", systemId, {
+        updateHash: opts.updateHash !== false,
+        scroll: !!opts.scroll,
+        scrollInspector: opts.scrollInspector !== false
+      });
     }
 
     function isOnMainlineDiagram(systemId) {
@@ -1683,7 +3084,9 @@
             .filter(Boolean)
             .join(" · ");
           const pressed = active ? "true" : "false";
-          return `<button type="button" class="era-spine-card era-spine-card--phase-${escapeHtml(phase)} era-spine-card--dw-${escapeHtml(dw)}${active ? " is-active" : ""}" data-era-spine="${escapeHtml(era.id)}" role="listitem" aria-pressed="${pressed}" style="--era-accent:${color}" title="${escapeHtml(era.summary || "")} — клик: открыть карточку">
+          const entityActive =
+            state.selectedEntity && state.selectedEntity.kind === "era" && state.selectedEntity.id === era.id;
+          return `<button type="button" class="era-spine-card era-spine-card--phase-${escapeHtml(phase)} era-spine-card--dw-${escapeHtml(dw)}${active || entityActive ? " is-active" : ""} entity-link-card" data-era-spine="${escapeHtml(era.id)}" data-entity-select="era" data-entity-id="${escapeHtml(era.id)}" role="listitem" aria-pressed="${active || entityActive ? "true" : "false"}" style="--era-accent:${color}" title="${escapeHtml(era.summary || "")} — клик: инспектор справа">
             <span class="era-spine-icon" aria-hidden="true">${icon}</span>
             <span class="era-spine-head"><span class="era-spine-id">${escapeHtml(era.id)}</span>${role ? `<span class="era-spine-role">${escapeHtml(role)}</span>` : ""}</span>
             <span class="era-spine-title">${escapeHtml(era.title)}</span>
@@ -1700,7 +3103,9 @@
         track.innerHTML = list
           .map((era) => {
             const active = hash === `era-${era.id}`;
-            return `<button type="button" class="era-spine-dot${active ? " is-active" : ""}" data-era-spine="${escapeHtml(era.id)}" style="--era-accent:${eraColors[era.id] || "var(--purple)"}" aria-label="Эпоха ${escapeHtml(era.id)}: ${escapeHtml(era.title)}"></button>`;
+            const entityActive =
+              state.selectedEntity && state.selectedEntity.kind === "era" && state.selectedEntity.id === era.id;
+            return `<button type="button" class="era-spine-dot${active || entityActive ? " is-active" : ""} entity-link" data-era-spine="${escapeHtml(era.id)}" data-entity-select="era" data-entity-id="${escapeHtml(era.id)}" style="--era-accent:${eraColors[era.id] || "var(--purple)"}" aria-label="Эпоха ${escapeHtml(era.id)}: ${escapeHtml(era.title)}"></button>`;
           })
           .join("");
       }
@@ -1746,12 +3151,12 @@
         const numHtml = num ? `<span class="mainline-node-num">${num}</span>` : "";
         const banner = s.id === "goals" || s.id === "ui";
         const bannerClass = banner ? " mainline-node--banner" : "";
-        const sumShort = truncateText(String(s.summary || ""), banner ? 120 : 64);
+        const roleHint = s.roleInGame && String(s.roleInGame).trim() ? truncateText(s.roleInGame, 48) : "";
         const pressed = state.focusedSystemId === s.id;
-        const ariaLabel = `${s.title}: ${truncateText(String(s.summary || ""), 140)}. Эпохи ${s.appearsIn}–${s.becomesCoreIn}. Клик — фокус.`;
+        const ariaLabel = `${s.title}. Эпохи ${s.appearsIn}–${s.becomesCoreIn}. Клик — инспектор справа.`;
         const goalsTag =
           s.id === "goals" ? `<span class="mainline-node-tag mainline-node-tag--goals">Цели</span>` : "";
-        return `<button type="button" class="mainline-node mainline-node--grid mainline-node--compact mainline-node--${kind}${bannerClass}${m}${mod}" data-mainline-system="${escapeHtml(s.id)}" id="mainline-card-${escapeHtml(s.id)}" aria-label="${escapeHtml(ariaLabel)}" aria-pressed="${pressed ? "true" : "false"}" title="${escapeHtml(ariaLabel)}">
+        return `<button type="button" class="mainline-node mainline-node--grid mainline-node--compact mainline-node--${kind} entity-link-card${bannerClass}${m}${mod}" data-mainline-system="${escapeHtml(s.id)}" data-entity-select="system" data-entity-id="${escapeHtml(s.id)}" id="mainline-card-${escapeHtml(s.id)}" aria-label="${escapeHtml(ariaLabel)}" aria-pressed="${pressed ? "true" : "false"}" title="${escapeHtml(ariaLabel)}">
           <span class="mainline-node-head">
             <span class="mainline-node-icon" aria-hidden="true">${icon}</span>
             ${numHtml}
@@ -1759,7 +3164,7 @@
             ${goalsTag}
           </span>
           <span class="mainline-node-era"><code>${escapeHtml(s.appearsIn)}</code>→<code>${escapeHtml(s.becomesCoreIn)}</code></span>
-          ${sumShort ? `<span class="mainline-node-sum">${markInEscaped(escapeHtml(sumShort), q)}</span>` : ""}
+          ${banner && s.summary ? `<span class="mainline-node-sum mainline-node-sum--banner">${markInEscaped(escapeHtml(truncateText(s.summary, 100)), q)}</span>` : roleHint ? `<span class="mainline-node-hint">${escapeHtml(roleHint)}</span>` : ""}
         </button>`;
       }
 
@@ -1954,7 +3359,7 @@
     function focusRecDepLi(systemId, title, type, prefix) {
       const label = title || systemId || "—";
       if (systemId && getSystemById(systemId)) {
-        return `<li>${prefix || ""}<button type="button" class="focus-rec-dep-btn" data-focus-jump="${escapeHtml(systemId)}">${escapeHtml(label)} <span class="focus-rec-dep-type">${escapeHtml(type)}</span></button></li>`;
+        return `<li>${prefix || ""}<button type="button" class="focus-rec-dep-btn entity-link" data-entity-select="system" data-entity-id="${escapeHtml(systemId)}">${escapeHtml(label)} <span class="focus-rec-dep-type">${escapeHtml(type)}</span></button></li>`;
       }
       return `<li>${prefix || ""}${escapeHtml(label)} <span class="focus-rec-dep-type">${escapeHtml(type)}</span></li>`;
     }
@@ -2032,47 +3437,7 @@
     }
 
     function renderSystemFocusPanel() {
-      const panel = document.getElementById("system-focus-panel");
-      if (!panel) return;
-      const sid = state.focusedSystemId;
-      const titleMap = buildSystemTitleMap(architecture.systems);
-      if (!sid) {
-        panel.innerHTML = `<h3 class="dashboard-panel-title">Фокус системы</h3><p class="system-focus-hint">Выберите систему в центральной схеме, чтобы увидеть связи.</p>`;
-        return;
-      }
-      const s = getSystemById(sid);
-      if (!s) {
-        panel.innerHTML = `<h3 class="dashboard-panel-title">Фокус системы</h3><p class="system-focus-hint">Система не найдена.</p>`;
-        return;
-      }
-      const q = state.search;
-      const rs = s.relatedSystems;
-      let relHtml = "";
-      if (Array.isArray(rs) && rs.length) {
-        relHtml = `<ul class="system-focus-rel-list">${rs
-          .map((r) => {
-            const tid = r.systemId;
-            const tl = titleMap.get(tid) || tid;
-            const tgt = getSystemById(tid);
-            const name = tgt
-              ? `<button type="button" class="system-focus-rel-btn" data-focus-jump="${escapeHtml(tid)}">${escapeHtml(tl)}</button>`
-              : `<span>${escapeHtml(tl)}</span>`;
-            return `<li><span class="system-focus-rel-type">${escapeHtml(r.relation)}</span> — ${name}<div class="system-focus-rel-note">${highlightPlain(String(r.note || ""), q)}</div></li>`;
-          })
-          .join("")}</ul>`;
-      }
-      panel.innerHTML = `
-        <h3 class="dashboard-panel-title">Фокус системы</h3>
-        <div class="system-focus-card">
-          <h4 class="system-focus-name">${markInEscaped(escapeHtml(s.title), q)}</h4>
-          ${createStatusPill(s.status)}
-          <p class="system-focus-sum">${highlightPlain(String(s.summary || ""), q)}</p>
-          <p class="system-focus-role"><strong>В игре:</strong> ${highlightPlain(String(s.roleInGame || ""), q)}</p>
-          <p class="system-focus-era"><strong>Эпохи:</strong> <code>${escapeHtml(s.appearsIn)}</code> → <code>${escapeHtml(s.becomesCoreIn)}</code></p>
-          ${relHtml ? `<div class="system-focus-rel"><strong>Связи</strong>${relHtml}</div>` : ""}
-          <button type="button" class="system-focus-clear" id="btn-clear-system-focus">Сбросить фокус</button>
-        </div>
-      `;
+      renderEntityInspectorPanel();
     }
 
     function renderTransitionPanel() {
@@ -2090,7 +3455,7 @@
           const head = `${escapeHtml(era.id)} → ${escapeHtml(toLabel)}`;
           const eraLine = truncateText(era.title, 48);
           const condShort = truncateText(t.condition, 72);
-          return `<details class="transition-row"><summary><button type="button" class="transition-era-focus" data-era-focus="${escapeHtml(era.id)}"><strong>${head}</strong></button><span class="transition-era-title">${escapeHtml(eraLine)}</span><span class="transition-preview">${escapeHtml(condShort)}</span> <span class="transition-checkcount">${cl} п.</span></summary>
+          return `<details class="transition-row"><summary><button type="button" class="transition-era-focus entity-link" data-entity-select="transition" data-entity-id="${escapeHtml(era.id)}"><strong>${head}</strong></button><span class="transition-era-title">${escapeHtml(eraLine)}</span><span class="transition-preview">${escapeHtml(condShort)}</span> <span class="transition-checkcount">${cl} п.</span></summary>
             <p class="transition-cond">${highlightPlain(String(t.condition || ""), q)}</p>
           </details>`;
         })
@@ -2120,7 +3485,7 @@
         <div class="progression-right-links">${list
           .map(
             (e) =>
-              `<a class="progression-right-link" href="#system-progression-${escapeHtml(e.systemId)}">${escapeHtml(e.title)}</a>`
+              `<button type="button" class="progression-right-link entity-link" data-entity-select="systemProgression" data-entity-id="${escapeHtml(e.systemId)}">${escapeHtml(e.title)}</button>`
           )
           .join("")}</div></div>`;
     }
@@ -2137,13 +3502,17 @@
     }
 
     function applyHashFromUrl() {
+      if (applyEntityHashFromUrl()) {
+        syncEraSpineActiveFromHash();
+        return;
+      }
       const hash = (location.hash || "").replace(/^#/, "");
       const sm = /^system-([a-z0-9_]+)$/i.exec(hash);
       if (sm) {
         const id = sm[1];
         if (getSystemById(id) && state.focusedSystemId !== id) {
           state.applyingHash = true;
-          setSystemFocus(id, { updateHash: false, scroll: true });
+          selectEntity("system", id, { updateHash: false, scroll: true });
           state.applyingHash = false;
         }
         syncEraSpineActiveFromHash();
@@ -2292,7 +3661,7 @@
             const tl = (sid && titleMap.get(sid)) || sid || "—";
             const hasMainCard = !!(sid && canonicalSet.has(sid));
             const nameHtml = hasMainCard
-              ? `<a class="core-related-link" href="#core-system-card-${escapeHtml(sid)}">${markInEscaped(escapeHtml(tl), query)}</a>`
+              ? renderEntityChip("system", sid, tl)
               : `<span class="core-related-label">${markInEscaped(escapeHtml(tl), query)}</span>`;
             const missing = hasMainCard ? "" : ` <span class="core-related-missing-badge">нет карточки</span>`;
             return `<li class="core-related-item"><div class="core-related-head">${nameHtml}${missing}<span class="core-related-relation"> — ${escapeHtml(relation)}</span></div><p class="core-related-note">${highlightPlain(String(note), query)}</p></li>`;
@@ -2319,7 +3688,7 @@
           const diagramBtn = onDiagram
             ? `<button type="button" class="core-system-diagram-btn" data-focus-mainline="${escapeHtml(s.id)}">На схеме</button>`
             : "";
-          return `<article class="core-system-card${m}" id="core-system-card-${escapeHtml(s.id)}">
+          return `<article class="core-system-card entity-link-card${m}" tabindex="0" data-entity-select="system" data-entity-id="${escapeHtml(s.id)}" id="core-system-card-${escapeHtml(s.id)}">
           <header class="core-system-card-head"><h3 class="core-system-card-title">${markInEscaped(escapeHtml(s.title), query)}</h3>${catpill}${createStatusPill(s.status)}${diagramBtn}</header>
           <p class="core-system-sum">${highlightPlain(String(s.summary || ""), query)}</p>
           ${roleLine}
@@ -2354,8 +3723,10 @@
           const title = (sid && systemTitleMap.get(sid)) || sid || "—";
           const hasProg = !!(sid && progressionIdSet.has(sid));
           const nameHtml = hasProg
-            ? `<a class="related-system-link" href="#system-progression-${escapeHtml(sid)}">${markInEscaped(escapeHtml(title), query)}</a>`
-            : `<span class="related-system-label">${markInEscaped(escapeHtml(title), query)}</span>`;
+            ? renderEntityChip("systemProgression", sid, title)
+            : getSystemById(sid)
+              ? renderEntityChip("system", sid, title)
+              : `<span class="related-system-label">${markInEscaped(escapeHtml(title), query)}</span>`;
           const missing = hasProg
             ? ""
             : ` <span class="related-system-missing-badge" title="Нет карточки в systemProgression">ещё не описано</span>`;
@@ -2400,7 +3771,7 @@
               .map((e, i) => {
                 const sep =
                   i > 0 ? '<span class="sys-prog-nav-sep" aria-hidden="true">|</span>' : "";
-                return `${sep}<a class="sys-prog-nav-link" href="#system-progression-${escapeHtml(e.systemId)}">${escapeHtml(e.title)}</a>`;
+                return `${sep}<button type="button" class="sys-prog-nav-link entity-link" data-entity-select="systemProgression" data-entity-id="${escapeHtml(e.systemId)}">${escapeHtml(e.title)}</button>`;
               })
               .join("")}</nav>`
           : "";
@@ -2426,10 +3797,13 @@
               : "";
           const relatedBlock = renderSystemRelatedBlock(entry, progressionIdSet, systemTitleMap, query);
           return `
-        <article class="system-progression-card${matchClass}" id="system-progression-${escapeHtml(entry.systemId)}">
+        <article class="system-progression-card entity-link-card${matchClass}" data-entity-select="systemProgression" data-entity-id="${escapeHtml(entry.systemId)}" id="system-progression-${escapeHtml(entry.systemId)}">
           <header class="system-progression-card-head">
             <h3 class="system-progression-card-title">${markInEscaped(escapeHtml(entry.title), query)}</h3>
-            ${createStatusPill(entry.status)}
+            <div class="system-progression-card-actions">
+              ${createStatusPill(entry.status)}
+              <button type="button" class="entity-action-btn entity-action-btn--inline sys-prog-show-system" data-entity-select="system" data-entity-id="${escapeHtml(entry.systemId)}" data-stop-card-select="1">Система</button>
+            </div>
           </header>
           <p class="system-progression-sum">${markInEscaped(escapeHtml(entry.summary), query)}</p>
           <p class="system-progression-meta"><code>${escapeHtml(entry.systemId)}</code></p>
@@ -2450,9 +3824,9 @@
         ? dependencies
             .map(
               (dependency) => `
-        <article class="dependency-card${matchClass(dependency)}">
+        <article class="dependency-card entity-link-card${matchClass(dependency)}" tabindex="0" data-entity-select="dependency" data-entity-id="${escapeHtml(dependencyEntityId(dependency))}">
           <h3 class="dependency-title">
-            ${escapeHtml(dependency.from)} → ${escapeHtml(dependency.to)}
+            ${renderEntityChip("system", dependency.from, dependency.from)} → ${renderEntityChip("system", dependency.to, dependency.to)}
             <span class="dependency-type">${escapeHtml(dependencyTypeLabels[dependency.type] || dependency.type)}</span>
           </h3>
           <p>${markInEscaped(escapeHtml(dependency.description), state.search)}</p>
@@ -2473,7 +3847,7 @@
         ? items
             .map(
               (item) => `
-        <article class="roadmap-item${matchClass(item)}">
+        <article class="roadmap-item entity-link-card${matchClass(item)}" tabindex="0" data-entity-select="roadmap" data-entity-id="${escapeHtml(item.id)}">
           <h3>${markInEscaped(escapeHtml(item.title), state.search)}</h3>
           ${createStatusPill(item.status)}
           <p>${markInEscaped(escapeHtml(item.summary), state.search)}</p>
@@ -2503,13 +3877,14 @@
       });
     }
 
-    function filterGameCatalogItems(items) {
+    function filterGameCatalogItems(items, catalogKind) {
       if (!items) return [];
       return items.filter((item) => {
         const byStatus = state.status === "all" || item.status === state.status;
         const bySearch = includesText(item, state.search);
         const byEra = catalogIntersectsVisibleEras(item);
-        return byStatus && bySearch && byEra;
+        const byFocus = catalogKind ? catalogItemPassesFocus(item, catalogKind) : true;
+        return byStatus && bySearch && byEra && byFocus;
       });
     }
 
@@ -2556,13 +3931,37 @@
       const root = document.getElementById("game-catalog-root");
       if (!root) return;
       const gc = architecture.gameCatalog || {};
-      const resources = filterGameCatalogItems(architecture.gameResources || []);
-      const research = filterGameCatalogItems(architecture.gameResearch || []);
-      const tech = filterGameCatalogItems(architecture.gameTechnologies || []);
-      const ent = filterGameCatalogItems(architecture.gameEnterprises || []);
+      const resources = filterGameCatalogItems(architecture.gameResources || [], "resource");
+      const research = filterGameCatalogItems(architecture.gameResearch || [], "research");
+      const tech = filterGameCatalogItems(architecture.gameTechnologies || [], "technology");
+      const ent = filterGameCatalogItems(architecture.gameEnterprises || [], "enterprise");
+      const focusBanner = state.catalogFocus
+        ? `<p class="game-catalog-focus-banner">Показаны записи${
+            state.catalogFocus.systemId
+              ? ` для системы <code>${escapeHtml(state.catalogFocus.systemId)}</code>`
+              : ""
+          }${
+            state.catalogFocus.eraId ? ` в эпохе <code>${escapeHtml(state.catalogFocus.eraId)}</code>` : ""
+          }${
+            state.catalogFocus.kinds && state.catalogFocus.kinds.length
+              ? ` (${escapeHtml(state.catalogFocus.kinds.join(", "))})`
+              : ""
+          }. <button type="button" class="entity-action-btn entity-action-btn--inline" data-catalog-focus-clear>Сбросить</button></p>`
+        : "";
 
       function cardHtml(item, opts) {
+        const catalogKind =
+          opts.catalogKind === "res"
+            ? "resource"
+            : opts.catalogKind === "resch"
+              ? "research"
+              : opts.catalogKind === "tech"
+                ? "technology"
+                : "enterprise";
+        const focusMatch = !state.catalogFocus || catalogItemPassesFocus(item, catalogKind);
         const match = state.search && includesText(item, state.search) ? " is-search-match" : "";
+        const focusClass = focusMatch && state.catalogFocus ? " catalog-entity-card--focus-match" : "";
+        const mutedClass = state.catalogFocus && !focusMatch ? " entity-card--muted" : "";
         const eraPill = `<span class="game-pill game-pill-era">${escapeHtml(item.eraFrom)}–${escapeHtml(item.eraTo)}</span>`;
         const cat = item.category || item.type;
         const catPill = cat
@@ -2584,13 +3983,21 @@
               const sys = architecture.systems.find((s) => s && s.id === sid);
               const label = sys ? sys.title : sid;
               const inferred = !(item.systemIds && item.systemIds.length);
-              return `<button type="button" class="game-system-link${inferred ? " game-system-link--inferred" : ""}" data-catalog-system="${escapeHtml(sid)}" title="${inferred ? "Проектная привязка по категории" : "Привязка в data.js"}">${escapeHtml(label)}</button>`;
+              return `<button type="button" class="game-system-link entity-link${inferred ? " game-system-link--inferred" : ""}" data-entity-select="system" data-entity-id="${escapeHtml(sid)}" title="${inferred ? "Проектная привязка по категории" : "Привязка в data.js"}">${escapeHtml(label)}</button>`;
             })
             .join("");
           extra += `<p class="game-extra game-system-links"><strong>Системы:</strong> ${links}</p>`;
         }
+        const catalogEntityKind =
+          opts.catalogKind === "res"
+            ? "resource"
+            : opts.catalogKind === "resch"
+              ? "research"
+              : opts.catalogKind === "tech"
+                ? "technology"
+                : "enterprise";
         return `
-        <article class="game-card${match}" id="game-${escapeHtml(opts.prefix)}-${escapeHtml(item.id)}">
+        <article class="game-card catalog-entity-card entity-link-card${match}${focusClass}${mutedClass}" tabindex="0" data-entity-select="${catalogEntityKind}" data-entity-id="${escapeHtml(item.id)}" id="game-${escapeHtml(opts.prefix)}-${escapeHtml(item.id)}">
           <h3 class="game-card-title">${markInEscaped(escapeHtml(item.title), state.search)}</h3>
           <div class="game-card-meta">${eraPill}${catPill}${createStatusPill(item.status)}</div>
           <p class="game-card-sum">${markInEscaped(escapeHtml(item.summary), state.search)}</p>
@@ -2609,6 +4016,7 @@
       root.innerHTML = `
         <div class="game-catalog-intro">
           <p><strong>${escapeHtml(gc.title || "Каталог")}.</strong> ${markInEscaped(escapeHtml(gc.summary || ""), state.search)}</p>
+          ${focusBanner}
         </div>
         ${block("Ресурсы", resources, { prefix: "res", catalogKind: "res" })}
         ${block("Исследования (темы и ветки)", research, { prefix: "resch", catalogKind: "resch", unlocks: true })}
@@ -2628,7 +4036,7 @@
         ? items
             .map(
               (screen) => `
-        <article class="screen-card${matchClass(screen)}">
+        <article class="screen-card entity-link-card catalog-entity-card${matchClass(screen)}" tabindex="0" data-entity-select="uiScreen" data-entity-id="${escapeHtml(screen.id)}" id="screen-card-${escapeHtml(screen.id)}">
           <h3>${markInEscaped(escapeHtml(screen.title), state.search)}</h3>
           ${createStatusPill(screen.status)}
           <p><strong>Эпоха ${escapeHtml(screen.appearsIn)}.</strong> ${markInEscaped(escapeHtml(screen.summary), state.search)}</p>
@@ -2651,6 +4059,7 @@
       renderMainlineMap();
       renderDashboardMatrixPreview();
       renderFocusRecommendations();
+      syncEntitySelectionDom();
       renderRightColumn();
       renderTimeline();
       renderSystemsMatrix();
@@ -2665,32 +4074,41 @@
     }
 
     function focusSystemFromHeatmap(systemId) {
-      setSystemFocus(systemId, { scroll: true, toggle: true });
+      if (state.selectedEntity && state.selectedEntity.kind === "system" && state.selectedEntity.id === systemId) {
+        clearSelectedEntity();
+        clearSystemFocus();
+      } else {
+        selectEntity("system", systemId, { scroll: true, scrollInspector: true });
+      }
     }
 
     function focusMatrixInteraction(systemId, eraId, opts) {
       opts = opts || {};
-      if (systemId && getSystemById(systemId)) {
-        setSystemFocus(systemId, { toggle: false, scroll: !!opts.scrollSystem });
-      }
       if (eraId) {
-        setEraFocus(eraId, { scrollInspector: true, openTimeline: opts.scrollEra === true });
+        state.focusedEraId = eraId;
+        highlightTimelineEraCard(eraId);
         scrollSpineCardIntoView(eraId);
         if (opts.scrollEra !== false) {
           openLowerSection("lower-gate-timeline");
           scrollToEra(eraId);
-          highlightTimelineEraCard(eraId);
-        } else {
-          highlightTimelineEraCard(eraId);
         }
+        renderBridgePanel();
+        renderPrototypeDashPanel();
+        syncEraSpineActiveFromHash();
+      }
+      if (systemId && getSystemById(systemId)) {
+        selectEntity("system", systemId, { scroll: !!opts.scrollSystem, updateHash: true });
+      } else if (eraId) {
+        selectEntity("era", eraId, { scrollInspector: true, updateHash: true });
       }
     }
 
     function handleMapInteractionClick(event) {
+      if (event.target.closest && event.target.closest("[data-entity-select]")) return false;
       const spineBtn = event.target.closest && event.target.closest("[data-era-spine]");
       if (spineBtn) {
         event.preventDefault();
-        focusEraFromSpine(spineBtn.getAttribute("data-era-spine"));
+        selectEntity("era", spineBtn.getAttribute("data-era-spine"), { scrollInspector: true });
         return true;
       }
       const edgeBtn = event.target.closest && event.target.closest("[data-edge-highlight]");
@@ -2717,7 +4135,7 @@
       const actionSys = event.target.closest && event.target.closest("[data-action-system]");
       if (actionSys) {
         event.preventDefault();
-        setSystemFocus(actionSys.getAttribute("data-action-system"), { scroll: true });
+        selectEntity("system", actionSys.getAttribute("data-action-system"), { scroll: true });
         document.getElementById("section-mainline")?.scrollIntoView({ behavior: "smooth", block: "start" });
         return true;
       }
@@ -2734,7 +4152,9 @@
           renderSystemFocusPanel();
           syncMatrixFocusRenders();
         }
-        focusEraFromSpine(id, { scrollInspector: true });
+        selectEntity("era", id, { scrollInspector: true, scroll: true });
+        scrollSpineCardIntoView(id);
+        highlightTimelineEraCard(id);
         return true;
       }
       const eraScroll = event.target.closest && event.target.closest("[data-era-scroll]");
@@ -2792,6 +4212,7 @@
       if (progJump) {
         event.preventDefault();
         const sid = progJump.getAttribute("data-progression-jump");
+        selectEntity("systemProgression", sid, { scroll: true });
         openLowerSection("lower-gate-systems");
         const el = document.getElementById(`system-progression-${sid}`);
         if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -2800,17 +4221,12 @@
       const edgeHit = event.target.closest && event.target.closest("[data-edge-from]");
       if (edgeHit) {
         event.preventDefault();
-        const from = edgeHit.getAttribute("data-edge-from");
-        const to = edgeHit.getAttribute("data-edge-to");
-        const kind = edgeHit.getAttribute("data-edge-kind");
-        if (from && getSystemById(from)) {
-          setSystemFocus(from, { scroll: true });
-          if (to && getSystemById(to)) {
-            state.hoveredSystemId = to;
-            applyMainlineHighlightClasses();
-          }
-          if (kind && kind !== "focus") flashMainlineEdgeKind(kind);
-        }
+        event.stopPropagation();
+        focusMainlineEdge(
+          edgeHit.getAttribute("data-edge-from"),
+          edgeHit.getAttribute("data-edge-to"),
+          edgeHit.getAttribute("data-edge-kind")
+        );
         return true;
       }
       const compareOpen = event.target.closest && event.target.closest("[data-era-compare-open]");
@@ -2994,19 +4410,39 @@
         });
       });
 
-      const mainCol = document.getElementById("architecture-main");
-      if (mainCol && !mainCol.dataset.navDelegate) {
-        mainCol.dataset.navDelegate = "1";
-        mainCol.addEventListener("click", (event) => {
-          const ms = event.target.closest("[data-mainline-system]");
-          if (ms) {
-            const id = ms.getAttribute("data-mainline-system");
-            setSystemFocus(id, { toggle: true, scroll: true });
-          }
+      const diagram = document.getElementById("mainline-diagram");
+      if (diagram && !diagram.dataset.keyBound) {
+        diagram.dataset.keyBound = "1";
+        diagram.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          const edge = event.target.closest("[data-edge-from]");
+          if (!edge) return;
+          event.preventDefault();
+          focusMainlineEdge(
+            edge.getAttribute("data-edge-from"),
+            edge.getAttribute("data-edge-to"),
+            edge.getAttribute("data-edge-kind")
+          );
         });
       }
 
-      const diagram = document.getElementById("mainline-diagram");
+      const spineWrap = document.querySelector(".era-spine-wrap");
+      if (spineWrap && !spineWrap.dataset.hoverBound) {
+        spineWrap.dataset.hoverBound = "1";
+        spineWrap.addEventListener("mouseover", (event) => {
+          const btn = event.target.closest("[data-era-spine]");
+          if (!btn) return;
+          setHoveredEraColumn(btn.getAttribute("data-era-spine"));
+        });
+        spineWrap.addEventListener("mouseout", (event) => {
+          const from = event.target.closest("[data-era-spine]");
+          if (!from) return;
+          const to = event.relatedTarget && event.relatedTarget.closest("[data-era-spine]");
+          if (to) return;
+          setHoveredEraColumn(null);
+        });
+      }
+
       if (diagram && !diagram.dataset.hoverBound) {
         diagram.dataset.hoverBound = "1";
         diagram.addEventListener("mouseover", (event) => {
@@ -3027,14 +4463,32 @@
         });
       }
 
+      document.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        const card = event.target.closest(".catalog-entity-card[data-entity-select]");
+        if (!card || event.target.closest("button, a, input, textarea, select")) return;
+        event.preventDefault();
+        const kind = card.getAttribute("data-entity-select");
+        const id = card.getAttribute("data-entity-id");
+        if (kind && id) selectEntity(kind, id, { scroll: true });
+      });
+
       document.addEventListener("click", (event) => {
+        if (event.target.closest("[data-catalog-focus-clear]")) {
+          clearCatalogFocus();
+          return;
+        }
+        if (handleEntityActionClick(event)) return;
+        if (handleEntitySelectClick(event)) return;
         if (event.target && event.target.closest("#btn-clear-system-focus")) {
+          clearSelectedEntity();
           clearSystemFocus();
+          clearEraFocus();
         }
         const jmp = event.target.closest && event.target.closest("[data-focus-jump]");
         if (jmp) {
           const id = jmp.getAttribute("data-focus-jump");
-          if (id) setSystemFocus(id, { scroll: true });
+          if (id) selectEntity("system", id, { scroll: true });
         }
         const mainlineBtn = event.target.closest && event.target.closest("[data-focus-mainline]");
         if (mainlineBtn) {
@@ -3057,7 +4511,7 @@
         const cell = event.target.closest("[data-matrix-system]");
         if (!cell) return;
         const id = cell.getAttribute("data-matrix-system");
-        setSystemFocus(id, { toggle: true, scroll: true });
+        selectEntity("system", id, { scroll: true });
       });
 
       document.getElementById("systems-matrix").addEventListener("keydown", (event) => {
@@ -3067,7 +4521,12 @@
         if (!cell) return;
         event.preventDefault();
         const id = cell.getAttribute("data-matrix-system");
-        setSystemFocus(id, { toggle: true, scroll: true });
+        if (state.selectedEntity && state.selectedEntity.kind === "system" && state.selectedEntity.id === id) {
+          clearSelectedEntity();
+          clearSystemFocus();
+        } else {
+          selectEntity("system", id, { scroll: true });
+        }
       });
 
       const coreSection = document.getElementById("section-core-systems");
@@ -3095,7 +4554,7 @@
       if (btnEraClose) {
         btnEraClose.addEventListener("click", () => {
           clearEraFocus();
-          if (/^#era-/i.test(location.hash)) {
+          if (/^#(era-|entity:)/i.test(location.hash)) {
             history.replaceState(null, "", location.pathname + location.search);
           }
           highlightTimelineEraCard(null);
@@ -3198,16 +4657,10 @@
               );
               return;
             }
-            const bridgeSys = event.target.closest && event.target.closest("[data-bridge-system]");
-            if (bridgeSys) {
-              event.preventDefault();
-              focusSystemFromCatalog(bridgeSys.getAttribute("data-bridge-system"));
-              return;
-            }
             const catSys = event.target.closest && event.target.closest("[data-catalog-system]");
             if (catSys) {
               event.preventDefault();
-              focusSystemFromCatalog(catSys.getAttribute("data-catalog-system"));
+              selectEntity("system", catSys.getAttribute("data-catalog-system"), { scroll: true });
             }
           },
           true

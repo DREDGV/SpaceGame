@@ -136,11 +136,11 @@
           <section class="card dashboard-section dashboard-panel mainline-panel" aria-labelledby="mainline-title" id="section-mainline">
             <div class="card-head card-head--compact">
               <h2 class="card-title" id="mainline-title"><span class="dashboard-section-icon" aria-hidden="true">◎</span> Магистраль систем и связей</h2>
-              <p class="card-note">Четыре ряда: контекст → цепочка 1–10 → сквозные → UI. Наведение — связи; клик по узлу — фокус; по линии — пара систем. Краткое описание — при наведении или фокусе.</p>
+              <p class="card-note">Четыре ряда: контекст → цепочка 1–10 → сквозные → UI. Наведение подсвечивает связи на схеме. Клик по узлу или линии открывает <strong>инспектор объекта</strong> справа (описание и связи — там, не внутри узла).</p>
             </div>
             <div class="mainline-diagram-wrap">
               <div class="mainline-diagram" id="mainline-diagram">
-                <svg class="mainline-edges" id="mainline-edges" aria-hidden="true"></svg>
+                <svg class="mainline-edges" id="mainline-edges" aria-label="Связи между системами"></svg>
                 <div class="core-system-map" id="mainline-systems-root"></div>
               </div>
             </div>
@@ -314,7 +314,7 @@
       </div>
 
       <aside class="architecture-right" aria-label="Фокус и переходы">
-        <div class="system-focus-panel dashboard-panel" id="system-focus-panel"></div>
+        <div class="system-focus-panel entity-inspector dashboard-panel" id="system-focus-panel" aria-label="Инспектор объекта"></div>
         <div class="transition-panel dashboard-panel" id="transition-panel-root">
           <h3 class="dashboard-panel-title">Ключевые переходы</h3>
           <div id="transition-panel-body" class="transition-panel-body"></div>

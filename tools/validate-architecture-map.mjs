@@ -230,6 +230,31 @@ function validateCatalogArray(name, items, eraIds, systemIdSet) {
         });
       }
     }
+    const optionalStringArrays = [
+      "requires",
+      "unlocks",
+      "usedIn",
+      "producedBy",
+      "storedIn",
+      "transportedBy",
+      "riskNotes",
+      "prototypeRefs"
+    ];
+    for (const key of optionalStringArrays) {
+      if (item[key] == null) continue;
+      if (!Array.isArray(item[key])) {
+        err(`${name} ${id}: ${key} must be an array of strings when present`);
+        continue;
+      }
+      item[key].forEach((v, vi) => {
+        if (typeof v !== "string" || !String(v).trim()) {
+          err(`${name} ${id}: ${key}[${vi}] must be a non-empty string`);
+        }
+      });
+    }
+    if (item.availabilityCondition != null && typeof item.availabilityCondition !== "string") {
+      err(`${name} ${id}: availabilityCondition must be a string when present`);
+    }
   }
 }
 

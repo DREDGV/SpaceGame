@@ -135,6 +135,29 @@ window.SPACEGAME_ARCHITECTURE = {
 
 Правило: `appearsIn` и `becomesCoreIn` должны быть валидными буквами A–K и `appearsIn` не правее `becomesCoreIn` по порядку алфавита A–K.
 
+### Инспектор сущностей и hash (просмотрщик)
+
+Просмотрщик поддерживает единый выбор **`selectedEntity`**: `{ kind, id }` и hash **`#entity:<kind>:<id>`** (id в URL кодируется через `encodeURIComponent`). Поддерживаемые `kind`: `system`, `era`, `systemProgression`, `resource`, `research`, `technology`, `enterprise`, `transition`, `bridge`, `prototype`, `roadmap`, `dependency` (id = `from|to|type`). Устаревшие якоря **`#era-X`**, **`#system-id`**, **`#section-*`** сохраняются.
+
+### Опциональные поля каталога (паспорт сущности)
+
+Для объектов в **`gameResources`**, **`gameResearch`**, **`gameTechnologies`**, **`gameEnterprises`** допускаются необязательные поля (массивы строк, если не указано иное):
+
+| Поле | Назначение |
+|------|------------|
+| `availabilityCondition` | string — когда объект становится доступен в проектном смысле |
+| `requires` | string[] — что нужно до доступности |
+| `unlocks` | string[] — что открывает |
+| `usedIn` | string[] — где используется |
+| `producedBy` | string[] — кто/что производит |
+| `storedIn` | string[] — где хранится |
+| `transportedBy` | string[] — логистика |
+| `riskNotes` | string[] — риски |
+| `prototypeRefs` | string[] — связь с файлами/модулями прототипа (текст или путь) |
+| `systemIds` | string[] — привязка к `systems[].id` (валидируется) |
+
+Валидатор **не требует** эти поля у всех записей.
+
 ---
 
 ## `dependencies[]`
