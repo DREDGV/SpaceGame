@@ -2,13 +2,15 @@
 
 Эта карта задает верхний слой проектирования SpaceGame: не отдельные механики, а последовательность развития цивилизации через время, эпохи, периоды, людей, труд, постройки, знания, экономику, события, цели и ограничения.
 
-HTML-версия карты находится рядом: [`SPACEGAME_ARCHITECTURE_MAP.html`](SPACEGAME_ARCHITECTURE_MAP.html). Источник данных: [`spacegame-architecture-data.js`](spacegame-architecture-data.js).
+HTML-версия карты: [`SPACEGAME_ARCHITECTURE_MAP.html`](SPACEGAME_ARCHITECTURE_MAP.html). Данные: [`spacegame-architecture-data.js`](spacegame-architecture-data.js). Логика рендера и интерактива: [`spacegame-architecture-map.js`](spacegame-architecture-map.js). Стили: [`spacegame-architecture-map.css`](spacegame-architecture-map.css).
 
 **Правила работы с картой, статусы и стратегия развития:** [`ARCHITECTURE_MAP_RULES.md`](ARCHITECTURE_MAP_RULES.md).
 
 ## Интерактивный просмотрщик
 
-Страница `SPACEGAME_ARCHITECTURE_MAP.html` — это лёгкий **data-driven** просмотрщик (vanilla JS, без сборщика и внешних CDN) в виде **тёмной dashboard-панели проектирования**:
+Страница `SPACEGAME_ARCHITECTURE_MAP.html` — каркас; логика вынесена в **`spacegame-architecture-map.js`** (vanilla JS, без сборщика и внешних CDN). Визуально — **тёмная dashboard-панель проектирования**:
+
+- **Слои:** верх — обзор (шапка, era spine, магистраль, правая колонка); низ — **«Подробные данные карты»** (сворачиваемый `<details>`: шкала, матрица, сквозные системы, каталог, зависимости, roadmap, UI).
 
 - **Шапка:** название, версия и дата обновления из `meta`, переключатели режима **Обзор** / **Системы** / **Детально** (компактнее карточки эпох, акцент на «магистраль систем», или полное раскрытие секций внизу).
 - **Липкая панель:** поиск, фильтры эпох (все / A–C / D–F / G–K), фильтр по статусу, **фильтр по весу эпохи** (`designWeight`), свернуть или развернуть периоды.

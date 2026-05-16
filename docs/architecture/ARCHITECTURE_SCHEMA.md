@@ -1,6 +1,6 @@
 # SpaceGame — схема данных архитектурной карты
 
-Источник правды: `spacegame-architecture-data.js`. Просмотрщик: `SPACEGAME_ARCHITECTURE_MAP.html`. Игровой код (`web/prototype/`) в эту схему не входит.
+Источник правды: `spacegame-architecture-data.js`. Просмотрщик: `SPACEGAME_ARCHITECTURE_MAP.html` + `spacegame-architecture-map.js` + `spacegame-architecture-map.css`. Игровой код (`web/prototype/`) в эту схему не входит.
 
 Объект верхнего уровня:
 
@@ -102,7 +102,7 @@ window.SPACEGAME_ARCHITECTURE = {
 | `summary` | string | Общий смысл сквозной линии. |
 | `status` | string | Как у эпох (`prototype` \| `designing` \| …). |
 | `relatedSystems` | object[] (опционально) | Связи с другими системами для навигации и чтения карты. См. ниже. Отсутствие карточки `systemProgression` у целевого `systemId` в HTML не ошибка — показывается пометка «ещё не описано». |
-| `byEra` | object | Ключи **только** `A` … `K`; значения — непустые строки. Для `systemId` **`people`** и **`labor`** валидатор требует **все** ключи A–K и непустые строки. Другие `systemId` — по мере введения правила можно ужесточать. |
+| `byEra` | object | Ключи **только** `A` … `K`; значения — непустые строки. Для сквозных id из списка валидатора (`people`, `needs`, `labor`, `storage`, `production`, `economy`, `buildings`, `resources`, `knowledge`, `research`, `trade`, `logistics`, `governance`, `security`, `events`) требуются **все** ключи A–K. Другие `systemId` — по мере введения правила можно ужесточать. |
 | `designNotes` | string[] (опционально) | Проектные ограничения; если поле есть — массив **строк** (допускается пустой массив). |
 
 ### Элемент `relatedSystems[]`
@@ -216,4 +216,4 @@ node tools/validate-architecture-map.mjs
 При успехе: `Architecture map validation passed.`  
 При ошибках: список проблем и код выхода `1`.
 
-Валидатор проверяет структуру и допустимые перечисления, **не** требует одинаковой длины списков целей/событий у всех эпох. Для эпох: ровно **11** записей с id **A–K** по одному разу; объект **`transition`** с непустым **`condition`**; для **A–J** поле **`to`** — строго следующая буква по шкале; для **K** — `to` равен `null` или `""`; **`transition.checklist`** — **обязателен**, непустой массив непустых строк; **`unlocks`** при наличии — массив. Массив **`systems[]`**: уникальные **`id`**; обязательны **`title`**, **`summary`**, **`status`**, **`appearsIn`**, **`becomesCoreIn`**; присутствуют все **канонические** id каркаса; для них **`category`** — `spine` или `core`, задан **`roleInGame`**; опциональный **`relatedSystems`** — как в разделе `relatedSystems[]` выше. Массив **`systemProgression`**: если отсутствует или `null` — проверка пропускается; если задан — массив объектов с правилами из раздела выше (уникальный **`systemId`**, полный **`byEra` A–K** для **`people`** и **`labor`**, опциональный **`relatedSystems`**: массив объектов с **`systemId`**, **`relation`**, **`note`**; каждый **`relatedSystems.systemId`** должен существовать в **`systems[]`**; отсутствие карточки `systemProgression` для связанного id не является ошибкой). Объект **`gameCatalog`**, если есть: `title`, `summary`, `status`.
+Валидатор проверяет структуру и допустимые перечисления, **не** требует одинаковой длины списков целей/событий у всех эпох. Для эпох: ровно **11** записей с id **A–K** по одному разу; объект **`transition`** с непустым **`condition`**; для **A–J** поле **`to`** — строго следующая буква по шкале; для **K** — `to` равен `null` или `""`; **`transition.checklist`** — **обязателен**, непустой массив непустых строк; **`unlocks`** при наличии — массив. Массив **`systems[]`**: уникальные **`id`**; обязательны **`title`**, **`summary`**, **`status`**, **`appearsIn`**, **`becomesCoreIn`**; присутствуют все **канонические** id каркаса; для них **`category`** — `spine` или `core`, задан **`roleInGame`**; опциональный **`relatedSystems`** — как в разделе `relatedSystems[]` выше. Массив **`systemProgression`**: если отсутствует или `null` — проверка пропускается; если задан — массив объектов с правилами из раздела выше (уникальный **`systemId`**, полный **`byEra` A–K** для сквозных id из списка валидатора (15 систем: от `people` до `events`), опциональный **`relatedSystems`**: массив объектов с **`systemId`**, **`relation`**, **`note`**; каждый **`relatedSystems.systemId`** должен существовать в **`systems[]`**; отсутствие карточки `systemProgression` для связанного id не является ошибкой). Объект **`gameCatalog`**, если есть: `title`, `summary`, `status`.

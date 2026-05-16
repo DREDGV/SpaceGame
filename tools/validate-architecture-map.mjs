@@ -278,12 +278,18 @@ function validateArchitectureBridge(bridge) {
     err("architectureBridge must be an object when present");
     return;
   }
-  const b2c = bridge.B_to_C;
-  if (!b2c) return;
-  if (!b2c.title || !String(b2c.title).trim()) err("architectureBridge.B_to_C: missing title");
-  if (!b2c.summary || !String(b2c.summary).trim()) err("architectureBridge.B_to_C: missing summary");
-  for (const key of ["criteria", "minDesignPack", "forbiddenUntilBridge"]) {
-    if (b2c[key] != null && !Array.isArray(b2c[key])) err(`architectureBridge.B_to_C: ${key} must be an array`);
+  for (const [bridgeKey, block] of [
+    ["B_to_C", bridge.B_to_C],
+    ["C_to_D", bridge.C_to_D]
+  ]) {
+    if (!block) continue;
+    if (!block.title || !String(block.title).trim()) err(`architectureBridge.${bridgeKey}: missing title`);
+    if (!block.summary || !String(block.summary).trim()) err(`architectureBridge.${bridgeKey}: missing summary`);
+    for (const arrKey of ["criteria", "minDesignPack", "forbiddenUntilBridge"]) {
+      if (block[arrKey] != null && !Array.isArray(block[arrKey])) {
+        err(`architectureBridge.${bridgeKey}: ${arrKey} must be an array`);
+      }
+    }
   }
 }
 
@@ -374,13 +380,20 @@ function validateSystemProgression(architecture, systemIds) {
 
     const fullByEraIds = new Set([
       "people",
+      "needs",
       "labor",
+      "storage",
+      "production",
+      "economy",
       "buildings",
       "resources",
       "knowledge",
       "research",
       "trade",
-      "logistics"
+      "logistics",
+      "governance",
+      "security",
+      "events"
     ]);
     if (fullByEraIds.has(entry.systemId)) {
       for (const c of ERA_ORDER) {
